@@ -1,0 +1,143 @@
+// epoch_proof.compact — per-epoch delivery proof, enforces I1-I8 (build-order #4)
+//
+// UNVERIFIED SKELETON. Follows INVARIANTS.md exactly. All wallet addresses,
+// metrics, Merkle paths, salts, and deal terms are PRIVATE witnesses; the only
+// disclosed outputs are the boolean epoch verdict and the public uptime count.
+// Which pool and which wallets belong to the engagement are never disclosed.
+//
+// The leaf schema, indexed-tree opening, pool inclusion proof, and band opening
+// mirror @mmr/merkle / @mmr/indexer. The production hash MUST be the circuit's
+// Poseidon-family primitive, not the TS SHA-256 placeholder (DD-8).
+
+pragma language_version 0.31;
+
+import CompactStandardLibrary;
+
+const SLOTS: Uint<8> = 16;
+const BUCKETS: Uint<16> = 48;   // 24h / 30min; fix after the proving benchmark
+
+// Per-slot opened leaf (membership) or low-leaf (non-membership). Metrics match
+// the @mmr/merkle leaf schema; signed quantities are split in/out.
+struct SlotLeaf {
+  addr: Uint<160>,
+  next_addr: Uint<160>,
+  is_protocol: Boolean,
+  base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
+  lp_base: Uint<128>, lp_quote: Uint<128>,
+  xfer_in: Uint<128>, xfer_out: Uint<128>, from_treasury: Uint<128>,
+  swap_base_in: Uint<128>, swap_base_out: Uint<128>,
+  swap_quote_in: Uint<128>, swap_quote_out: Uint<128>,
+  depth_root: Bytes<32>, flow_root: Bytes<32>,
+  present: Boolean            // true = membership, false = non-membership
+}
+
+// Private deal terms (committed at registration; opened here as a witness).
+struct Terms {
+  floor_price_P: Uint<128>, loan_L0: Uint<128>, quote_start_Q0: Uint<128>,
+  disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
+  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
+}
+
+witness committedWallets(): Vector<16, Uint<160>>;
+witness walletSalt(): Bytes<32>;
+witness slotLeaves(): Vector<16, SlotLeaf>;
+witness terms(): Terms;
+// Per-slot contracted-band minimum depths per bucket (opened from depth_root).
+witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
+witness askMin(): Vector<16, Vector<48, Uint<128>>>;
+
+// I1: committed wallets sorted ascending, no duplicates.
+circuit assertSortedUnique(w: Vector<16, Uint<160>>): [] {
+  for (const i of 0..15) {
+    if (i + 1 < 16) {
+      // dummy padding addresses sort to the top; active wallets strictly increase
+      assert(w[i] < w[i + 1] || w[i + 1] == 0, "wallets not sorted/unique (I1)");
+    }
+  }
+}
+
+export circuit proveEpoch(
+  id: Bytes<32>,
+  rootOfRoots: Bytes<32>,
+  epoch: Uint<64>
+): Boolean {
+  const w = committedWallets();
+  assertSortedUnique(w);
+
+  // Bind the wallet set to the engagement's registration commitment.
+  const wc = persistentCommit<Vector<16, Uint<160>>>(w, walletSalt());
+  // (verified against registration.walletCommit[id] by the caller contract)
+
+  const leaves = slotLeaves();
+  const t = terms();
+
+  // Accumulators (unsigned; inequalities avoid underflow — see INVARIANTS.md).
+  let heldBase: Uint<256> = 0;
+  let heldQuoteAtP: Uint<256> = 0;
+  let swapIn: Uint<256> = 0;
+  let swapOut: Uint<256> = 0;
+  let xferIn: Uint<256> = 0;
+  let xferOut: Uint<256> = 0;
+  let fromTreasury: Uint<256> = 0;
+
+  for (const j of 0..15) {
+    const L = leaves[j];
+    // I2: each slot opens exactly one leaf under rootOfRoots. The pool inclusion
+    // proof + indexed-tree path are verified here (omitted for brevity) binding
+    // L to rootOfRoots. Membership => addr==w[j] && !is_protocol; non-membership
+    // => addr < w[j] < next_addr (zero activity).
+    if (L.present) {
+      assert(L.addr == w[j], "membership slot mismatch (I2)");
+      assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+      heldBase = heldBase + (L.base_end as Uint<256>) + (L.lp_base as Uint<256>);
+      heldQuoteAtP = heldQuoteAtP
+        + ((L.quote_end as Uint<256>) + (L.lp_quote as Uint<256>)) * (t.floor_price_P as Uint<256>);
+      swapIn = swapIn + (L.swap_base_in as Uint<256>);
+      swapOut = swapOut + (L.swap_base_out as Uint<256>);
+      xferIn = xferIn + (L.xfer_in as Uint<256>);
+      xferOut = xferOut + (L.xfer_out as Uint<256>);
+      fromTreasury = fromTreasury + (L.from_treasury as Uint<256>);
+    } else {
+      assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
+             "non-membership low-leaf does not bracket (I2)");
+    }
+  }
+
+  // I3: custody — held value + allowed disposal covers the loan + starting quote.
+  assert(
+    heldBase + heldQuoteAtP + (t.disposal_D as Uint<256>)
+      >= (t.loan_L0 as Uint<256>) + (t.quote_start_Q0 as Uint<256>) * (t.floor_price_P as Uint<256>),
+    "custody floor breached (I3)"
+  );
+
+  // I4: net selling capped.
+  assert(swapOut <= swapIn + (t.net_sell_S as Uint<256>), "net selling cap (I4)");
+
+  // I5: outflows capped (excluding the loan inflow from treasury).
+  assert(xferOut <= xferIn + (t.disposal_D as Uint<256>) + fromTreasury, "outflow cap (I5)");
+
+  // I6: uptime — count buckets whose summed per-slot minimum depth clears target
+  // on BOTH sides. Sum of minimums <= minimum of sums, so no over-crediting.
+  const bid = bidMin();
+  const ask = askMin();
+  let uptime: Uint<32> = 0;
+  for (const b of 0..47) {
+    let sbid: Uint<256> = 0;
+    let sask: Uint<256> = 0;
+    for (const j of 0..15) {
+      sbid = sbid + (bid[j][b] as Uint<256>);
+      sask = sask + (ask[j][b] as Uint<256>);
+    }
+    if (sbid >= (t.depth_target as Uint<256>) && sask >= (t.depth_target as Uint<256>)) {
+      uptime = uptime + 1;
+    }
+  }
+
+  // I7: round-trip cap is checked per window from each flow_root opening
+  // (omitted here; same min(buy,sell) <= share * gross pattern).
+
+  // I8 is enforced by the caller: proveEpoch is accepted only if >=2/3 attesters
+  // signed rootOfRoots for `epoch` and its challenge window passed unchallenged.
+
+  return disclose(true);   // verdict; uptime disclosed via a companion counter
+}

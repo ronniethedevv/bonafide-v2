@@ -1,0 +1,59 @@
+// bond.compact — shielded USDM bond escrow + state machine (build-order #3)
+//
+// UNVERIFIED SKELETON. Semantics follow the engagement state machine and timing
+// defaults in the product spec. Bonds are shielded USDM on Midnight (v1);
+// cross-chain slashing via VIA Labs is deferred.
+//
+// The bond keeps the MM's treasury unlinked from the engagement: it is escrowed
+// as a shielded token, so the amount and source are private. Only "a valid bond
+// of at least the tier minimum exists" is disclosed.
+
+pragma language_version 0.31;
+
+import CompactStandardLibrary;
+
+// Shielded USDM token type (coin). Escrowed balance held by the contract.
+export ledger escrow: QualifiedCoinInfo;
+export ledger bondOf: Map<Bytes<32>, Bytes<32>>;   // engagement id -> bond commitment
+export ledger slashed: Map<Bytes<32>, Boolean>;
+
+// Timing defaults (seconds). Tune in pilot.
+const EPOCH: Uint<64> = 86400;
+const ATTESTER_TIMEOUT: Uint<64> = 21600;   // 6h
+const CHALLENGE: Uint<64> = 43200;          // 12h
+const PROVING: Uint<64> = 86400;            // 24h after challenge
+const FUNDING_WINDOW: Uint<64> = 259200;    // 72h
+
+witness bondCoin(): CoinInfo;         // the shielded USDM the MM posts
+witness bondSalt(): Bytes<32>;
+
+// Post a shielded bond for an engagement. Amount stays private; we disclose only
+// that a bond >= the tier minimum was posted.
+export circuit postBond(id: Bytes<32>, tierMin: Uint<128>): [] {
+  const coin = bondCoin();
+  assert(coin.value >= tierMin, "bond below tier minimum");
+  receive(coin);                                   // escrow the shielded coin
+  const bc = persistentCommit<CoinInfo>(coin, bondSalt());
+  bondOf.insert(disclose(id), disclose(bc));
+}
+
+// Release the bond automatically once an epoch's proof is accepted and its
+// challenge window has passed. No client veto (I8 gates acceptance upstream).
+export circuit releaseEpoch(id: Bytes<32>, nowTs: Uint<64>, settledAt: Uint<64>): [] {
+  assert(disclose(nowTs) >= disclose(settledAt) + CHALLENGE, "challenge window open");
+  assert(!slashed.member(disclose(id)) || !slashed.lookup(disclose(id)), "already slashed");
+  // Partial release logic (per-epoch tranche) omitted in this skeleton.
+}
+
+// Anyone can void an unfunded engagement after the funding window — no penalty.
+export circuit voidUnfunded(id: Bytes<32>, nowTs: Uint<64>, registeredAt: Uint<64>): [] {
+  assert(disclose(nowTs) >= disclose(registeredAt) + FUNDING_WINDOW, "funding window open");
+  // transition handled jointly with registration.status; bond returned in full.
+}
+
+// Default once the proving window passes with no valid proof (grace handled by
+// the caller marking the epoch flagged, not defaulted). Slashes the bond.
+export circuit defaultEngagement(id: Bytes<32>, nowTs: Uint<64>, deadline: Uint<64>): [] {
+  assert(disclose(nowTs) >= disclose(deadline) + PROVING, "proving window open");
+  slashed.insert(disclose(id), true);
+}

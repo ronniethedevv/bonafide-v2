@@ -1,0 +1,49 @@
+# @mmr/contracts — Compact circuits & contracts (Midnight)
+
+> **Status: reviewed source skeletons, NOT compiled here.** The Midnight Compact
+> toolchain (`compactc`), a running Midnight node, and a **Blockfrost project
+> token** (required for Preprod/Mainnet RPC + indexer as of the Sep 2026 network
+> update) are not available in this build environment. These `.compact` files
+> encode the protocol's state machine and invariants for review and for later
+> compilation on a properly provisioned machine. Treat them as a specification
+> in code form until `compactc` has type-checked and proven them.
+
+## Target
+
+- **Compact 0.31.x on ledger 8** (ledger 9's `secp256k1` + in-circuit wallet
+  ownership is deferred — see the product spec "Later" column).
+- Jubjub Schnorr for attester signatures; Poseidon-family hashing for trees
+  (the TS `@mmr/merkle` placeholder uses SHA-256 and MUST be swapped for the
+  circuit hash before any root is proven — see `specs/progress_tracker.md` DD-8).
+
+## Files
+
+| File | Build-order item | Purpose |
+|------|------------------|---------|
+| `src/registration.compact` | #3 | Secret-based registration, identity-point check (I9), wallet-vector commitment, funding activation. |
+| `src/bond.compact` | #3 | Shielded USDM bond escrow + engagement state machine, void/default/terminate transitions. |
+| `src/epoch_proof.compact` | #4 | Epoch proof circuit enforcing I1–I8 against the root-of-roots. |
+| `src/claim.compact` | #4 | Nullifier claim circuit (I10): add a finished engagement to the public record exactly once. |
+
+## Invariant map
+
+See [`INVARIANTS.md`](./INVARIANTS.md) for the precise, language-agnostic
+statement of I1–I10 and which circuit each one lives in. That document is the
+source of truth the `.compact` code must satisfy.
+
+## The `disclose()` discipline
+
+Every value that crosses from private witness to public ledger output must pass
+through an explicit `disclose(...)`. Reviewers should be able to grep for
+`disclose(` and confirm that **only** the intended public facts (counters, the
+epoch verdict, the nullifier) are disclosed — never wallets, salts, terms, KPI
+targets, or client identity.
+
+## How to build once provisioned
+
+```sh
+# on a machine with the Midnight toolchain installed
+export MIDNIGHT_BLOCKFROST_TOKEN=...          # never commit this
+compactc compile src/epoch_proof.compact --out build/
+# run the prover benchmark (build-order item #2) before fixing bucket sizes
+```

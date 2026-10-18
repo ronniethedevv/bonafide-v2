@@ -1,0 +1,52 @@
+// claim.compact — nullifier claim into the public record, enforces I10 (build #4)
+//
+// UNVERIFIED SKELETON. A finished engagement is added to the MM's public profile
+// exactly once. The claim discloses only the aggregate counter updates and the
+// nullifier — never which engagement, token, or client it came from. Claims are
+// batched weekly (off-chain scheduling) so timing can't match an engagement to a
+// token launch.
+
+pragma language_version 0.31;
+
+import CompactStandardLibrary;
+
+// Public, append-only profile counters, keyed by the MM's public profile id.
+export ledger profileNullifiers: Set<Bytes<32>>;
+export ledger completedCount: Map<Bytes<32>, Counter>;     // per tier packed by caller
+export ledger kpiHits: Map<Bytes<32>, Counter>;
+export ledger kpiTotal: Map<Bytes<32>, Counter>;
+
+witness engagementSecret(): Bytes<32>;
+witness profileSecret(): Bytes<32>;
+
+// ν = H(engagement_secret ‖ engagement_id). Each finished engagement yields one.
+circuit nullifier(secret: Bytes<32>, id: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([secret, id]);
+}
+
+// Public profile id is derived from the profile secret so the MM controls it but
+// observers can't link it to any engagement.
+circuit profileId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+export circuit claim(
+  engagementId: Bytes<32>,
+  tier: Uint<8>,
+  epochsPassed: Uint<32>,
+  epochsTotal: Uint<32>
+): [] {
+  const nv = nullifier(engagementSecret(), engagementId);
+  // I10: at most once — reject a repeat nullifier.
+  assert(!profileNullifiers.member(disclose(nv)), "engagement already claimed (I10)");
+  profileNullifiers.insert(disclose(nv));
+
+  const pid = profileId(profileSecret());
+
+  // I10: counters only grow. Counter is monotonic by construction.
+  completedCount.lookup(disclose(pid)).increment(1);
+  kpiHits.lookup(disclose(pid)).increment(disclose(epochsPassed as Uint<64>));
+  kpiTotal.lookup(disclose(pid)).increment(disclose(epochsTotal as Uint<64>));
+  // `tier` is disclosed so sandbox (C) engagements show separately from the
+  // headline record; the caller routes it to the right per-tier counter.
+}

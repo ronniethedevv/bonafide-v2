@@ -1,0 +1,84 @@
+// registration.compact — secret-based engagement registration (build-order #3)
+//
+// UNVERIFIED SKELETON. Not compiled against compactc in this repo (no Midnight
+// toolchain here). Syntax to be confirmed with Compact 0.31.x; semantics follow
+// INVARIANTS.md (I9) and the product spec's engagement state machine.
+//
+// Privacy: the wallet vector, salt, and deal terms are PRIVATE witnesses and
+// never disclosed. Only the engagement commitment and a random engagement id
+// reach the ledger. An engagement runs under a random id and is linked to the
+// MM's profile only later, via claim.compact (I10).
+
+pragma language_version 0.31;
+
+import CompactStandardLibrary;
+
+// --- Public ledger state -----------------------------------------------------
+
+// Engagement lifecycle, keyed by the random engagement id.
+export enum Status { Registered, Funded, Active, Settled, Voided, Defaulted }
+
+export ledger status: Map<Bytes<32>, Status>;
+// Commitment over the 16-slot wallet vector (persistentCommit with a fresh salt).
+export ledger walletCommit: Map<Bytes<32>, Bytes<32>>;
+// Commitment over private deal terms (P, L0, D, S, targets...). Opened only to
+// the client off-chain; the chain only ever sees this hash.
+export ledger termsCommit: Map<Bytes<32>, Bytes<32>>;
+// Registration time, used by the 72h funding window.
+export ledger registeredAt: Map<Bytes<32>, Uint<64>>;
+// Difficulty tier declared at registration (A/B/C). Public.
+export ledger tier: Map<Bytes<32>, Uint<8>>;
+
+// --- Private witnesses -------------------------------------------------------
+
+// The MM's registration secret. Authorization is "prove knowledge of this",
+// never ownPublicKey() (I9).
+witness engagementSecret(): Bytes<32>;
+witness walletVector(): Vector<16, Uint<160>>;
+witness walletSalt(): Bytes<32>;
+witness termsPreimage(): Bytes<32>;
+
+// --- Helpers -----------------------------------------------------------------
+
+// I9: reject the Jubjub identity point as a key. In 0.31.x the standard
+// signature check does not do this, so we check explicitly.
+circuit assertNotIdentity(pk: ZswapCoinPublicKey): [] {
+  assert(!isIdentityPoint(pk), "identity-point key rejected");
+}
+
+// Derive the public engagement id deterministically from the secret, so the MM
+// can recompute it but observers cannot link it to the MM.
+circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+// --- Circuits ----------------------------------------------------------------
+
+export circuit register(declaredTier: Uint<8>, nowTs: Uint<64>): Bytes<32> {
+  const secret = engagementSecret();
+  const id = deriveEngagementId(secret);
+  assert(!status.member(disclose(id)), "engagement id already registered");
+
+  // Commit the wallet vector over all 16 slots with a fresh salt. Unused slots
+  // hold dummy addresses so the active wallet count never shows.
+  const wc = persistentCommit<Vector<16, Uint<160>>>(walletVector(), walletSalt());
+  const tc = persistentHash<Bytes<32>>(termsPreimage());
+
+  status.insert(disclose(id), Status.Registered);
+  walletCommit.insert(disclose(id), disclose(wc));
+  termsCommit.insert(disclose(id), disclose(tc));
+  registeredAt.insert(disclose(id), disclose(nowTs));
+  tier.insert(disclose(id), disclose(declaredTier));
+  return disclose(id);
+}
+
+// Activation: prove the loan reached the committed wallets, checked against the
+// epoch root-of-roots so the pool stays hidden. The membership proof inputs are
+// private; only the status transition is disclosed.
+export circuit activate(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
+  assert(status.lookup(disclose(id)) == Status.Registered, "not awaiting funding");
+  // NOTE: funding membership proof verified here against rootOfRoots using the
+  // same leaf/path scheme as @mmr/merkle. Omitted in this skeleton; see
+  // epoch_proof.compact for the opening pattern.
+  status.insert(disclose(id), Status.Funded);
+}

@@ -1,0 +1,34 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+
+# test / coverage
+coverage/
+.vitest/
+
+# env & secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+witnesses/
+*.witness
+
+# os / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# generated
+.turbo/
+prisma/*.db

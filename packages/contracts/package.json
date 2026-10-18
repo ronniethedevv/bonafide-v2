@@ -1,0 +1,10 @@
+{
+  "name": "@mmr/contracts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Compact 0.31.x contracts and circuits for Midnight (registration, bond escrow, epoch proof I1-I8, nullifier claim). Not compiled in this repo's CI host.",
+  "scripts": {
+    "compact:build": "echo 'Requires the Midnight Compact toolchain (compactc) + a Blockfrost project token. See README.md.' && exit 1"
+  }
+}

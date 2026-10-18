@@ -1,0 +1,18 @@
+{
+  "name": "@mmr/merkle",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Leaf schema, address-sorted indexed Merkle tree (depth 16), and epoch root-of-roots.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

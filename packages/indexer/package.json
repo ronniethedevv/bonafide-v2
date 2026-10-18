@@ -1,0 +1,21 @@
+{
+  "name": "@mmr/indexer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic Base indexer: chain activity -> leaves -> per-pool trees -> epoch root-of-roots -> IPFS.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/merkle": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
