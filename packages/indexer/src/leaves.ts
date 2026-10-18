@@ -7,8 +7,33 @@
 
 import { type Hasher, type Leaf, zeroMetrics } from "@mmr/merkle";
 import type { IndexerConfig } from "./config.js";
-import type { AddressActivity, EpochRange } from "./provider.js";
+import type { AddressActivity, DepthBucketSample, EpochRange } from "./provider.js";
 import { commitDepth, commitFlow } from "./commit.js";
+
+/** True if the address's LP position is younger than K_min (earns no depth credit). */
+export function isJit(
+  activity: AddressActivity,
+  config: IndexerConfig,
+  range: EpochRange,
+): boolean {
+  return (
+    activity.lpFirstActiveBlock !== null &&
+    range.endBlock - activity.lpFirstActiveBlock < config.kMinBlocks
+  );
+}
+
+/**
+ * The depth buckets that actually earn credit after the anti-JIT rule. This is
+ * the exact series committed in depth_root, so the prover opens from the same
+ * data the indexer committed.
+ */
+export function effectiveDepthBuckets(
+  activity: AddressActivity,
+  config: IndexerConfig,
+  range: EpochRange,
+): readonly DepthBucketSample[] {
+  return isJit(activity, config, range) ? [] : activity.depthBuckets;
+}
 
 export function activityToLeaf(
   hasher: Hasher,
@@ -16,11 +41,7 @@ export function activityToLeaf(
   config: IndexerConfig,
   range: EpochRange,
 ): Leaf {
-  const jit =
-    activity.lpFirstActiveBlock !== null &&
-    range.endBlock - activity.lpFirstActiveBlock < config.kMinBlocks;
-
-  const depthBuckets = jit ? [] : activity.depthBuckets;
+  const depthBuckets = effectiveDepthBuckets(activity, config, range);
 
   return {
     addr: activity.addr,
