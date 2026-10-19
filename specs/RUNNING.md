@@ -57,7 +57,9 @@ pnpm --filter web start -p 3000
 `packages/contracts` holds Compact 0.31.x circuit/contract **skeletons**. They are
 not wired into any build script and need the Midnight toolchain (`compactc`) plus
 a Blockfrost project token to compile and prove. See
-[`packages/contracts/README.md`](../packages/contracts/README.md).
+[`packages/contracts/README.md`](../packages/contracts/README.md) for the overview
+and **[`specs/MIDNIGHT_SETUP.md`](./MIDNIGHT_SETUP.md)** for the full Ubuntu setup
+walkthrough (toolchain, proof server, keys, `.env`).
 
 ## Package map
 
