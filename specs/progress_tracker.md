@@ -17,8 +17,10 @@ leaf schema, root-of-roots).
 | 2026-10-18 | `packages/merkle` — leaf schema + indexed Merkle tree + root-of-roots + tests | **done (24 tests)** |
 | 2026-10-18 | `packages/indexer` — deterministic pipeline (config, provider ifaces, TWAP, depth/flow commitments, anti-JIT leaves, epoch build, in-mem publisher) + tests | **done (14 tests)** |
 | 2026-10-18 | `packages/contracts` — Compact skeletons + INVARIANTS.md (I1–I10) | drafted (not compiled) |
+| 2026-10-19 | `packages/prover` — engagement model, witness opening assembly (membership/non-membership + pool inclusion), I1–I8 reference oracle | **done (15 tests)** |
 
-Total: 38 tests passing; `pnpm -r typecheck` clean.
+Total: 53 tests passing; `pnpm -r typecheck` clean. Pushed incrementally to
+`origin/ccr-0ae4f61d-euy47e` (frequent-push rule, specs/ai_workflow_rules.md §7).
 
 ## Build-order progress (from product spec)
 
