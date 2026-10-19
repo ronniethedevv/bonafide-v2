@@ -20,8 +20,12 @@ leaf schema, root-of-roots).
 | 2026-10-19 | `packages/prover` — engagement model, witness opening assembly (membership/non-membership + pool inclusion), I1–I8 reference oracle | **done (15 tests)** |
 | 2026-10-19 | `apps/web` — Next.js public profile (`/mm/[handle]`) + tear sheet, dark-theme tokens, read model + fixtures | **done (next build passes, 4 routes)** |
 | 2026-10-19 | `packages/prover` — end-to-end demo + MM prover CLI (`pnpm --filter @mmr/prover demo`) wiring buildEpoch → witness → verdict | **done (16 tests total)** |
+| 2026-10-19 | `packages/protocol` — settlement state machine, engagement reducer, mock attester committee | **done (29 tests)** |
+| 2026-10-19 | `packages/watcher` — challenge watchdog (root recomputation) + client verdict log | **done (5 tests)** |
+| 2026-10-19 | `apps/web` — depth/uptime hero chart (validated palette, SVG) | **done (build passes)** |
+| 2026-10-19 | CI workflow (typecheck + test + web build), specs/RUNNING.md | **done** |
 
-Total: 54 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
+Total: 88 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
 incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
 ## Build-order progress (from product spec)
@@ -31,19 +35,20 @@ incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
       benchmark itself needs the Midnight toolchain (not available here)
 - [~] 3. Compact contract — skeletons + INVARIANTS.md written; needs `compactc` to compile
 - [~] 4. Epoch proof / claim circuits — skeletons written; needs `compactc`
-- [~] 5. Attester committee, challenge flow, void rules — TS interfaces done; Jubjub
-      signing + on-chain flow need Midnight integration
-- [~] 6. MM prover — CLI + reference oracle done; client watcher + fee-sponsor pending
+- [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
+      state machine, engagement reducer, mock committee, challenge watchdog);
+      Jubjub signing + on-chain flow need Midnight integration
+- [~] 6. MM prover — **CLI + reference oracle + client watcher done**; fee-sponsor pending
 - [ ] 7. Pilot
+- [x] CI/CD (blueprint §5.2) — GitHub Actions: typecheck + test + web build
 
-**Loop paused here.** Everything buildable and testable in this TS-only
-environment is done. The remaining core (items 3–5) needs the Midnight Compact
-toolchain + a Blockfrost token, which this container does not have — continuing
-to auto-generate speculative TS scaffolding would burn credits for little value,
-so the autonomous continuation was not re-armed. Resume points for a
-Midnight-provisioned environment: compile the `.compact` circuits, run the
-proving benchmark (fix bucket sizes), implement Jubjub attester signing, and wire
-a real Base archive-RPC `ChainProvider`.
+**What remains needs a Midnight-provisioned environment** (not this container):
+compile the `.compact` circuits (`compactc`), run the proving benchmark to fix
+bucket sizes, implement Jubjub attester signing behind the existing
+`AttesterCommittee` interface, and wire a real Base archive-RPC `ChainProvider`
+behind the existing interface. A fee-sponsor (DUST + self-relay) and a live
+IPFS/Blob `TreePublisher` are the remaining TS adapters, both behind interfaces
+that already exist and are tested against in-memory fakes.
 
 ## Immutable design decisions
 
