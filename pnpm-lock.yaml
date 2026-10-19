@@ -18,6 +18,8 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.5)
 
+  packages/contracts: {}
+
   packages/indexer:
     dependencies:
       '@mmr/merkle':
@@ -32,6 +34,22 @@ importers:
         version: 2.1.9(@types/node@22.20.5)
 
   packages/merkle:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.5)
+
+  packages/prover:
+    dependencies:
+      '@mmr/indexer':
+        specifier: workspace:*
+        version: link:../indexer
+      '@mmr/merkle':
+        specifier: workspace:*
+        version: link:../merkle
     devDependencies:
       typescript:
         specifier: ^5.7.2

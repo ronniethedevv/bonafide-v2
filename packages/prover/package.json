@@ -1,0 +1,22 @@
+{
+  "name": "@mmr/prover",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "MM prover harness + I1-I8 reference oracle: assembles epoch-circuit witness openings and computes the verdict in plain TS as a known-answer reference.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/indexer": "workspace:*",
+    "@mmr/merkle": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
