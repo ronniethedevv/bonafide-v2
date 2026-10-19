@@ -10,7 +10,7 @@ import {
   type Hasher,
   assertUint,
   BITS,
-  encodeUint,
+  encodeUintLE,
 } from "@mmr/merkle";
 
 export const SLOTS = 16;
@@ -100,19 +100,7 @@ export function assertTerms(t: EngagementTerms): void {
   }
 }
 
-/**
- * Commitment over the 16-slot wallet vector with a fresh salt — the TS analog of
- * registration.compact's persistentCommit. (Uses the injected placeholder
- * hasher; production uses the Compact commitment primitive.)
- */
-export function commitWallets(
-  hasher: Hasher,
-  vector: WalletVector,
-  salt: Uint8Array,
-): Digest {
-  if (salt.length !== 32) throw new Error("salt must be 32 bytes");
-  const parts: Uint8Array[] = vector.slots.map((s) => encodeUint(s, BITS.ADDR));
-  parts.push(salt);
+function concat(parts: readonly Uint8Array[]): Uint8Array {
   const total = parts.reduce((n, p) => n + p.length, 0);
   const buf = new Uint8Array(total);
   let off = 0;
@@ -120,5 +108,49 @@ export function commitWallets(
     buf.set(p, off);
     off += p.length;
   }
-  return hasher.hashLeaf(buf);
+  return buf;
+}
+
+// Compact's persistentCommit<T>(v, r) = SHA-256(r || serialize(v)), with the
+// same serialization as persistentHash (Uints little-endian). With
+// CompactHasher, hashLeaf(salt || image) reproduces it byte-for-byte (KAT in
+// packages/contracts/test). Other hashers give a TS-only analog.
+function commit(hasher: Hasher, image: Uint8Array, salt: Uint8Array): Digest {
+  if (salt.length !== 32) throw new Error("salt must be 32 bytes");
+  return hasher.hashLeaf(concat([salt, image]));
+}
+
+/**
+ * Commitment over the 16-slot wallet vector with a fresh salt: registration's
+ * walletCommit, persistentCommit<Vector<16, Uint<160>>>(slots, salt).
+ */
+export function commitWallets(
+  hasher: Hasher,
+  vector: WalletVector,
+  salt: Uint8Array,
+): Digest {
+  return commit(hasher, concat(vector.slots.map((s) => encodeUintLE(s, BITS.ADDR))), salt);
+}
+
+/**
+ * Commitment over the deal terms: registration's termsCommit,
+ * persistentCommit<Terms>(terms, termsSalt). Field order and widths are the
+ * circuit `Terms` struct: P, ppm and band are Uint<64>; the rest Uint<128>.
+ */
+export function commitTerms(
+  hasher: Hasher,
+  t: EngagementTerms,
+  termsSalt: Uint8Array,
+): Digest {
+  const image = concat([
+    encodeUintLE(t.floorPriceP, 64),
+    encodeUintLE(t.loanL0, BITS.U128),
+    encodeUintLE(t.quoteStartQ0, BITS.U128),
+    encodeUintLE(t.disposalD, BITS.U128),
+    encodeUintLE(t.netSellS, BITS.U128),
+    encodeUintLE(t.depthTarget, BITS.U128),
+    encodeUintLE(t.roundtripSharePpm, 64),
+    encodeUintLE(BigInt(t.bandBps), 64),
+  ]);
+  return commit(hasher, image, termsSalt);
 }

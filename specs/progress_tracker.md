@@ -30,6 +30,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | **C1 follow-up** — corrected field-element layout for `persistentHash` / `CompactHasher`: `Bytes<32>` → 2 FEs (high-8 / low-248); `hashNode` restructured to 4-FE layout; misleading "297 flat bytes" comments replaced with accurate FE counts in circuit and hash module | **done** |
 | 2026-10-19 | **KAT (C1 verified)** — `packages/contracts/test/epoch_proof.kat.test.ts` executes the compiled `proveEpoch` (compact-runtime 0.16.0) over a pool tree + root-of-roots built with `@mmr/merkle`. Found + fixed: (a) `persistentHash` is SHA-256 over Compact's byte serialization with **little-endian** Uints, not field elements, so the FE-split row above was wrong and `encodeLeaf`/`encodePoolLeaf` (big-endian) **diverged** from the circuit; both now LE, `CompactHasher` is exact; (b) Compact ranges are half-open, so `for j of 0..15` never verified **slot 15** (forged leaf accepted); loops now `0..16`. Tamper cases (metric, next_addr, depth_root, path dir, pool root/addr, rootOfRoots, slot 15, Sha256Hasher-built witness) all revert | **done (13 KAT tests)** |
 | 2026-10-19 | **H2 + L1** — `epoch_proof.compact`: `activeCount(): Uint<8>` witness; `assertWalletLayout` forces active wallets in `[0,n)` non-zero and strictly increasing, padding exactly 0 (rejects `[a,0,b]`, closes L1; `n` is determined by `W`). Merkle path + I2 only for active slots; padding forced `present=false` (no bogus opening needed). I6 depth now masked to member slots (padding / non-member depth no longer counts). Oracle unchanged: it already processes `activeCount` and only members | **done (+10 KAT tests)** |
+| 2026-10-19 | **C2** — `proveEpoch` now returns `disclose(EpochResult { uptime, walletCommit, termsCommit })`: `wc = persistentCommit<Vector<16,Uint<160>>>(w, walletSalt)` (same scheme as registration) and `tc = persistentCommit<Terms>(terms, termsSalt)`. `registration.compact` now commits the structured `Terms` (identical struct) with a salt instead of `persistentHash(termsPreimage)` (DD-9). Caller accepts only if both equal `walletCommit[id]` / `termsCommit[id]` (I8-style "enforced by the caller"). `@mmr/prover` `commitWallets` fixed to persistentCommit's layout (`SHA-256(salt ‖ LE image)`; was BE image ‖ salt) + new `commitTerms`. KAT executes compiled `register` then `proveEpoch`: honest commitments match the ledger and the TS helpers; loosened terms, a dropped wallet, or a changed salt still prove but fail the caller check | **done (+5 KAT tests)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -89,6 +90,14 @@ that already exist and are tested against in-memory fakes.
   (KAT). `Sha256Hasher` (tagged) is off-circuit only. Open: moving trees to the
   cheaper Poseidon `transientHash` is a circuit + TS change made together, gated
   on the proving benchmark.
+
+- **DD-9** (C2) The terms commitment is `persistentCommit<Terms>(terms, termsSalt)`
+  over the **structured** `Terms`, in both `registration.register` and
+  `proveEpoch` (struct kept identical in both files; KAT-checked). Chosen over
+  keeping the opaque `persistentHash(termsPreimage)`, which would have needed a
+  second proof that the struct matches the preimage for no benefit. Salted (not
+  a bare `persistentHash<Terms>`) because terms are low-entropy and a bare hash
+  could be brute-forced from the public ledger.
 
 ## Open decisions (carry from spec)
 

@@ -2,7 +2,8 @@
 //
 // UNVERIFIED SKELETON. Follows INVARIANTS.md exactly. All wallet addresses,
 // metrics, Merkle paths, salts, and deal terms are PRIVATE witnesses; the only
-// disclosed outputs are the boolean epoch verdict and the public uptime count.
+// disclosed outputs are the epoch verdict (no revert), the public uptime count,
+// and the wallet / terms commitments (already public at registration; C2).
 // Which pool and which wallets belong to the engagement are never disclosed.
 //
 // The leaf schema, indexed-tree opening, pool inclusion proof, and band opening
@@ -45,6 +46,13 @@ struct Terms {
   roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
 }
 
+// C2: proveEpoch's public output. The commitments let the caller bind this proof
+// to the registered engagement: it accepts only if walletCommit ==
+// registration.walletCommit[id] and termsCommit == registration.termsCommit[id]
+// (same "enforced by the caller" pattern as I8). Both values are already public
+// on the registration ledger under the same id, so disclosing them leaks nothing.
+struct EpochResult { uptime: Uint<8>, walletCommit: Bytes<32>, termsCommit: Bytes<32> }
+
 // Key for the per-epoch uptime record written to the public ledger.
 struct EpochRef { id: Bytes<32>, epoch: Uint<64> }
 
@@ -80,6 +88,7 @@ witness activeCount(): Uint<8>;
 witness walletSalt(): Bytes<32>;
 witness slotLeaves(): Vector<16, SlotLeaf>;
 witness terms(): Terms;
+witness termsSalt(): Bytes<32>;
 // Per-slot contracted-band minimum depths per bucket (opened from depth_root).
 witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
 witness askMin(): Vector<16, Vector<48, Uint<128>>>;
@@ -392,18 +401,19 @@ export circuit proveEpoch(
   id: Bytes<32>,
   rootOfRoots: Bytes<32>,
   epoch: Uint<64>
-): Uint<8> {
+): EpochResult {
   const w = committedWallets();
   const n = activeCount();
   assertWalletLayout(w, n);
   const act = activeFlags(n);
 
-  // Bind the wallet set to the engagement's registration commitment.
+  // C2: recompute the registration commitments over the opened wallets and terms
+  // (same schemes as registration.register). Disclosed in the result; the caller
+  // checks them against registration.walletCommit[id] / termsCommit[id].
   const wc = persistentCommit<Vector<16, Uint<160>>>(w, walletSalt());
-  // (verified against registration.walletCommit[id] by the caller contract)
-
   const leaves = slotLeaves();
   const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
   // Member flags: present => active (padding is forced !present below), so pf
   // selects exactly the oracle's `members` for the I3/I4/I5 sums and I6 depth.
   const pf = presentFlags(leaves);
@@ -512,5 +522,6 @@ export circuit proveEpoch(
   const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
   epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
 
-  return disclose(uptime);   // uptime bucket count; verdict (all-pass) implied by no revert
+  // uptime bucket count + C2 commitments; verdict (all-pass) implied by no revert
+  return disclose(EpochResult { uptime: uptime, walletCommit: wc, termsCommit: tc });
 }

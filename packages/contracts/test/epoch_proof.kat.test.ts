@@ -14,8 +14,12 @@ import {
   encodeLeaf,
   encodePoolLeaf,
 } from "@mmr/merkle";
+import { buildWalletVector, commitTerms, commitWallets } from "@mmr/prover";
 import {
   HAVE_BUILD,
+  HAVE_REG_BUILD,
+  callerAccepts,
+  runRegister,
   buildScenario,
   cloneWitness,
   runProveEpoch,
@@ -207,5 +211,66 @@ describe.skipIf(!HAVE_BUILD)("H2: active bitmap / padding slots", () => {
     const dup = cloneWitness(witness);
     dup.committedWallets[1] = dup.committedWallets[0]!;
     await expect(run(dup, rootOfRoots)).rejects.toThrow(/wallets not sorted\/unique \(I1\)/);
+  });
+});
+
+describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
+  const SECRET = new Uint8Array(32).fill(0x99);
+
+  async function registered() {
+    const s = buildScenario();
+    const reg = await runRegister(s.witness, SECRET);
+    return { ...s, reg };
+  }
+
+  it("honest epoch: disclosed commitments equal registration's ledger values", async () => {
+    const { rootOfRoots, witness, reg } = await registered();
+    const r = await runProveEpoch(witness, reg.id, rootOfRoots, EPOCH);
+    expect(r.walletCommit).toEqual(reg.walletCommit);
+    expect(r.termsCommit).toEqual(reg.termsCommit);
+    expect(callerAccepts(reg, r)).toBe(true);
+  });
+
+  it("@mmr/prover commitWallets / commitTerms match the registration circuit", async () => {
+    const { witness, reg } = await registered();
+    const h = new CompactHasher();
+    const active = witness.committedWallets.slice(0, Number(witness.activeCount));
+    expect(commitWallets(h, buildWalletVector(active), witness.walletSalt)).toEqual(reg.walletCommit);
+    const t = witness.terms;
+    expect(commitTerms(h, {
+      floorPriceP: t.floor_price_P, loanL0: t.loan_L0, quoteStartQ0: t.quote_start_Q0,
+      disposalD: t.disposal_D, netSellS: t.net_sell_S, depthTarget: t.depth_target,
+      roundtripSharePpm: t.roundtrip_share_ppm, bandBps: Number(t.band_bps),
+    }, witness.termsSalt)).toEqual(reg.termsCommit);
+  });
+
+  it("loosened terms still prove, but the caller rejects them", async () => {
+    const { rootOfRoots, witness, reg } = await registered();
+    const w = cloneWitness(witness);
+    w.terms.disposal_D = 1n << 100n; // an MM relaxing its own outflow cap
+    const r = await runProveEpoch(w, reg.id, rootOfRoots, EPOCH);
+    expect(r.walletCommit).toEqual(reg.walletCommit);
+    expect(callerAccepts(reg, r)).toBe(false);
+  });
+
+  it("a dropped wallet still proves, but the caller rejects it", async () => {
+    const { rootOfRoots, witness, reg } = await registered();
+    const w = cloneWitness(witness);
+    w.committedWallets[1] = 0n; // hide wallet B this epoch
+    w.activeCount = 1n;
+    w.slotLeaves[1]!.present = false;
+    const r = await runProveEpoch(w, reg.id, rootOfRoots, EPOCH);
+    expect(r.termsCommit).toEqual(reg.termsCommit);
+    expect(callerAccepts(reg, r)).toBe(false);
+  });
+
+  it("a different wallet or terms salt is rejected by the caller", async () => {
+    const { rootOfRoots, witness, reg } = await registered();
+    const ws = cloneWitness(witness);
+    ws.walletSalt[0] = ws.walletSalt[0]! ^ 1;
+    expect(callerAccepts(reg, await runProveEpoch(ws, reg.id, rootOfRoots, EPOCH))).toBe(false);
+    const ts = cloneWitness(witness);
+    ts.termsSalt[0] = ts.termsSalt[0]! ^ 1;
+    expect(callerAccepts(reg, await runProveEpoch(ts, reg.id, rootOfRoots, EPOCH))).toBe(false);
   });
 });

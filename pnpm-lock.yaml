@@ -73,6 +73,9 @@ importers:
       '@mmr/merkle':
         specifier: workspace:*
         version: link:../merkle
+      '@mmr/prover':
+        specifier: workspace:*
+        version: link:../prover
     devDependencies:
       '@midnight-ntwrk/compact-runtime':
         specifier: 0.16.0

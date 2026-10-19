@@ -29,7 +29,9 @@ import {
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
   ? `${process.env.KAT_EPOCH_BUILD}/contract/index.js`
   : fileURLToPath(new URL("../build/epoch_proof/contract/index.js", import.meta.url));
+export const REG_BUILD_DIR = fileURLToPath(new URL("../build/registration/contract/index.js", import.meta.url));
 export const HAVE_BUILD = existsSync(BUILD_DIR);
+export const HAVE_REG_BUILD = existsSync(REG_BUILD_DIR);
 
 export const SLOTS = 16;
 export const BUCKETS = 48;
@@ -61,6 +63,7 @@ export interface EpochWitness {
   walletSalt: Uint8Array;
   slotLeaves: SlotLeafW[];
   terms: TermsW;
+  termsSalt: Uint8Array;
   bidMin: bigint[][];
   askMin: bigint[][];
   slotPaths: PathStepW[][];
@@ -177,6 +180,7 @@ export function buildScenario(
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
         roundtrip_share_ppm: 500_000n, band_bps: 50n,
       },
+      termsSalt: fill32(0x7e),
       bidMin, askMin, slotPaths,
       poolEntry: { poolAddr: pool.poolAddr, poolRoot: pool.poolRoot },
       poolPath: toPath(pool.path),
@@ -193,6 +197,9 @@ export function cloneWitness(w: EpochWitness): EpochWitness {
 
 export interface ProveResult {
   uptime: bigint;
+  /** C2: disclosed commitments the caller checks against the registration ledger. */
+  walletCommit: Uint8Array;
+  termsCommit: Uint8Array;
   /** Ledger value written for this (id, epoch), read back from the new state. */
   ledgerUptime: bigint | undefined;
 }
@@ -212,6 +219,7 @@ export async function runProveEpoch(
     walletSalt: (c: { privateState: unknown }) => [c.privateState, w.walletSalt],
     slotLeaves: (c: { privateState: unknown }) => [c.privateState, w.slotLeaves],
     terms: (c: { privateState: unknown }) => [c.privateState, w.terms],
+    termsSalt: (c: { privateState: unknown }) => [c.privateState, w.termsSalt],
     bidMin: (c: { privateState: unknown }) => [c.privateState, w.bidMin],
     askMin: (c: { privateState: unknown }) => [c.privateState, w.askMin],
     slotPaths: (c: { privateState: unknown }) => [c.privateState, w.slotPaths],
@@ -219,13 +227,61 @@ export async function runProveEpoch(
     poolPath: (c: { privateState: unknown }) => [c.privateState, w.poolPath],
   };
   const contract = new mod.Contract(witnesses);
-  const init = contract.initialState(rt.createConstructorContext({}, COIN_PK));
-  const ctx = rt.createCircuitContext(
-    rt.dummyContractAddress(), COIN_PK, init.currentContractState.data, init.currentPrivateState,
-  );
-  const res = contract.circuits.proveEpoch(ctx, id, rootOfRoots, epoch);
+  const res = contract.circuits.proveEpoch(freshContext(contract), id, rootOfRoots, epoch);
   const led = mod.ledger(res.context.currentQueryContext.state);
   let ledgerUptime: bigint | undefined;
   for (const [, v] of led.epochUptime) ledgerUptime = v as bigint;
-  return { uptime: res.result as bigint, ledgerUptime };
+  const out = res.result as { uptime: bigint; walletCommit: Uint8Array; termsCommit: Uint8Array };
+  return { uptime: out.uptime, walletCommit: out.walletCommit, termsCommit: out.termsCommit, ledgerUptime };
+}
+
+interface CompiledContract {
+  initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
+}
+
+function freshContext(contract: CompiledContract) {
+  const init = contract.initialState(rt.createConstructorContext({}, COIN_PK));
+  return rt.createCircuitContext(
+    rt.dummyContractAddress(), COIN_PK, init.currentContractState.data, init.currentPrivateState,
+  );
+}
+
+// --- registration.register ------------------------------------------------------
+
+export interface Registered {
+  id: Uint8Array;
+  walletCommit: Uint8Array;
+  termsCommit: Uint8Array;
+}
+
+/**
+ * Execute the compiled registration.register with the engagement's wallets,
+ * wallet salt, terms and terms salt, and read back what it stored on the ledger.
+ */
+export async function runRegister(
+  w: Pick<EpochWitness, "committedWallets" | "walletSalt" | "terms" | "termsSalt">,
+  engagementSecret: Uint8Array,
+): Promise<Registered> {
+  const mod = await import(REG_BUILD_DIR);
+  const witnesses = {
+    engagementSecret: (c: { privateState: unknown }) => [c.privateState, engagementSecret],
+    walletVector: (c: { privateState: unknown }) => [c.privateState, w.committedWallets],
+    walletSalt: (c: { privateState: unknown }) => [c.privateState, w.walletSalt],
+    terms: (c: { privateState: unknown }) => [c.privateState, w.terms],
+    termsSalt: (c: { privateState: unknown }) => [c.privateState, w.termsSalt],
+  };
+  const contract = new mod.Contract(witnesses);
+  const res = contract.circuits.register(freshContext(contract), 1n, 1_700_000_000n);
+  const id = res.result as Uint8Array;
+  const led = mod.ledger(res.context.currentQueryContext.state);
+  return { id, walletCommit: led.walletCommit.lookup(id), termsCommit: led.termsCommit.lookup(id) };
+}
+
+/**
+ * The on-chain caller's C2 check: accept an epoch result only if its disclosed
+ * commitments equal the ones registered for that engagement id.
+ */
+export function callerAccepts(reg: Registered, r: ProveResult): boolean {
+  const eq = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+  return eq(reg.walletCommit, r.walletCommit) && eq(reg.termsCommit, r.termsCommit);
 }

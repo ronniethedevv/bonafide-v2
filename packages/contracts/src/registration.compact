@@ -13,6 +13,16 @@ pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 
+// Private deal terms. MUST stay field-for-field identical to `Terms` in
+// epoch_proof.compact: proveEpoch recomputes persistentCommit<Terms> over its
+// opened terms and the caller checks it equals termsCommit[id] (C2). The KAT
+// in packages/contracts/test checks the two circuits agree.
+struct Terms {
+  floor_price_P: Uint<64>, loan_L0: Uint<128>, quote_start_Q0: Uint<128>,
+  disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
+  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
+}
+
 // --- Public ledger state -----------------------------------------------------
 
 // Engagement lifecycle, keyed by the random engagement id.
@@ -21,8 +31,9 @@ export enum Status { Registered, Funded, Active, Settled, Voided, Defaulted }
 export ledger status: Map<Bytes<32>, Status>;
 // Commitment over the 16-slot wallet vector (persistentCommit with a fresh salt).
 export ledger walletCommit: Map<Bytes<32>, Bytes<32>>;
-// Commitment over private deal terms (P, L0, D, S, targets...). Opened only to
-// the client off-chain; the chain only ever sees this hash.
+// Salted commitment persistentCommit<Terms>(terms, termsSalt) over the private
+// deal terms. Salted because terms are low-entropy (a bare hash could be
+// brute-forced). Opened only to the client off-chain.
 export ledger termsCommit: Map<Bytes<32>, Bytes<32>>;
 // Registration time, used by the 72h funding window.
 export ledger registeredAt: Map<Bytes<32>, Uint<64>>;
@@ -36,7 +47,8 @@ export ledger tier: Map<Bytes<32>, Uint<8>>;
 witness engagementSecret(): Bytes<32>;
 witness walletVector(): Vector<16, Uint<160>>;
 witness walletSalt(): Bytes<32>;
-witness termsPreimage(): Bytes<32>;
+witness terms(): Terms;
+witness termsSalt(): Bytes<32>;
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -65,7 +77,7 @@ export circuit register(declaredTier: Uint<8>, nowTs: Uint<64>): Bytes<32> {
   // Commit the wallet vector over all 16 slots with a fresh salt. Unused slots
   // hold dummy addresses so the active wallet count never shows.
   const wc = persistentCommit<Vector<16, Uint<160>>>(walletVector(), walletSalt());
-  const tc = persistentHash<Bytes<32>>(termsPreimage());
+  const tc = persistentCommit<Terms>(terms(), termsSalt());
 
   status.insert(disclose(id), Status.Registered);
   walletCommit.insert(disclose(id), disclose(wc));
