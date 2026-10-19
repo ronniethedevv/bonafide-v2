@@ -26,6 +26,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | CI workflow (typecheck + test + web build), specs/RUNNING.md | **done** |
 | 2026-10-19 | `packages/contracts` — all four `.compact` circuits compile under `compact compile --skip-zk` (0.31.1) | **done** |
 | 2026-10-19 | `packages/contracts` — `epoch_proof.compact`: added `epochUptime` ledger + `insert` call; `compact compile --skip-zk` now emits `"proof": true`, ledger `[epochUptime]` | **done** |
+| 2026-10-19 | **C1** — `epoch_proof.compact`: pool-inclusion + depth-16 slot Merkle paths bind all witnesses to `rootOfRoots`; `@mmr/merkle`: `CompactHasher` placeholder (DD-8), `POOL_TREE_DEPTH=10` fixed depth; all 88 tests green | **done** |
 
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |

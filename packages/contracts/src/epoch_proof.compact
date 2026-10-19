@@ -46,6 +46,27 @@ struct Terms {
 // Key for the per-epoch uptime record written to the public ledger.
 struct EpochRef { id: Bytes<32>, epoch: Uint<64> }
 
+// C1 — Merkle path step: sibling digest + left/right flag (mirrors PathStep in @mmr/merkle).
+struct PathStep { sibling: Bytes<32>, weAreRight: Boolean }
+
+// C1 — Hashable leaf core (all SlotLeaf fields except the circuit-only `present` flag).
+// persistentHash<SlotLeafCore>(core) matches CompactHasher.hashLeaf(encodeLeaf(tsLeaf))
+// once DD-8 is resolved (Poseidon replaces SHA-256 on the TS side).
+// Serialisation: big-endian tight-packed, no domain tag — 297 bytes exactly.
+struct SlotLeafCore {
+  addr: Uint<160>, next_addr: Uint<160>, is_protocol: Boolean,
+  base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
+  lp_base: Uint<128>, lp_quote: Uint<128>,
+  xfer_in: Uint<128>, xfer_out: Uint<128>, from_treasury: Uint<128>,
+  swap_base_in: Uint<128>, swap_base_out: Uint<128>,
+  swap_quote_in: Uint<128>, swap_quote_out: Uint<128>,
+  depth_root: Bytes<32>, flow_root: Bytes<32>
+}
+
+// C1 — Pool entry for the pool-inclusion leaf: addr(20) || poolRoot(32) = 52 bytes,
+// matching encodePoolLeaf in @mmr/merkle/src/root-of-roots.ts.
+struct PoolEntry { poolAddr: Uint<160>, poolRoot: Bytes<32> }
+
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
@@ -55,6 +76,14 @@ witness terms(): Terms;
 // Per-slot contracted-band minimum depths per bucket (opened from depth_root).
 witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
 witness askMin(): Vector<16, Vector<48, Uint<128>>>;
+
+// C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
+// slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
+witness slotPaths(): Vector<16, Vector<16, PathStep>>;
+// poolEntry: the pool's (addr, treeRoot) pair; poolRoot is the indexed-tree root.
+witness poolEntry(): PoolEntry;
+// poolPath: depth-10 path from hashPoolEntry to rootOfRoots (POOL_TREE_DEPTH=10 in @mmr/merkle).
+witness poolPath(): Vector<10, PathStep>;
 
 // --- Helper: accumulate a single Uint<128> field across 16 present-only slots ---
 // Returns the sum for a vector of 16 (present, value) pairs.
@@ -262,6 +291,68 @@ circuit uptimeCount(bid: Vector<16, Vector<48, Uint<128>>>,
   return (((row0 + row1) as Uint<6>) + (row2 as Uint<6>)) as Uint<8>;
 }
 
+// C1: extract the hashable core of a slot leaf, dropping the circuit-only `present` flag.
+circuit slotLeafCore(L: SlotLeaf): SlotLeafCore {
+  return SlotLeafCore {
+    addr: L.addr, next_addr: L.next_addr, is_protocol: L.is_protocol,
+    base_start: L.base_start, base_end: L.base_end, quote_end: L.quote_end,
+    lp_base: L.lp_base, lp_quote: L.lp_quote,
+    xfer_in: L.xfer_in, xfer_out: L.xfer_out, from_treasury: L.from_treasury,
+    swap_base_in: L.swap_base_in, swap_base_out: L.swap_base_out,
+    swap_quote_in: L.swap_quote_in, swap_quote_out: L.swap_quote_out,
+    depth_root: L.depth_root, flow_root: L.flow_root
+  };
+}
+
+// C1: internal Merkle node hash H(left, right) = persistentHash<[left,right]>.
+// Matches CompactHasher.hashNode — no domain tag; Compact's type system separates domains.
+circuit hashNode(left: Bytes<32>, right: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([left, right]);
+}
+
+// C1: apply one Merkle path step.
+circuit stepUp(h: Bytes<32>, step: PathStep): Bytes<32> {
+  return step.weAreRight ? hashNode(step.sibling, h) : hashNode(h, step.sibling);
+}
+
+// C1: verify a depth-16 indexed-Merkle path from leafHash to root.
+// Mirrors IndexedMerkleTree.verifyPath (depth 16) in @mmr/merkle.
+circuit verifyPath16(leafHash: Bytes<32>, path: Vector<16, PathStep>, root: Bytes<32>): [] {
+  const h1  = stepUp(leafHash, path[0]);
+  const h2  = stepUp(h1,  path[1]);
+  const h3  = stepUp(h2,  path[2]);
+  const h4  = stepUp(h3,  path[3]);
+  const h5  = stepUp(h4,  path[4]);
+  const h6  = stepUp(h5,  path[5]);
+  const h7  = stepUp(h6,  path[6]);
+  const h8  = stepUp(h7,  path[7]);
+  const h9  = stepUp(h8,  path[8]);
+  const h10 = stepUp(h9,  path[9]);
+  const h11 = stepUp(h10, path[10]);
+  const h12 = stepUp(h11, path[11]);
+  const h13 = stepUp(h12, path[12]);
+  const h14 = stepUp(h13, path[13]);
+  const h15 = stepUp(h14, path[14]);
+  const h16 = stepUp(h15, path[15]);
+  assert(h16 == root, "slot Merkle path mismatch (C1)");
+}
+
+// C1: verify a depth-10 pool-tree path from poolLeafHash to rootOfRoots.
+// Mirrors RootOfRoots.verifyPoolProof with POOL_TREE_DEPTH=10 in @mmr/merkle.
+circuit verifyPoolPath(leafHash: Bytes<32>, path: Vector<10, PathStep>, root: Bytes<32>): [] {
+  const h1  = stepUp(leafHash, path[0]);
+  const h2  = stepUp(h1,  path[1]);
+  const h3  = stepUp(h2,  path[2]);
+  const h4  = stepUp(h3,  path[3]);
+  const h5  = stepUp(h4,  path[4]);
+  const h6  = stepUp(h5,  path[5]);
+  const h7  = stepUp(h6,  path[6]);
+  const h8  = stepUp(h7,  path[7]);
+  const h9  = stepUp(h8,  path[8]);
+  const h10 = stepUp(h9,  path[9]);
+  assert(h10 == root, "pool inclusion path mismatch (C1)");
+}
+
 // I1: committed wallets sorted ascending, no duplicates.
 circuit assertSortedUnique(w: Vector<16, Uint<160>>): [] {
   for (const i of 0..15) {
@@ -287,6 +378,21 @@ export circuit proveEpoch(
   const leaves = slotLeaves();
   const t = terms();
   const pf = presentFlags(leaves);
+
+  // C1: bind every witness to rootOfRoots via Merkle inclusion proofs.
+  const pe = poolEntry();
+  const pp = poolPath();
+  const sp = slotPaths();
+
+  // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
+  verifyPoolPath(persistentHash<PoolEntry>(pe), pp, rootOfRoots);
+
+  // Per-slot: each opened leaf (membership or low-leaf) is in pe.poolRoot.
+  // slotLeafCore strips the circuit-only `present` flag before hashing so the
+  // digest matches the tree leaf built by @mmr/merkle (encodeLeaf, 297 bytes).
+  for (const j of 0..15) {
+    verifyPath16(persistentHash<SlotLeafCore>(slotLeafCore(leaves[j])), sp[j], pe.poolRoot);
+  }
 
   // I2: each slot opens exactly one leaf under rootOfRoots.
   for (const j of 0..15) {

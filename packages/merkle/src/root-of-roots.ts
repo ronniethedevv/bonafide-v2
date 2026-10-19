@@ -43,6 +43,15 @@ function encodePoolLeaf(entry: PoolEntry): Uint8Array {
   return out;
 }
 
+/**
+ * Fixed pool-tree depth for circuit compatibility (DD-8 / C1).
+ *
+ * The epoch circuit's `poolPath` witness is `Vector<POOL_TREE_DEPTH, PathStep>`,
+ * so this tree must always produce paths of exactly this length.  Supports up to
+ * 2^POOL_TREE_DEPTH = 1024 pools.
+ */
+export const POOL_TREE_DEPTH = 10;
+
 export class RootOfRoots {
   private readonly layers: Digest[][];
   private readonly indexByPool: Map<bigint, number>;
@@ -77,9 +86,13 @@ export class RootOfRoots {
       }
     }
 
-    const n = Math.max(1, sorted.length);
-    const depth = Math.ceil(Math.log2(n)) || 0;
-    const width = 1 << depth;
+    if (sorted.length > 1 << POOL_TREE_DEPTH) {
+      throw new Error(
+        `too many pools: ${sorted.length} > capacity ${1 << POOL_TREE_DEPTH}`,
+      );
+    }
+    const depth = POOL_TREE_DEPTH;
+    const width = 1 << depth; // always 1024
 
     const zeroLeaf = hasher.hashLeaf(new Uint8Array(BITS.ADDR / 8 + 32));
     const leaves: Digest[] = new Array(width);

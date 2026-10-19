@@ -52,6 +52,33 @@ export class Sha256Hasher implements Hasher {
   }
 }
 
+/**
+ * Compact-compatible hasher (DD-8 / L3 placeholder).
+ *
+ * When Compact evaluates `persistentHash<T>(v)` it serialises `v` field-by-field
+ * (big-endian, tightly packed, no domain tag — the type system provides implicit
+ * domain separation) and applies its native Poseidon-family hash.  This class
+ * mirrors that contract structurally: no domain tags, raw preimage concatenation.
+ * The body of every method must be replaced with the corresponding
+ * `@midnight-ntwrk/compact-runtime` Poseidon call before any live deployment.
+ *
+ * Serialisation invariants (must match the Compact struct layout):
+ *   hashLeaf  — hash(preimage)         [same bytes the circuit sees]
+ *   hashNode  — hash(left || right)    [64-byte input, no tag]
+ */
+export class CompactHasher implements Hasher {
+  readonly id = "compact-poseidon-placeholder-v1";
+  hashLeaf(preimage: Uint8Array): Digest {
+    return sha256(preimage); // TODO: replace with Poseidon(preimage)
+  }
+  hashNode(left: Digest, right: Digest): Digest {
+    if (left.length !== DIGEST_BYTES || right.length !== DIGEST_BYTES) {
+      throw new RangeError("hashNode expects two 32-byte digests");
+    }
+    return sha256(left, right); // TODO: replace with Poseidon(left || right)
+  }
+}
+
 export const ZERO_DIGEST: Digest = new Uint8Array(DIGEST_BYTES);
 
 export function digestToHex(d: Digest): string {
