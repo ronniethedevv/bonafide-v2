@@ -27,8 +27,23 @@ leaf schema, root-of-roots).
 | 2026-10-19 | `packages/contracts` — all four `.compact` circuits compile under `compact compile --skip-zk` (0.31.1) | **done** |
 | 2026-10-19 | `packages/contracts` — `epoch_proof.compact`: added `epochUptime` ledger + `insert` call; `compact compile --skip-zk` now emits `"proof": true`, ledger `[epochUptime]` | **done** |
 
-Total: 88 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
-incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
+| 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
+| 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
+| 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
+| 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
+
+Total: 101 tests passing across 7 projects; `pnpm -r typecheck` clean; `next build`
+passes; API + web verified end-to-end. Pushed incrementally to
+`origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
+
+### Backend/data tier now exists
+The architecture's backend tier is real: a Fastify API serves the public read
+model from a `ProfileRepository` (fixture-backed; a PostgreSQL/Prisma repo slots
+in behind the same interface), and the web app consumes it with a fixtures
+fallback. Still cloud-buildable next: the DB-backed repository (Prisma schema +
+migrations), the prover CLI witness emitter, and deploy config. Coupled to
+Midnight/chain specifics (do with the toolchain/keys): real Jubjub attester
+signing, the live Base `ChainProvider` event decoding, and the IPFS publisher.
 
 ## Build-order progress (from product spec)
 
