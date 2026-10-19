@@ -1,0 +1,89 @@
+/* Design tokens — dark-first, per specs/ui_context.md. */
+:root {
+  --bg: #0b0d12;
+  --surface: #12151c;
+  --surface-2: #171b24;
+  --border: #242a36;
+  --text: #e6e9ef;
+  --text-muted: #9aa3b2;
+  --accent: #5b8cff;
+  --pos: #3ecf8e;
+  --neg: #ff6b6b;
+  --warn: #f5a623;
+  --radius: 10px;
+  --gap: 16px;
+  --tier-a: #5b8cff;
+  --tier-b: #8a7dff;
+  --tier-c: #9aa3b2;
+}
+
+/* Light theme only when the viewer explicitly asks for it. */
+:root[data-theme="light"] {
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --surface-2: #f0f2f7;
+  --border: #d9dee8;
+  --text: #121520;
+  --text-muted: #5b6474;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.row {
+  display: flex;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  gap: var(--gap);
+}
