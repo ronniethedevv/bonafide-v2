@@ -12,9 +12,19 @@
 
 - **Compact 0.31.x on ledger 8** (ledger 9's `secp256k1` + in-circuit wallet
   ownership is deferred — see the product spec "Later" column).
-- Jubjub Schnorr for attester signatures; Poseidon-family hashing for trees
-  (the TS `@mmr/merkle` placeholder uses SHA-256 and MUST be swapped for the
-  circuit hash before any root is proven — see `specs/progress_tracker.md` DD-8).
+- Jubjub Schnorr for attester signatures. Trees hash with Compact's
+  `persistentHash` (SHA-256 over Compact's byte serialization); `@mmr/merkle`'s
+  `CompactHasher` reproduces it byte-for-byte (see `specs/progress_tracker.md` DD-8).
+
+## Known-answer test
+
+`test/epoch_proof.kat.test.ts` builds a pool tree + root-of-roots with
+`@mmr/merkle`, feeds the openings to the compiled `proveEpoch`, and executes it
+via `@midnight-ntwrk/compact-runtime` (all in-circuit hashes and asserts run).
+It passes only if the TS and circuit roots agree, and every tamper case must
+revert. Run `pnpm kat:build && pnpm test` (needs the `compact` toolchain; the
+suite skips when `build/` is absent). It executes the circuit logic; it does
+not generate a ZK proof (that needs a proof server).
 
 ## Files
 

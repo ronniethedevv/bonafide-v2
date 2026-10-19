@@ -27,7 +27,8 @@ leaf schema, root-of-roots).
 | 2026-10-19 | `packages/contracts` — all four `.compact` circuits compile under `compact compile --skip-zk` (0.31.1) | **done** |
 | 2026-10-19 | `packages/contracts` — `epoch_proof.compact`: added `epochUptime` ledger + `insert` call; `compact compile --skip-zk` now emits `"proof": true`, ledger `[epochUptime]` | **done** |
 | 2026-10-19 | **C1** — `epoch_proof.compact`: pool-inclusion + depth-16 slot Merkle paths bind all witnesses to `rootOfRoots`; `@mmr/merkle`: `CompactHasher` placeholder (DD-8), `POOL_TREE_DEPTH=10` fixed depth; all 88 tests green | **done** |
-
+| 2026-10-19 | **C1 follow-up** — corrected field-element layout for `persistentHash` / `CompactHasher`: `Bytes<32>` → 2 FEs (high-8 / low-248); `hashNode` restructured to 4-FE layout; misleading "297 flat bytes" comments replaced with accurate FE counts in circuit and hash module | **done** |
+| 2026-10-19 | **KAT (C1 verified)** — `packages/contracts/test/epoch_proof.kat.test.ts` executes the compiled `proveEpoch` (compact-runtime 0.16.0) over a pool tree + root-of-roots built with `@mmr/merkle`. Found + fixed: (a) `persistentHash` is SHA-256 over Compact's byte serialization with **little-endian** Uints, not field elements, so the FE-split row above was wrong and `encodeLeaf`/`encodePoolLeaf` (big-endian) **diverged** from the circuit; both now LE, `CompactHasher` is exact; (b) Compact ranges are half-open, so `for j of 0..15` never verified **slot 15** (forged leaf accepted); loops now `0..16`. Tamper cases (metric, next_addr, depth_root, path dir, pool root/addr, rootOfRoots, slot 15, Sha256Hasher-built witness) all revert | **done (13 KAT tests)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -80,9 +81,13 @@ that already exist and are tested against in-memory fakes.
   in-circuit check deferred).
 - **DD-7** Bonds are **mandatory shielded USDM on Midnight** (v1); cross-chain
   slashing deferred.
-- **DD-8** Hash/commitment primitive injected behind an interface; swap for the
-  Midnight-native primitive before mainnet (current TS default documented as
-  placeholder, NOT the production circuit hash).
+- **DD-8** Hash/commitment primitive injected behind an interface. Circuit trees
+  use Compact `persistentHash` = SHA-256 over Compact's byte serialization
+  (Uint LE, Bool 1 byte, Bytes raw; verified against compact-runtime 0.16.0).
+  `CompactHasher` + LE `encodeLeaf`/`encodePoolLeaf` reproduce it byte-for-byte
+  (KAT). `Sha256Hasher` (tagged) is off-circuit only. Open: moving trees to the
+  cheaper Poseidon `transientHash` is a circuit + TS change made together, gated
+  on the proving benchmark.
 
 ## Open decisions (carry from spec)
 

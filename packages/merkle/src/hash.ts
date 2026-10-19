@@ -4,10 +4,10 @@
 // production build can swap in Midnight's native circuit-friendly primitive
 // (Poseidon-family over the Jubjub scalar field) without touching any call site.
 //
-// IMPORTANT: `Sha256Hasher` below is a PLACEHOLDER for off-circuit development
-// and tests only. It is NOT the production hash and MUST NOT be used to produce
-// roots that any Compact circuit verifies — a SHA-256 Merkle path is enormous
-// inside a ZK circuit. See specs/progress_tracker.md DD-8.
+// IMPORTANT: `Sha256Hasher` below is for off-circuit development and tests only.
+// Its domain tags make its roots differ from the circuit's, so it MUST NOT be
+// used to produce roots that any Compact circuit verifies; use `CompactHasher`.
+// See specs/progress_tracker.md DD-8.
 
 import { createHash } from "node:crypto";
 
@@ -53,42 +53,36 @@ export class Sha256Hasher implements Hasher {
 }
 
 /**
- * Compact-compatible hasher (DD-8 / L3 placeholder).
+ * Compact-compatible hasher: byte-exact with the epoch circuit's hashing.
  *
- * Compact's `persistentHash<T>` hashes FIELD ELEMENTS, not a flat byte buffer.
- * Each struct field maps to one or two field elements (the BLS12-381/Jubjub scalar
- * field holds ~248 bits, so a Bytes<32> value splits into two FEs):
+ * Compact's `persistentHash<T>(v)` (compact-runtime 0.16.0, compiler 0.31.1) is
+ * SHA-256 over the byte serialization of `v`, with no domain tag:
  *
- *   Uint<N≤248>  →  1 FE  (the integer value)
- *   Boolean      →  1 FE  (0 or 1)
- *   Bytes<32>    →  2 FEs: high = bytes[0] (8 bits), low = bytes[1..31] (248 bits)
+ *   Uint<N>    →  ceil(N/8) bytes, LITTLE-endian
+ *   Boolean    →  1 byte (0 or 1)
+ *   Bytes<K>   →  K raw bytes
+ *   struct / Vector  →  fields / elements concatenated in declaration order
  *
- * Consequently:
- *   persistentHash<SlotLeafCore>  →  19 FEs  (1+1+1+12+2+2; atom bytes [20,20,1,16×12,32,32] = 297)
- *   persistentHash<PoolEntry>     →   3 FEs  (1+2;           atom bytes [20,32] = 52)
- *   persistentHash<[left,right]>  →   4 FEs  (2+2;           atom bytes [32,32] = 64)
+ * (Verified empirically against `@midnight-ntwrk/compact-runtime`; the KAT in
+ * packages/contracts/test runs the compiled proveEpoch over roots built here.)
  *
- * hashNode and hashLeaf below use the CORRECT INPUT STRUCTURE (splitting Bytes<32> the
- * same way the circuit does), but still apply SHA-256 as a placeholder.  When
- * `@midnight-ntwrk/compact-runtime` exposes its Poseidon primitive (DD-8), each
- * `sha256(...)` call below becomes `poseidon(fieldElements)` with the same arguments.
+ * So, with the little-endian images from `encodeLeaf` / `encodePoolLeaf`:
+ *   persistentHash<SlotLeafCore>(L)          = sha256(encodeLeaf(L))      (297 bytes)
+ *   persistentHash<PoolEntry>(e)             = sha256(encodePoolLeaf(e))  (52 bytes)
+ *   persistentHash<Vector<2,Bytes<32>>>(l,r) = sha256(l || r)             (64 bytes)
  *
- * NOTE: the generic `hashLeaf(preimage: Uint8Array)` overload works for preimages whose
- * entire content is Uint fields (no Bytes<32>).  For preimages that contain Bytes<32>
- * fields (e.g. encodeLeaf for SlotLeafCore, encodePoolLeaf for PoolEntry) the caller
- * must ensure the preimage bytes are laid out in field order so the split below is
- * applied to the correct byte ranges; the byte order produced by encodeLeaf/encodePoolLeaf
- * already satisfies this invariant (atom sizes match the circuit alignment exactly).
+ * DD-8 note: persistentHash is SHA-256 by definition, so this class is not a
+ * placeholder for it. Moving the circuit to the cheaper Poseidon-based
+ * `transientHash` (returns a Field, not Bytes<32>) would be a circuit change,
+ * and this class would change with it.
  *
- * No domain tags — Compact's type system provides implicit domain separation.
+ * Domain separation: leaf and node preimages differ in length (297 / 52 vs 64
+ * bytes), so a leaf digest cannot be confused with an internal node digest.
  */
 export class CompactHasher implements Hasher {
-  readonly id = "compact-poseidon-placeholder-v1";
+  readonly id = "compact-persistent-hash-v1";
 
   hashLeaf(preimage: Uint8Array): Digest {
-    // Production: extract each field as a bigint FE and call Poseidon([fe0, fe1, ...]).
-    // Placeholder: SHA-256 of the raw preimage bytes (same field order, wrong hash fn).
-    // Replace with Poseidon once @midnight-ntwrk/compact-runtime exposes it (DD-8).
     return sha256(preimage);
   }
 
@@ -96,17 +90,7 @@ export class CompactHasher implements Hasher {
     if (left.length !== DIGEST_BYTES || right.length !== DIGEST_BYTES) {
       throw new RangeError("hashNode expects two 32-byte digests");
     }
-    // Circuit: persistentHash<Vector<2, Bytes<32>>>([left, right])
-    //   = Poseidon(highL, lowL, highR, lowR)  — 4 field elements
-    // where highX = bytes[0] (8 bits), lowX = bytes[1..31] (248 bits, big-endian).
-    //
-    // Placeholder uses the same 4-part split so the structure matches the circuit
-    // even though SHA-256 ≠ Poseidon. Replace sha256 with Poseidon(4 bigints) for DD-8.
-    const highL = left.slice(0, 1);   // 1 byte  → high FE
-    const lowL  = left.slice(1);      // 31 bytes → low FE
-    const highR = right.slice(0, 1);
-    const lowR  = right.slice(1);
-    return sha256(highL, lowL, highR, lowR);
+    return sha256(left, right);
   }
 }
 

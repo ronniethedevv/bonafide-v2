@@ -14,7 +14,7 @@ import {
   digestToHex,
   digestsEqual,
 } from "./hash.js";
-import { assertUint, BITS, encodeUint, formatAddr } from "./uint.js";
+import { assertUint, BITS, encodeUintLE, formatAddr } from "./uint.js";
 import type { PathStep } from "./indexed-merkle-tree.js";
 
 export interface PoolEntry {
@@ -31,12 +31,17 @@ export interface PoolInclusionProof {
   path: PathStep[];
 }
 
-function encodePoolLeaf(entry: PoolEntry): Uint8Array {
+/**
+ * Byte image of a pool leaf: poolAddr(20, little-endian) | poolRoot(32).
+ * Exactly Compact's serialization of `PoolEntry`, so `persistentHash<PoolEntry>`
+ * in epoch_proof.compact recomputes the same digest.
+ */
+export function encodePoolLeaf(entry: PoolEntry): Uint8Array {
   assertUint(entry.poolAddr, BITS.ADDR);
   if (entry.poolRoot.length !== 32) {
     throw new RangeError("poolRoot must be 32 bytes");
   }
-  const addr = encodeUint(entry.poolAddr, BITS.ADDR);
+  const addr = encodeUintLE(entry.poolAddr, BITS.ADDR);
   const out = new Uint8Array(addr.length + 32);
   out.set(addr, 0);
   out.set(entry.poolRoot, addr.length);

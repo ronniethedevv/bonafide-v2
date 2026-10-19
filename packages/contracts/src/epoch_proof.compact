@@ -6,8 +6,10 @@
 // Which pool and which wallets belong to the engagement are never disclosed.
 //
 // The leaf schema, indexed-tree opening, pool inclusion proof, and band opening
-// mirror @mmr/merkle / @mmr/indexer. The production hash MUST be the circuit's
-// Poseidon-family primitive, not the TS SHA-256 placeholder (DD-8).
+// mirror @mmr/merkle / @mmr/indexer. All hashing is persistentHash (SHA-256 over
+// Compact's byte serialization: Uints little-endian, Bytes raw); @mmr/merkle's
+// CompactHasher + encodeLeaf/encodePoolLeaf reproduce it byte-for-byte, checked
+// by the KAT in packages/contracts/test (DD-8).
 //
 // Compact 0.31.x constraints applied in this file:
 //   - No top-level const (SLOTS=16, BUCKETS=48 are inlined as literals).
@@ -51,13 +53,9 @@ struct PathStep { sibling: Bytes<32>, weAreRight: Boolean }
 
 // C1 — Hashable leaf core (all SlotLeaf fields except the circuit-only `present` flag).
 //
-// persistentHash<SlotLeafCore>(core) hashes 19 field elements, NOT a flat byte array:
-//   addr(1 FE), next_addr(1 FE), is_protocol(1 FE), 12×metric(1 FE each),
-//   depth_root(2 FEs: high-8 bits || low-248 bits), flow_root(2 FEs: same split).
-// The atom byte sizes do match encodeLeaf — [20,20,1,16×12,32,32] = 297 bytes total —
-// but Bytes<32> is split across two field elements because 256 > 248-bit field capacity.
-// DD-8: the TS CompactHasher must feed these field elements to Poseidon, not hash the
-// raw 297-byte buffer. See specs/progress_tracker.md §DD-8.
+// persistentHash<SlotLeafCore>(core) = SHA-256 of the 297-byte serialization
+//   addr(20 LE) | next_addr(20 LE) | is_protocol(1) | 12×metric(16 LE) | depth_root(32) | flow_root(32)
+// which is exactly @mmr/merkle encodeLeaf. Field order is protocol.
 struct SlotLeafCore {
   addr: Uint<160>, next_addr: Uint<160>, is_protocol: Boolean,
   base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
@@ -68,10 +66,8 @@ struct SlotLeafCore {
   depth_root: Bytes<32>, flow_root: Bytes<32>
 }
 
-// C1 — Pool-inclusion leaf. persistentHash<PoolEntry>(pe) hashes 3 field elements:
-//   poolAddr(1 FE: 20 bytes), poolRoot(2 FEs: high-8 bits || low-248 bits).
-// Atom bytes [20,32] = 52 bytes; the TS encodePoolLeaf byte order matches, but the
-// hash input is 3 FEs, not the flat 52-byte buffer. See DD-8.
+// C1 — Pool-inclusion leaf. persistentHash<PoolEntry>(pe) = SHA-256 of
+//   poolAddr(20 LE) | poolRoot(32)  — exactly @mmr/merkle encodePoolLeaf.
 struct PoolEntry { poolAddr: Uint<160>, poolRoot: Bytes<32> }
 
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
@@ -311,10 +307,9 @@ circuit slotLeafCore(L: SlotLeaf): SlotLeafCore {
   };
 }
 
-// C1: internal Merkle node hash H(left, right) = persistentHash<Vector<2, Bytes<32>>>.
-// Hashes 4 field elements: [high-8(left), low-248(left), high-8(right), low-248(right)].
-// No domain tag — Compact's type system provides implicit domain separation.
-// DD-8: CompactHasher.hashNode must use this 4-FE layout, not sha256(left || right).
+// C1: internal Merkle node hash H(left, right) = persistentHash<Vector<2, Bytes<32>>>
+// = SHA-256(left || right), matching CompactHasher.hashNode. No domain tag: node
+// preimages (64 bytes) and leaf preimages (297 / 52 bytes) differ in length.
 circuit hashNode(left: Bytes<32>, right: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([left, right]);
 }
@@ -397,13 +392,14 @@ export circuit proveEpoch(
   verifyPoolPath(persistentHash<PoolEntry>(pe), pp, rootOfRoots);
 
   // Per-slot: each opened leaf (membership or low-leaf) is in pe.poolRoot.
-  // slotLeafCore strips `present` before hashing (19 FEs; atom bytes match encodeLeaf).
-  for (const j of 0..15) {
+  // Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
+  // slotLeafCore strips `present` before hashing (297-byte image == encodeLeaf).
+  for (const j of 0..16) {
     verifyPath16(persistentHash<SlotLeafCore>(slotLeafCore(leaves[j])), sp[j], pe.poolRoot);
   }
 
   // I2: each slot opens exactly one leaf under rootOfRoots.
-  for (const j of 0..15) {
+  for (const j of 0..16) {
     const L = leaves[j];
     if (L.present) {
       assert(L.addr == w[j], "membership slot mismatch (I2)");

@@ -4,7 +4,7 @@
 // address in a pool. Signed quantities are split into in/out pairs because the
 // circuit (Compact) has only unsigned integers — never pre-subtract.
 
-import { assertUint, BITS, encodeUint, formatAddr } from "./uint.js";
+import { assertUint, BITS, encodeUintLE, formatAddr } from "./uint.js";
 import { type Digest, type Hasher, DIGEST_BYTES } from "./hash.js";
 
 /** Unsigned per-address economic metrics for one epoch. All Uint<128>. */
@@ -80,19 +80,25 @@ export function assertLeaf(leaf: Leaf): void {
 }
 
 /**
- * Canonical big-endian byte image of a leaf. Field order is fixed and part of
- * the protocol: changing it changes every root.
+ * Canonical byte image of a leaf. Field order is fixed and part of the
+ * protocol: changing it changes every root.
  *
  *   addr(20) | nextAddr(20) | isProtocol(1) | 12 x metric(16) | depthRoot(32) | flowRoot(32)
+ *
+ * This is exactly Compact's serialization of `SlotLeafCore` in
+ * epoch_proof.compact: Uints little-endian at their byte width, Boolean one
+ * byte, Bytes<32> raw. `persistentHash<SlotLeafCore>` is SHA-256 of this image,
+ * so the epoch circuit recomputes the same leaf digest (checked by the KAT in
+ * packages/contracts/test).
  */
 export function encodeLeaf(leaf: Leaf): Uint8Array {
   assertLeaf(leaf);
   const parts: Uint8Array[] = [
-    encodeUint(leaf.addr, BITS.ADDR),
-    encodeUint(leaf.nextAddr, BITS.ADDR),
+    encodeUintLE(leaf.addr, BITS.ADDR),
+    encodeUintLE(leaf.nextAddr, BITS.ADDR),
     new Uint8Array([leaf.isProtocol ? 1 : 0]),
   ];
-  for (const f of METRIC_FIELDS) parts.push(encodeUint(leaf.metrics[f], BITS.U128));
+  for (const f of METRIC_FIELDS) parts.push(encodeUintLE(leaf.metrics[f], BITS.U128));
   parts.push(leaf.depthRoot, leaf.flowRoot);
 
   const total = parts.reduce((n, p) => n + p.length, 0);

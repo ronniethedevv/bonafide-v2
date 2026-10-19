@@ -1,9 +1,11 @@
 // Unsigned fixed-width integer discipline.
 //
 // Every amount mirrored from chain is an unsigned `bigint`. We never use
-// `number` for values, never wrap on overflow, and always encode big-endian to
-// a fixed width so the byte image that feeds a hash is canonical and
-// recomputable by anyone (determinism is a hard invariant).
+// `number` for values, never wrap on overflow, and always encode to a fixed
+// width so the byte image that feeds a hash is canonical and recomputable by
+// anyone (determinism is a hard invariant). Hash preimages that a Compact
+// circuit recomputes (leaf / pool-leaf images) use `encodeUintLE`, because
+// Compact serializes `Uint<N>` little-endian; see hash.ts CompactHasher.
 
 export type Uint = bigint;
 
@@ -44,6 +46,15 @@ export function encodeUint(value: bigint, bits: number): Uint8Array {
     v >>= 8n;
   }
   return out;
+}
+
+/**
+ * Encode an unsigned bigint as a little-endian byte buffer of exactly
+ * `bits / 8` bytes — Compact's serialization of `Uint<bits>` (the byte image
+ * `persistentHash` / `persistentCommit` hash). Throws like `encodeUint`.
+ */
+export function encodeUintLE(value: bigint, bits: number): Uint8Array {
+  return encodeUint(value, bits).reverse();
 }
 
 /** Parse a big-endian byte buffer back to an unsigned bigint. */

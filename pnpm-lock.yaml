@@ -68,7 +68,21 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      '@mmr/merkle':
+        specifier: workspace:*
+        version: link:../merkle
+    devDependencies:
+      '@midnight-ntwrk/compact-runtime':
+        specifier: 0.16.0
+        version: 0.16.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.5)
 
   packages/indexer:
     dependencies:
@@ -583,6 +597,12 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
+  '@midnight-ntwrk/compact-runtime@0.16.0':
+    resolution: {integrity: sha512-UR8+MI5zol+gkne17ZZru8xmZNf11xMgQJkiLT9KWsF+QD8Wuz1WONaqQLL0RAZ2aN2XlRsBFd0ViKDVh8prFw==}
+
+  '@midnight-ntwrk/onchain-runtime-v3@3.1.2':
+    resolution: {integrity: sha512-BQjmK6yVbHnRt9/l013ek3doLbmjaP08fbwSsphhIbEKIhaUZ5eW7oj8mc7DFDU7qtK35oLNr9GaiujHMXKZvQ==}
+
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
     engines: {node: ^22.20 || ^24.12 || >=25}
@@ -779,6 +799,9 @@ packages:
 
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
+
+  '@types/object-inspect@1.13.0':
+    resolution: {integrity: sha512-lwGTVESDDV+XsQ1pH4UifpJ1f7OtXzQ6QBOX2Afq2bM/T3oOt8hF6exJMjjIjtEWeAN2YAo25J7HxWh97CCz9w==}
 
   '@types/react-dom@19.0.3':
     resolution: {integrity: sha512-0Knk+HJiMP/qOZgMyNFamlIjw9OFCsyC2ZbigmEEyXXixgre6IQpm/4V+r3qH4GC1JPvRJKInw+on2rV6YZLeA==}
@@ -1024,6 +1047,10 @@ packages:
         optional: true
       sass:
         optional: true
+
+  object-inspect@1.13.4:
+    resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
+    engines: {node: '>= 0.4'}
 
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
@@ -1525,6 +1552,14 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
+  '@midnight-ntwrk/compact-runtime@0.16.0':
+    dependencies:
+      '@midnight-ntwrk/onchain-runtime-v3': 3.1.2
+      '@types/object-inspect': 1.13.0
+      object-inspect: 1.13.4
+
+  '@midnight-ntwrk/onchain-runtime-v3@3.1.2': {}
+
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
@@ -1642,6 +1677,8 @@ snapshots:
   '@types/node@22.20.5':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/object-inspect@1.13.0': {}
 
   '@types/react-dom@19.0.3(@types/react@19.0.7)':
     dependencies:
@@ -1952,6 +1989,8 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - babel-plugin-macros
+
+  object-inspect@1.13.4: {}
 
   on-exit-leak-free@2.1.2: {}
 
