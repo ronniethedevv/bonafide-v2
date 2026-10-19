@@ -7,7 +7,7 @@ export default async function HomePage() {
     <main className="container">
       <h1 style={{ marginBottom: 4 }}>MM Reputation Record</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        Verified market-maker performance, proven with zero-knowledge — no account
+        Verified market-maker performance, proven with zero-knowledge. No account
         access, no books handed over.
       </p>
 

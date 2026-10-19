@@ -86,7 +86,7 @@ const vega: MmProfile = {
       epochsPassed: 12,
       epochsTotal: 14,
       kpis: { depth: 88, uptime: 85, utilization: 59, custody: 100, noRoundTrips: 96 },
-      bond: { posted: "—", status: "intact" },
+      bond: { posted: "n/a", status: "intact" },
       completedAt: "2026-06-10",
     }),
   ],

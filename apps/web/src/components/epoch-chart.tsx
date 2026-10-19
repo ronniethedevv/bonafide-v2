@@ -102,7 +102,7 @@ export function EpochChart({ series }: { series: EpochPoint[] }) {
               {series.map((p, i) => {
                 const cx = xAt(i, n);
                 const cy = yAt(p[s.key]);
-                const title = `Epoch ${p.epoch} — ${s.label} ${p[s.key]}%`;
+                const title = `Epoch ${p.epoch} · ${s.label} ${p[s.key]}%`;
                 return s.shape === "circle" ? (
                   <circle key={p.epoch} cx={cx} cy={cy} r={4} fill={s.color} stroke="var(--surface)" strokeWidth={2}>
                     <title>{title}</title>
