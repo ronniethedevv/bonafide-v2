@@ -1,0 +1,22 @@
+{
+  "name": "@mmr/protocol",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Engagement/epoch settlement state machine: attestation threshold, challenge window, void/default/grace timing, and a mock attester committee.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/indexer": "workspace:*",
+    "@mmr/merkle": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
