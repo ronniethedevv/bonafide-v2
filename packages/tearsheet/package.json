@@ -1,0 +1,19 @@
+{
+  "name": "@mmr/tearsheet",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Render a market maker's tear sheet to a real PDF/PNG via headless Chromium, and store it (filesystem now; Blob/IPFS behind the same interface).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
