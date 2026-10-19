@@ -17,11 +17,27 @@ function engagement(over: Partial<EngagementRecord> & Pick<EngagementRecord, "id
   };
 }
 
+const vegaEpochSeries = [
+  { epoch: 1, uptime: 88, depth: 90 },
+  { epoch: 2, uptime: 91, depth: 92 },
+  { epoch: 3, uptime: 90, depth: 93 },
+  { epoch: 4, uptime: 94, depth: 95 },
+  { epoch: 5, uptime: 93, depth: 94 },
+  { epoch: 6, uptime: 96, depth: 97 },
+  { epoch: 7, uptime: 95, depth: 96 },
+  { epoch: 8, uptime: 97, depth: 98 },
+  { epoch: 9, uptime: 96, depth: 97 },
+  { epoch: 10, uptime: 98, depth: 99 },
+  { epoch: 11, uptime: 97, depth: 98 },
+  { epoch: 12, uptime: 99, depth: 99 },
+];
+
 const vega: MmProfile = {
   handle: "vega-mm",
   displayName: "Vega Market Making",
   headlineUptime: 96,
   tierCounts: { A: 2, B: 3, C: 1 },
+  epochSeries: vegaEpochSeries,
   engagements: [
     engagement({
       id: "rec_01",

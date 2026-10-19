@@ -37,12 +37,23 @@ export interface EngagementRecord {
   completedAt: string;
 }
 
+/** One epoch's headline metrics, for the change-over-time chart. */
+export interface EpochPoint {
+  epoch: number;
+  /** Uptime hit-rate for the epoch, 0-100. */
+  uptime: number;
+  /** Depth hit-rate for the epoch, 0-100. */
+  depth: number;
+}
+
 export interface MmProfile {
   handle: string;
   displayName: string;
   /** Headline uptime across completed, non-sandbox engagements, 0-100. */
   headlineUptime: number;
   tierCounts: Record<Tier, number>;
+  /** Recent per-epoch uptime/depth, oldest→newest, for the hero chart. */
+  epochSeries: EpochPoint[];
   /** Completed, headline (non-sandbox) engagements. */
   engagements: EngagementRecord[];
   /** Sandbox (tier C) engagements, shown separately. */

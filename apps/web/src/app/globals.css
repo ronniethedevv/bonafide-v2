@@ -15,6 +15,10 @@
   --tier-a: #5b8cff;
   --tier-b: #8a7dff;
   --tier-c: #9aa3b2;
+  /* Chart series (validated categorical pair, light+dark). Identity also carried
+     by marker shape + legend, never colour alone. */
+  --series-uptime: #5b8cff;
+  --series-depth: #d4772b;
 }
 
 /* Light theme only when the viewer explicitly asks for it. */

@@ -4,6 +4,7 @@ import { getProfile } from "@/lib/fixtures";
 import { totalCompleted } from "@/lib/read-model";
 import { TierBadge } from "@/components/tier-badge";
 import { EngagementCard } from "@/components/engagement-card";
+import { EpochChart } from "@/components/epoch-chart";
 import { PrivacyNote } from "@/components/privacy-note";
 
 export default async function ProfilePage({
@@ -50,6 +51,12 @@ export default async function ProfilePage({
         design. This record shows only completed engagements and their verified
         hit-rates.
       </PrivacyNote>
+
+      {profile.epochSeries.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <EpochChart series={profile.epochSeries} />
+        </div>
+      )}
 
       <h2 style={{ marginTop: 28 }}>Completed engagements</h2>
       <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
