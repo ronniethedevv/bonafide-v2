@@ -1,7 +1,7 @@
 // Fixture profiles for the scaffold (no live backend yet). Shapes match the
 // read model exactly, so swapping in a real data source later is a drop-in.
 
-import type { EngagementRecord, MmProfile } from "./read-model.js";
+import type { EngagementRecord, MmProfile } from "./read-model";
 
 function engagement(over: Partial<EngagementRecord> & Pick<EngagementRecord, "id">): EngagementRecord {
   return {

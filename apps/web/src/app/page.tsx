@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { listProfiles } from "@/lib/fixtures.js";
-import { totalCompleted } from "@/lib/read-model.js";
+import { listProfiles } from "@/lib/fixtures";
+import { totalCompleted } from "@/lib/read-model";
 
 export default function HomePage() {
   const profiles = listProfiles();
