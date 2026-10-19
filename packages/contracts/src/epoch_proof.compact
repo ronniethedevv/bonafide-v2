@@ -43,6 +43,11 @@ struct Terms {
   roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
 }
 
+// Key for the per-epoch uptime record written to the public ledger.
+struct EpochRef { id: Bytes<32>, epoch: Uint<64> }
+
+export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
+
 witness committedWallets(): Vector<16, Uint<160>>;
 witness walletSalt(): Bytes<32>;
 witness slotLeaves(): Vector<16, SlotLeaf>;
@@ -365,6 +370,9 @@ export circuit proveEpoch(
 
   // I8 is enforced by the caller: proveEpoch is accepted only if >=2/3 attesters
   // signed rootOfRoots for `epoch` and its challenge window passed unchallenged.
+
+  const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
+  epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
 
   return disclose(uptime);   // uptime bucket count; verdict (all-pass) implied by no revert
 }

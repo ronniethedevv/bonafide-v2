@@ -25,6 +25,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | `apps/web` — depth/uptime hero chart (validated palette, SVG) | **done (build passes)** |
 | 2026-10-19 | CI workflow (typecheck + test + web build), specs/RUNNING.md | **done** |
 | 2026-10-19 | `packages/contracts` — all four `.compact` circuits compile under `compact compile --skip-zk` (0.31.1) | **done** |
+| 2026-10-19 | `packages/contracts` — `epoch_proof.compact`: added `epochUptime` ledger + `insert` call; `compact compile --skip-zk` now emits `"proof": true`, ledger `[epochUptime]` | **done** |
 
 Total: 88 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
 incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
