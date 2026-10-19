@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Compact 0.31.x contracts and circuits for Midnight (registration, bond escrow, epoch proof I1-I8, nullifier claim). Not compiled in this repo's CI host.",
   "scripts": {
-    "compact:build": "echo 'Requires the Midnight Compact toolchain (compactc) + a Blockfrost project token. See README.md.' && exit 1"
+    "compact:check": "for f in src/registration.compact src/bond.compact src/epoch_proof.compact src/claim.compact; do compact compile --skip-zk $f dist/$(basename $f .compact); done",
+    "compact:build": "echo 'ZK key generation requires a GPU-capable Midnight node. Use compact:check for type/syntax verification.' && exit 1"
   }
 }

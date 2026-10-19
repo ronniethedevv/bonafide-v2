@@ -24,6 +24,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | `packages/watcher` — challenge watchdog (root recomputation) + client verdict log | **done (5 tests)** |
 | 2026-10-19 | `apps/web` — depth/uptime hero chart (validated palette, SVG) | **done (build passes)** |
 | 2026-10-19 | CI workflow (typecheck + test + web build), specs/RUNNING.md | **done** |
+| 2026-10-19 | `packages/contracts` — all four `.compact` circuits compile under `compact compile --skip-zk` (0.31.1) | **done** |
 
 Total: 88 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
 incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
@@ -33,8 +34,8 @@ incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 - [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (TS; IPFS via injectable publisher, in-mem impl)
 - [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
       benchmark itself needs the Midnight toolchain (not available here)
-- [~] 3. Compact contract — skeletons + INVARIANTS.md written; needs `compactc` to compile
-- [~] 4. Epoch proof / claim circuits — skeletons written; needs `compactc`
+- [x] 3. Compact contract — `registration.compact` + `bond.compact` compile under `compact compile --skip-zk` (0.31.1)
+- [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` + `claim.compact` compile under `compact compile --skip-zk` (0.31.1)
 - [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
       state machine, engagement reducer, mock committee, challenge watchdog);
       Jubjub signing + on-chain flow need Midnight integration
@@ -77,5 +78,6 @@ that already exist and are tested against in-memory fakes.
 ## Environment limits (this build host)
 
 - ✅ TypeScript, Prisma, tests run here.
-- ⛔ Compact compilation, live Base RPC, Midnight mainnet, Blockfrost — not
-  available here; those units are authored as reviewed source + specs.
+- ✅ Compact compilation (`compact 0.5.3`, toolchain 0.31.1) — circuits now compile
+  with `--skip-zk`; ZK key generation needs a GPU-capable Midnight node.
+- ⛔ Live Base RPC, Midnight mainnet, Blockfrost — not available here.

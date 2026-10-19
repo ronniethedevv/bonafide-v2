@@ -42,8 +42,11 @@ witness termsPreimage(): Bytes<32>;
 
 // I9: reject the Jubjub identity point as a key. In 0.31.x the standard
 // signature check does not do this, so we check explicitly.
+// The Jubjub identity (0,1) compresses to LE bytes [0x01, 0x00, ..., 0x00],
+// which as a big-endian Compact Bytes<32> equals 2^248 cast via Field.
 circuit assertNotIdentity(pk: ZswapCoinPublicKey): [] {
-  assert(!isIdentityPoint(pk), "identity-point key rejected");
+  const identityBytes = (452312848583266388373324160190187140051835877600158453279131187530910662656 as Field) as Bytes<32>;
+  assert(pk.bytes != identityBytes, "identity-point key rejected (I9)");
 }
 
 // Derive the public engagement id deterministically from the secret, so the MM

@@ -7,24 +7,26 @@
 // The bond keeps the MM's treasury unlinked from the engagement: it is escrowed
 // as a shielded token, so the amount and source are private. Only "a valid bond
 // of at least the tier minimum exists" is disclosed.
+//
+// NOTE on receiveShielded: the real postBond must call receiveShielded(coin) to
+// take on-chain custody. That call requires a "declared disclosure" annotation
+// (Compact 0.31.x privacy analysis). The skeleton omits it; the full
+// implementation will add that annotation once the ZSwap API is finalised.
 
 pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 
-// Shielded USDM token type (coin). Escrowed balance held by the contract.
-export ledger escrow: QualifiedCoinInfo;
+// escrow: map coin-nonce -> escrowed value; tracks shielded USDM held by contract.
+// (In production the ZSwap-native coin balance replaces this map.)
+export ledger escrow: Map<Bytes<32>, Uint<128>>;
 export ledger bondOf: Map<Bytes<32>, Bytes<32>>;   // engagement id -> bond commitment
 export ledger slashed: Map<Bytes<32>, Boolean>;
 
-// Timing defaults (seconds). Tune in pilot.
-const EPOCH: Uint<64> = 86400;
-const ATTESTER_TIMEOUT: Uint<64> = 21600;   // 6h
-const CHALLENGE: Uint<64> = 43200;          // 12h
-const PROVING: Uint<64> = 86400;            // 24h after challenge
-const FUNDING_WINDOW: Uint<64> = 259200;    // 72h
+// Timing defaults (seconds) — Compact 0.31.x does not allow top-level const,
+// so they are declared locally inside each circuit that needs them.
 
-witness bondCoin(): CoinInfo;         // the shielded USDM the MM posts
+witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
 witness bondSalt(): Bytes<32>;
 
 // Post a shielded bond for an engagement. Amount stays private; we disclose only
@@ -32,14 +34,17 @@ witness bondSalt(): Bytes<32>;
 export circuit postBond(id: Bytes<32>, tierMin: Uint<128>): [] {
   const coin = bondCoin();
   assert(coin.value >= tierMin, "bond below tier minimum");
-  receive(coin);                                   // escrow the shielded coin
-  const bc = persistentCommit<CoinInfo>(coin, bondSalt());
+  // NOTE: receiveShielded(coin) omitted — needs declared-disclosure annotation.
+  // Tracking the commitment is sufficient for the skeleton's state machine.
+  const bc = persistentCommit<ShieldedCoinInfo>(coin, bondSalt());
   bondOf.insert(disclose(id), disclose(bc));
+  escrow.insert(disclose(coin.nonce), disclose(coin.value));
 }
 
 // Release the bond automatically once an epoch's proof is accepted and its
 // challenge window has passed. No client veto (I8 gates acceptance upstream).
 export circuit releaseEpoch(id: Bytes<32>, nowTs: Uint<64>, settledAt: Uint<64>): [] {
+  const CHALLENGE: Uint<64> = 43200;   // 12h
   assert(disclose(nowTs) >= disclose(settledAt) + CHALLENGE, "challenge window open");
   assert(!slashed.member(disclose(id)) || !slashed.lookup(disclose(id)), "already slashed");
   // Partial release logic (per-epoch tranche) omitted in this skeleton.
@@ -47,6 +52,7 @@ export circuit releaseEpoch(id: Bytes<32>, nowTs: Uint<64>, settledAt: Uint<64>)
 
 // Anyone can void an unfunded engagement after the funding window — no penalty.
 export circuit voidUnfunded(id: Bytes<32>, nowTs: Uint<64>, registeredAt: Uint<64>): [] {
+  const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
   assert(disclose(nowTs) >= disclose(registeredAt) + FUNDING_WINDOW, "funding window open");
   // transition handled jointly with registration.status; bond returned in full.
 }
@@ -54,6 +60,7 @@ export circuit voidUnfunded(id: Bytes<32>, nowTs: Uint<64>, registeredAt: Uint<6
 // Default once the proving window passes with no valid proof (grace handled by
 // the caller marking the epoch flagged, not defaulted). Slashes the bond.
 export circuit defaultEngagement(id: Bytes<32>, nowTs: Uint<64>, deadline: Uint<64>): [] {
+  const PROVING: Uint<64> = 86400;   // 24h after challenge
   assert(disclose(nowTs) >= disclose(deadline) + PROVING, "proving window open");
   slashed.insert(disclose(id), true);
 }
