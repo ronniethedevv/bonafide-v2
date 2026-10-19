@@ -8,7 +8,7 @@
 // as a shielded token, so the amount and source are private. Only "a valid bond
 // of at least the tier minimum exists" is disclosed.
 
-pragma language_version 0.31;
+pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 

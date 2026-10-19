@@ -9,7 +9,7 @@
 // mirror @mmr/merkle / @mmr/indexer. The production hash MUST be the circuit's
 // Poseidon-family primitive, not the TS SHA-256 placeholder (DD-8).
 
-pragma language_version 0.31;
+pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 

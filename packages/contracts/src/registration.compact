@@ -9,7 +9,7 @@
 // reach the ledger. An engagement runs under a random id and is linked to the
 // MM's profile only later, via claim.compact (I10).
 
-pragma language_version 0.31;
+pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 

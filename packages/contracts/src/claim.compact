@@ -6,7 +6,7 @@
 // batched weekly (off-chain scheduling) so timing can't match an engagement to a
 // token launch.
 
-pragma language_version 0.31;
+pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 
