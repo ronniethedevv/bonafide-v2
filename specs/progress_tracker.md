@@ -18,19 +18,32 @@ leaf schema, root-of-roots).
 | 2026-10-18 | `packages/indexer` — deterministic pipeline (config, provider ifaces, TWAP, depth/flow commitments, anti-JIT leaves, epoch build, in-mem publisher) + tests | **done (14 tests)** |
 | 2026-10-18 | `packages/contracts` — Compact skeletons + INVARIANTS.md (I1–I10) | drafted (not compiled) |
 | 2026-10-19 | `packages/prover` — engagement model, witness opening assembly (membership/non-membership + pool inclusion), I1–I8 reference oracle | **done (15 tests)** |
+| 2026-10-19 | `apps/web` — Next.js public profile (`/mm/[handle]`) + tear sheet, dark-theme tokens, read model + fixtures | **done (next build passes, 4 routes)** |
+| 2026-10-19 | `packages/prover` — end-to-end demo + MM prover CLI (`pnpm --filter @mmr/prover demo`) wiring buildEpoch → witness → verdict | **done (16 tests total)** |
 
-Total: 53 tests passing; `pnpm -r typecheck` clean. Pushed incrementally to
-`origin/ccr-0ae4f61d-euy47e` (frequent-push rule, specs/ai_workflow_rules.md §7).
+Total: 54 tests passing; `pnpm -r typecheck` clean; `next build` passes. Pushed
+incrementally to `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
 ## Build-order progress (from product spec)
 
-- [ ] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS  ← **active**
-- [ ] 2. Proving benchmark (16-slot epoch circuit, depth-16 paths, one band)
-- [ ] 3. Compact contract (registration, identity checks, bond escrow, state machine)
-- [ ] 4. Epoch proof circuit I1–I8; claim circuit with nullifiers
-- [ ] 5. Attester committee, challenge flow, void rules
-- [ ] 6. MM prover CLI, client watcher, fee-sponsor service
+- [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (TS; IPFS via injectable publisher, in-mem impl)
+- [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
+      benchmark itself needs the Midnight toolchain (not available here)
+- [~] 3. Compact contract — skeletons + INVARIANTS.md written; needs `compactc` to compile
+- [~] 4. Epoch proof / claim circuits — skeletons written; needs `compactc`
+- [~] 5. Attester committee, challenge flow, void rules — TS interfaces done; Jubjub
+      signing + on-chain flow need Midnight integration
+- [~] 6. MM prover — CLI + reference oracle done; client watcher + fee-sponsor pending
 - [ ] 7. Pilot
+
+**Loop paused here.** Everything buildable and testable in this TS-only
+environment is done. The remaining core (items 3–5) needs the Midnight Compact
+toolchain + a Blockfrost token, which this container does not have — continuing
+to auto-generate speculative TS scaffolding would burn credits for little value,
+so the autonomous continuation was not re-armed. Resume points for a
+Midnight-provisioned environment: compile the `.compact` circuits, run the
+proving benchmark (fix bucket sizes), implement Jubjub attester signing, and wire
+a real Base archive-RPC `ChainProvider`.
 
 ## Immutable design decisions
 
