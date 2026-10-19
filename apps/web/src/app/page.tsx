@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { listProfiles } from "@/lib/fixtures";
-import { totalCompleted } from "@/lib/read-model";
+import { fetchProfiles } from "@/lib/data";
 
-export default function HomePage() {
-  const profiles = listProfiles();
+export default async function HomePage() {
+  const profiles = await fetchProfiles();
   return (
     <main className="container">
       <h1 style={{ marginBottom: 4 }}>MM Reputation Record</h1>
@@ -21,7 +20,7 @@ export default function HomePage() {
               <span className="muted mono">@{p.handle}</span>
             </div>
             <div className="muted" style={{ marginTop: 8 }}>
-              {totalCompleted(p)} completed engagements · {p.headlineUptime}% headline uptime
+              {p.completed} completed engagements · {p.headlineUptime}% headline uptime
             </div>
           </Link>
         ))}

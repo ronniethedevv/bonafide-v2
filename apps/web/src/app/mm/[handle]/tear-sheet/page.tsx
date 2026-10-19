@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProfile } from "@/lib/fixtures";
+import { fetchProfile } from "@/lib/data";
 import { totalCompleted, overallKpiHitRate } from "@/lib/read-model";
 import { TierBadge } from "@/components/tier-badge";
 
@@ -13,7 +13,7 @@ export default async function TearSheetPage({
   params: Promise<{ handle: string }>;
 }) {
   const { handle } = await params;
-  const profile = getProfile(handle);
+  const profile = await fetchProfile(handle);
   if (!profile) notFound();
 
   const all = [...profile.engagements, ...profile.sandbox];
