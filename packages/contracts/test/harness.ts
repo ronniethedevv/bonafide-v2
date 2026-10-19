@@ -19,6 +19,7 @@ import {
   type Hasher,
   IndexedMerkleTree,
   type Leaf,
+  emptyLeaf,
   type PathStep,
   RootOfRoots,
   zeroMetrics,
@@ -56,6 +57,7 @@ export interface PathStepW { sibling: Uint8Array; weAreRight: boolean }
 
 export interface EpochWitness {
   committedWallets: bigint[];
+  activeCount: bigint;
   walletSalt: Uint8Array;
   slotLeaves: SlotLeafW[];
   terms: TermsW;
@@ -95,6 +97,9 @@ export const WALLET_B = 0x2000000000000000000000000000000000000020n; // not in t
 const OTHER_C = 0x3000000000000000000000000000000000000030n;
 const OTHER_D = 0x4000000000000000000000000000000000000040n;
 
+const extras = (n: number): bigint[] =>
+  Array.from({ length: n }, (_, k) => 0x5000000000000000000000000000000000000000n + BigInt(k + 1));
+
 export interface Scenario {
   hasher: Hasher;
   tree: IndexedMerkleTree;
@@ -106,9 +111,14 @@ export interface Scenario {
 /**
  * One pool (depth-16 indexed tree) inside a root-of-roots (depth 10) with two
  * other pools. The engagement's active wallets are A (present in the pool) and
- * B (absent; proven by A as its low leaf). Slots 2..15 are padding.
+ * B (absent; proven by A as its low leaf). Slots 2..15 are padding (H2):
+ * an empty, non-present leaf with an all-zero path that the circuit never checks.
  */
-export function buildScenario(hasher: Hasher = new CompactHasher()): Scenario {
+export function buildScenario(
+  hasher: Hasher = new CompactHasher(),
+  /** Extra active wallets (all present in the pool) after A and B; 14 fills all 16 slots. */
+  extraMembers = 0,
+): Scenario {
   const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number): Leaf => ({
     addr, nextAddr: 0n, isProtocol: false,
     metrics: { ...zeroMetrics(), ...over },
@@ -120,6 +130,7 @@ export function buildScenario(hasher: Hasher = new CompactHasher()): Scenario {
                      swapQuoteIn: 120n, swapQuoteOut: 100n }, 0xa0),
     leaf(OTHER_C, { baseEnd: 77n }, 0xc0),
     leaf(OTHER_D, { baseEnd: 88n, xferOut: 9n }, 0xd0),
+    ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0)),
   ]);
   const ror = RootOfRoots.build(hasher, 7, [
     { poolAddr: 0xa1n, poolRoot: fill32(0x11) },
@@ -130,19 +141,22 @@ export function buildScenario(hasher: Hasher = new CompactHasher()): Scenario {
 
   const mem = tree.membershipProof(WALLET_A);
   const non = tree.nonMembershipProof(WALLET_B);
-  // Padding slots (w[j] = 0): open the head sentinel (addr 0) as a membership.
-  const sentinel = tree.nonMembershipProof(1n);
+  const zeroPath: PathStep[] = Array.from({ length: 16 }, () => ({ sibling: fill32(0), weAreRight: false }));
 
+  const active = [WALLET_A, WALLET_B, ...extras(extraMembers)];
   const committedWallets = new Array<bigint>(SLOTS).fill(0n);
-  committedWallets[0] = WALLET_A;
-  committedWallets[1] = WALLET_B;
+  active.forEach((a, j) => { committedWallets[j] = a; });
 
   const slotLeaves: SlotLeafW[] = [];
   const slotPaths: PathStepW[][] = [];
   for (let j = 0; j < SLOTS; j++) {
     if (j === 0) { slotLeaves.push(toSlotLeaf(mem.leaf, true)); slotPaths.push(toPath(mem.path)); }
     else if (j === 1) { slotLeaves.push(toSlotLeaf(non.lowLeaf, false)); slotPaths.push(toPath(non.path)); }
-    else { slotLeaves.push(toSlotLeaf(sentinel.lowLeaf, true)); slotPaths.push(toPath(sentinel.path)); }
+    else if (j < active.length) {
+      const p = tree.membershipProof(active[j]!);
+      slotLeaves.push(toSlotLeaf(p.leaf, true)); slotPaths.push(toPath(p.path));
+    }
+    else { slotLeaves.push(toSlotLeaf(emptyLeaf(), false)); slotPaths.push(toPath(zeroPath)); }
   }
 
   // Depth: slot 0 carries the full target on both sides in every bucket.
@@ -155,6 +169,7 @@ export function buildScenario(hasher: Hasher = new CompactHasher()): Scenario {
     hasher, tree, ror, rootOfRoots: ror.root,
     witness: {
       committedWallets,
+      activeCount: BigInt(active.length),
       walletSalt: fill32(0x5a),
       slotLeaves,
       terms: {
@@ -193,6 +208,7 @@ export async function runProveEpoch(
   const mod = await import(BUILD_DIR);
   const witnesses = {
     committedWallets: (c: { privateState: unknown }) => [c.privateState, w.committedWallets],
+    activeCount: (c: { privateState: unknown }) => [c.privateState, w.activeCount],
     walletSalt: (c: { privateState: unknown }) => [c.privateState, w.walletSalt],
     slotLeaves: (c: { privateState: unknown }) => [c.privateState, w.slotLeaves],
     terms: (c: { privateState: unknown }) => [c.privateState, w.terms],

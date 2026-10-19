@@ -5,8 +5,9 @@ claim circuit enforces I10. A proof that breaks any invariant cannot be generate
 
 ## Notation
 
-- `W` — committed wallet vector: **16 slots**, sorted ascending, padded with
-  dummy addresses. `B` — active bitmap over the 16 slots.
+- `W` — committed wallet vector: **16 slots**; the `n` active wallets fill slots
+  `[0, n)` sorted ascending, padding slots `[n, 16)` are `0`. `B` — active bitmap
+  over the 16 slots, `B[j] ⇔ j < n` (`n` = `activeCount`, a private witness).
 - `ℓ_j` — the leaf opened for slot `j`: address `a_j`, next address `n_j`,
   metrics `m_j`.
 - `R_e` — the epoch's **root-of-roots**. `P` — the deal's floor price (option
@@ -19,6 +20,8 @@ claim circuit enforces I10. A proof that breaks any invariant cannot be generate
 ## I1 · Wallet set is sorted and append-only
 
 For every active pair of slots `j < k`: `a_j < a_k` (strict — no duplicates).
+Active wallets are non-zero and every padding slot is exactly `0`, so interior
+zeros (`[a, 0, b]`) are rejected and `n` is fixed by `W`.
 Across epochs the committed set only grows: the start-of-epoch commitment equals
 the previous epoch's end commitment extended; no active wallet may leave
 mid-engagement. *Circuit:* `epoch_proof` checks sortedness over `W`; the
@@ -26,14 +29,15 @@ engagement commitment chain (bond contract) enforces append-only.
 
 ## I2 · Every slot accounted for exactly once
 
-Each slot `j` opens exactly one leaf under `R_e`. Either:
+Each **active** slot `j` opens exactly one leaf under `R_e`. Either:
 - **membership:** `a_j == W[j]` and `¬ℓ_j.is_protocol` (a real wallet, not a
   pool/router/position-manager), or
 - **non-membership:** `ℓ_j.addr < W[j] < ℓ_j.next_addr` (or `next_addr == 0`),
   proving slot `j` had zero activity this epoch.
 
-*Circuit:* `epoch_proof` verifies each opening's Merkle path to `R_e` via the
-pool inclusion proof, then this leaf predicate.
+*Circuit:* `epoch_proof` verifies each active opening's Merkle path to `R_e` via
+the pool inclusion proof, then this leaf predicate. Padding slots open nothing:
+they are forced non-present, so they add nothing to I3–I6.
 
 ## I3 · Custody — value stays inside the perimeter
 

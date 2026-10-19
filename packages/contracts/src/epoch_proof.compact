@@ -73,6 +73,10 @@ struct PoolEntry { poolAddr: Uint<160>, poolRoot: Bytes<32> }
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
+// H2: number of active wallets; they occupy slots [0, activeCount). Never disclosed.
+// Not a free choice: assertWalletLayout forces it to equal the count of non-zero
+// wallets, and the wallet vector itself is bound to the registration commitment.
+witness activeCount(): Uint<8>;
 witness walletSalt(): Bytes<32>;
 witness slotLeaves(): Vector<16, SlotLeaf>;
 witness terms(): Terms;
@@ -150,24 +154,25 @@ circuit presentFlags(L: Vector<16, SlotLeaf>): Vector<16, Boolean> {
           L[12].present, L[13].present, L[14].present, L[15].present];
 }
 
-// Sum per-slot bid depths for bucket b across 16 slots.
-circuit bidSum(bid: Vector<16, Vector<48, Uint<128>>>, b: Uint<6>): Uint<132> {
-  const s0 = bid[0][b] as Uint<132>;
-  const s1 = bid[1][b] as Uint<132>;
-  const s2 = bid[2][b] as Uint<132>;
-  const s3 = bid[3][b] as Uint<132>;
-  const s4 = bid[4][b] as Uint<132>;
-  const s5 = bid[5][b] as Uint<132>;
-  const s6 = bid[6][b] as Uint<132>;
-  const s7 = bid[7][b] as Uint<132>;
-  const s8 = bid[8][b] as Uint<132>;
-  const s9 = bid[9][b] as Uint<132>;
-  const s10 = bid[10][b] as Uint<132>;
-  const s11 = bid[11][b] as Uint<132>;
-  const s12 = bid[12][b] as Uint<132>;
-  const s13 = bid[13][b] as Uint<132>;
-  const s14 = bid[14][b] as Uint<132>;
-  const s15 = bid[15][b] as Uint<132>;
+// Sum per-slot depths for bucket b over member slots only (H2: padding and
+// non-membership slots contribute nothing, matching the oracle's `members`).
+circuit bidSum(bid: Vector<16, Vector<48, Uint<128>>>, b: Uint<6>, m: Vector<16, Boolean>): Uint<132> {
+  const s0 = m[0] ? (bid[0][b] as Uint<132>) : 0;
+  const s1 = m[1] ? (bid[1][b] as Uint<132>) : 0;
+  const s2 = m[2] ? (bid[2][b] as Uint<132>) : 0;
+  const s3 = m[3] ? (bid[3][b] as Uint<132>) : 0;
+  const s4 = m[4] ? (bid[4][b] as Uint<132>) : 0;
+  const s5 = m[5] ? (bid[5][b] as Uint<132>) : 0;
+  const s6 = m[6] ? (bid[6][b] as Uint<132>) : 0;
+  const s7 = m[7] ? (bid[7][b] as Uint<132>) : 0;
+  const s8 = m[8] ? (bid[8][b] as Uint<132>) : 0;
+  const s9 = m[9] ? (bid[9][b] as Uint<132>) : 0;
+  const s10 = m[10] ? (bid[10][b] as Uint<132>) : 0;
+  const s11 = m[11] ? (bid[11][b] as Uint<132>) : 0;
+  const s12 = m[12] ? (bid[12][b] as Uint<132>) : 0;
+  const s13 = m[13] ? (bid[13][b] as Uint<132>) : 0;
+  const s14 = m[14] ? (bid[14][b] as Uint<132>) : 0;
+  const s15 = m[15] ? (bid[15][b] as Uint<132>) : 0;
   const a = ((s0 + s1) as Uint<133>) + ((s2 + s3) as Uint<133>);
   const c = ((s8 + s9) as Uint<133>) + ((s10 + s11) as Uint<133>);
   const e = ((s4 + s5) as Uint<133>) + ((s6 + s7) as Uint<133>);
@@ -179,103 +184,104 @@ circuit bidSum(bid: Vector<16, Vector<48, Uint<128>>>, b: Uint<6>): Uint<132> {
 // A bucket passes when sumBid[b] >= target AND sumAsk[b] >= target.
 circuit uptimeCount(bid: Vector<16, Vector<48, Uint<128>>>,
                     ask: Vector<16, Vector<48, Uint<128>>>,
-                    target: Uint<128>): Uint<8> {
-  const u0 = (bidSum(bid, 0 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 0 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u1 = (bidSum(bid, 1 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 1 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u2 = (bidSum(bid, 2 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 2 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u3 = (bidSum(bid, 3 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 3 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u4 = (bidSum(bid, 4 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 4 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u5 = (bidSum(bid, 5 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 5 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u6 = (bidSum(bid, 6 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 6 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u7 = (bidSum(bid, 7 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 7 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u8 = (bidSum(bid, 8 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 8 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u9 = (bidSum(bid, 9 as Uint<6>) >= (target as Uint<132>)
-              && bidSum(ask, 9 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u10 = (bidSum(bid, 10 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 10 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u11 = (bidSum(bid, 11 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 11 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u12 = (bidSum(bid, 12 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 12 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u13 = (bidSum(bid, 13 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 13 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u14 = (bidSum(bid, 14 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 14 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u15 = (bidSum(bid, 15 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 15 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u16 = (bidSum(bid, 16 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 16 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u17 = (bidSum(bid, 17 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 17 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u18 = (bidSum(bid, 18 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 18 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u19 = (bidSum(bid, 19 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 19 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u20 = (bidSum(bid, 20 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 20 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u21 = (bidSum(bid, 21 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 21 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u22 = (bidSum(bid, 22 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 22 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u23 = (bidSum(bid, 23 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 23 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u24 = (bidSum(bid, 24 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 24 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u25 = (bidSum(bid, 25 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 25 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u26 = (bidSum(bid, 26 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 26 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u27 = (bidSum(bid, 27 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 27 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u28 = (bidSum(bid, 28 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 28 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u29 = (bidSum(bid, 29 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 29 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u30 = (bidSum(bid, 30 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 30 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u31 = (bidSum(bid, 31 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 31 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u32 = (bidSum(bid, 32 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 32 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u33 = (bidSum(bid, 33 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 33 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u34 = (bidSum(bid, 34 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 34 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u35 = (bidSum(bid, 35 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 35 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u36 = (bidSum(bid, 36 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 36 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u37 = (bidSum(bid, 37 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 37 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u38 = (bidSum(bid, 38 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 38 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u39 = (bidSum(bid, 39 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 39 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u40 = (bidSum(bid, 40 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 40 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u41 = (bidSum(bid, 41 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 41 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u42 = (bidSum(bid, 42 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 42 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u43 = (bidSum(bid, 43 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 43 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u44 = (bidSum(bid, 44 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 44 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u45 = (bidSum(bid, 45 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 45 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u46 = (bidSum(bid, 46 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 46 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
-  const u47 = (bidSum(bid, 47 as Uint<6>) >= (target as Uint<132>)
-               && bidSum(ask, 47 as Uint<6>) >= (target as Uint<132>)) ? 1 : 0;
+                    target: Uint<128>,
+                    m: Vector<16, Boolean>): Uint<8> {
+  const u0 = (bidSum(bid, 0 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 0 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u1 = (bidSum(bid, 1 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 1 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u2 = (bidSum(bid, 2 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 2 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u3 = (bidSum(bid, 3 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 3 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u4 = (bidSum(bid, 4 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 4 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u5 = (bidSum(bid, 5 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 5 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u6 = (bidSum(bid, 6 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 6 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u7 = (bidSum(bid, 7 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 7 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u8 = (bidSum(bid, 8 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 8 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u9 = (bidSum(bid, 9 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 9 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u10 = (bidSum(bid, 10 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 10 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u11 = (bidSum(bid, 11 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 11 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u12 = (bidSum(bid, 12 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 12 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u13 = (bidSum(bid, 13 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 13 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u14 = (bidSum(bid, 14 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 14 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u15 = (bidSum(bid, 15 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 15 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u16 = (bidSum(bid, 16 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 16 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u17 = (bidSum(bid, 17 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 17 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u18 = (bidSum(bid, 18 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 18 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u19 = (bidSum(bid, 19 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 19 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u20 = (bidSum(bid, 20 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 20 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u21 = (bidSum(bid, 21 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 21 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u22 = (bidSum(bid, 22 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 22 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u23 = (bidSum(bid, 23 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 23 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u24 = (bidSum(bid, 24 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 24 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u25 = (bidSum(bid, 25 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 25 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u26 = (bidSum(bid, 26 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 26 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u27 = (bidSum(bid, 27 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 27 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u28 = (bidSum(bid, 28 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 28 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u29 = (bidSum(bid, 29 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 29 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u30 = (bidSum(bid, 30 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 30 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u31 = (bidSum(bid, 31 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 31 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u32 = (bidSum(bid, 32 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 32 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u33 = (bidSum(bid, 33 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 33 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u34 = (bidSum(bid, 34 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 34 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u35 = (bidSum(bid, 35 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 35 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u36 = (bidSum(bid, 36 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 36 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u37 = (bidSum(bid, 37 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 37 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u38 = (bidSum(bid, 38 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 38 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u39 = (bidSum(bid, 39 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 39 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u40 = (bidSum(bid, 40 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 40 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u41 = (bidSum(bid, 41 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 41 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u42 = (bidSum(bid, 42 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 42 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u43 = (bidSum(bid, 43 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 43 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u44 = (bidSum(bid, 44 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 44 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u45 = (bidSum(bid, 45 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 45 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u46 = (bidSum(bid, 46 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 46 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u47 = (bidSum(bid, 47 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 47 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
   const a = ((u0 + u1) as Uint<2>) + ((u2 + u3) as Uint<2>);
   const b = ((u4 + u5) as Uint<2>) + ((u6 + u7) as Uint<2>);
   const c = ((u8 + u9) as Uint<2>) + ((u10 + u11) as Uint<2>);
@@ -357,14 +363,29 @@ circuit verifyPoolPath(leafHash: Bytes<32>, path: Vector<10, PathStep>, root: By
   assert(h10 == root, "pool inclusion path mismatch (C1)");
 }
 
-// I1: committed wallets sorted ascending, no duplicates.
-circuit assertSortedUnique(w: Vector<16, Uint<160>>): [] {
-  for (const i of 0..15) {
-    if (i + 1 < 16) {
-      // dummy padding addresses sort to the top; active wallets strictly increase
-      assert(w[i] < w[i + 1] || w[i + 1] == 0, "wallets not sorted/unique (I1)");
+// I1 + H2 (closes L1): active wallets fill slots [0, n), are non-zero and strictly
+// increasing; every padding slot [n, 16) is exactly 0. Mirrors the oracle's
+// sortedAppendOnly. Interior zeros ([a, 0, b]) are rejected.
+circuit assertWalletLayout(w: Vector<16, Uint<160>>, n: Uint<8>): [] {
+  assert(n <= 16, "activeCount out of range (H2)");
+  for (const i of 0..16) {
+    if (i < n) {
+      assert(w[i] != 0, "active wallet is zero (I1)");
+    } else {
+      assert(w[i] == 0, "padding slot not zero (I1)");
     }
   }
+  for (const i of 1..16) {
+    if (i < n) {
+      assert(w[i - 1] < w[i], "wallets not sorted/unique (I1)");
+    }
+  }
+}
+
+// H2: slot j is active iff j < n.
+circuit activeFlags(n: Uint<8>): Vector<16, Boolean> {
+  return [0 < n, 1 < n, 2 < n, 3 < n, 4 < n, 5 < n, 6 < n, 7 < n,
+          8 < n, 9 < n, 10 < n, 11 < n, 12 < n, 13 < n, 14 < n, 15 < n];
 }
 
 export circuit proveEpoch(
@@ -373,7 +394,9 @@ export circuit proveEpoch(
   epoch: Uint<64>
 ): Uint<8> {
   const w = committedWallets();
-  assertSortedUnique(w);
+  const n = activeCount();
+  assertWalletLayout(w, n);
+  const act = activeFlags(n);
 
   // Bind the wallet set to the engagement's registration commitment.
   const wc = persistentCommit<Vector<16, Uint<160>>>(w, walletSalt());
@@ -381,6 +404,8 @@ export circuit proveEpoch(
 
   const leaves = slotLeaves();
   const t = terms();
+  // Member flags: present => active (padding is forced !present below), so pf
+  // selects exactly the oracle's `members` for the I3/I4/I5 sums and I6 depth.
   const pf = presentFlags(leaves);
 
   // C1: bind every witness to rootOfRoots via Merkle inclusion proofs.
@@ -391,22 +416,25 @@ export circuit proveEpoch(
   // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
   verifyPoolPath(persistentHash<PoolEntry>(pe), pp, rootOfRoots);
 
-  // Per-slot: each opened leaf (membership or low-leaf) is in pe.poolRoot.
+  // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
+  // (C1), and it accounts for that wallet exactly once (I2). Padding slots (H2)
+  // need no opening: they are forced empty (present = false, and w[j] = 0 by
+  // assertWalletLayout), so they contribute to no sum below.
   // Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
   // slotLeafCore strips `present` before hashing (297-byte image == encodeLeaf).
   for (const j of 0..16) {
-    verifyPath16(persistentHash<SlotLeafCore>(slotLeafCore(leaves[j])), sp[j], pe.poolRoot);
-  }
-
-  // I2: each slot opens exactly one leaf under rootOfRoots.
-  for (const j of 0..16) {
     const L = leaves[j];
-    if (L.present) {
-      assert(L.addr == w[j], "membership slot mismatch (I2)");
-      assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+    if (act[j]) {
+      verifyPath16(persistentHash<SlotLeafCore>(slotLeafCore(L)), sp[j], pe.poolRoot);
+      if (L.present) {
+        assert(L.addr == w[j], "membership slot mismatch (I2)");
+        assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+      } else {
+        assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
+               "non-membership low-leaf does not bracket (I2)");
+      }
     } else {
-      assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
-             "non-membership low-leaf does not bracket (I2)");
+      assert(!L.present, "padding slot opened as present (H2)");
     }
   }
 
@@ -472,7 +500,7 @@ export circuit proveEpoch(
   // I6: uptime — count buckets with summed per-slot minimum depth >= target on both sides.
   const bid = bidMin();
   const ask = askMin();
-  const uptime = uptimeCount(bid, ask, t.depth_target);
+  const uptime = uptimeCount(bid, ask, t.depth_target, pf);
 
   // I7: round-trip cap — per window, min(buy, sell) is round-trip volume.
   // Flow-root opening and per-window aggregation are omitted in this skeleton;
