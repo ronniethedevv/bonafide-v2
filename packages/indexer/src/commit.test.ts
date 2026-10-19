@@ -5,6 +5,8 @@ import {
   commitFlow,
   openBand,
   verifyBandOpening,
+  openWindow,
+  verifyWindowOpening,
 } from "./commit.js";
 import type { DepthBucketSample, FlowWindowSample } from "./provider.js";
 
@@ -85,5 +87,39 @@ describe("flow commitment", () => {
     expect(digestToHex(commitFlow(hasher, w))).not.toBe(
       digestToHex(commitFlow(hasher, w2)),
     );
+  });
+});
+
+describe("flow window openings (I7)", () => {
+  const windows: FlowWindowSample[] = [
+    { window: 0, buy: 5n, sell: 7n },
+    { window: 1, buy: 9n, sell: 2n },
+    { window: 2, buy: 4n, sell: 4n },
+  ];
+
+  it("opens each window against flow_root", () => {
+    const root = commitFlow(hasher, windows);
+    for (const w of windows) {
+      const opening = openWindow(hasher, windows, w.window);
+      expect(opening.buy).toBe(w.buy);
+      expect(opening.sell).toBe(w.sell);
+      expect(verifyWindowOpening(hasher, root, opening)).toBe(true);
+    }
+  });
+
+  it("rejects an opening with tampered amounts", () => {
+    const root = commitFlow(hasher, windows);
+    const opening = openWindow(hasher, windows, 1);
+    expect(verifyWindowOpening(hasher, root, { ...opening, sell: 999n })).toBe(false);
+  });
+
+  it("rejects an opening against a different flow_root", () => {
+    const opening = openWindow(hasher, windows, 0);
+    const otherRoot = commitFlow(hasher, [{ window: 0, buy: 1n, sell: 1n }]);
+    expect(verifyWindowOpening(hasher, otherRoot, opening)).toBe(false);
+  });
+
+  it("throws for a missing window", () => {
+    expect(() => openWindow(hasher, windows, 99)).toThrow(/not present/);
   });
 });

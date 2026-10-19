@@ -132,14 +132,73 @@ export function verifyBandOpening(
   return digestsEqual(h, depthRoot);
 }
 
+// One leaf per window, so the epoch circuit can open a single window from
+// flow_root to enforce the round-trip cap (I7) without revealing the whole series.
+function flowWindowLeaf(hasher: Hasher, w: FlowWindowSample): Digest {
+  return hasher.hashLeaf(
+    concat([u32(w.window), encodeUint(w.buy, 128), encodeUint(w.sell, 128)]),
+  );
+}
+
+function sortedFlowWindows(
+  windows: readonly FlowWindowSample[],
+): FlowWindowSample[] {
+  return [...windows].sort((a, b) => a.window - b.window);
+}
+
 export function commitFlow(
   hasher: Hasher,
   windows: readonly FlowWindowSample[],
 ): Digest {
-  const sorted = [...windows].sort((a, b) => a.window - b.window);
-  const parts: Uint8Array[] = [u32(sorted.length)];
-  for (const w of sorted) {
-    parts.push(u32(w.window), encodeUint(w.buy, 128), encodeUint(w.sell, 128));
+  const sorted = sortedFlowWindows(windows);
+  return balancedTree(hasher, sorted.map((w) => flowWindowLeaf(hasher, w))).root;
+}
+
+export interface WindowOpening {
+  window: number;
+  buy: bigint;
+  sell: bigint;
+  index: number;
+  leaf: Digest;
+  path: PathStep[];
+}
+
+/** Open a single window from flow_root, for the epoch circuit's round-trip check. */
+export function openWindow(
+  hasher: Hasher,
+  windows: readonly FlowWindowSample[],
+  window: number,
+): WindowOpening {
+  const sorted = sortedFlowWindows(windows);
+  const index = sorted.findIndex((w) => w.window === window);
+  if (index < 0) throw new Error(`window ${window} not present`);
+  const w = sorted[index]!;
+  const { layers } = balancedTree(hasher, sorted.map((s) => flowWindowLeaf(hasher, s)));
+  const path: PathStep[] = [];
+  let idx = index;
+  for (let l = 0; l < layers.length - 1; l++) {
+    const cur = layers[l]!;
+    const weAreRight = (idx & 1) === 1;
+    const sibIdx = weAreRight ? idx - 1 : idx + 1;
+    path.push({ sibling: cur[sibIdx]!, weAreRight });
+    idx >>= 1;
   }
-  return hasher.hashLeaf(concat(parts));
+  return { window: w.window, buy: w.buy, sell: w.sell, index, leaf: flowWindowLeaf(hasher, w), path };
+}
+
+export function verifyWindowOpening(
+  hasher: Hasher,
+  flowRoot: Digest,
+  opening: WindowOpening,
+): boolean {
+  let h = flowWindowLeaf(hasher, {
+    window: opening.window,
+    buy: opening.buy,
+    sell: opening.sell,
+  });
+  if (!digestsEqual(h, opening.leaf)) return false;
+  for (const step of opening.path) {
+    h = step.weAreRight ? hasher.hashNode(step.sibling, h) : hasher.hashNode(h, step.sibling);
+  }
+  return digestsEqual(h, flowRoot);
 }

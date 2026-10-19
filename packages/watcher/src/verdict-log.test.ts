@@ -8,7 +8,12 @@ import {
   type EpochRange,
 } from "@mmr/indexer";
 import { DEFAULT_TIMING } from "@mmr/protocol";
-import { buildClientVerdictLog, summarizeLog, type EpochObservation } from "./verdict-log.js";
+import {
+  buildClientVerdictLog,
+  summarizeLog,
+  buildClaimInput,
+  type EpochObservation,
+} from "./verdict-log.js";
 
 const config = DEFAULT_CONFIG;
 const timing = DEFAULT_TIMING;
@@ -116,5 +121,13 @@ describe("client verdict log", () => {
     expect(s.epochsScored).toBe(1);
     expect(s.epochsPassed).toBe(1);
     expect(s.avgUptimePct).toBe(100);
+  });
+
+  it("derives claim inputs from the verdict log, not on trust", () => {
+    const ci = buildClaimInput(engagement, log, 2);
+    expect(ci.engagementId).toBe("eng-1");
+    expect(ci.tier).toBe(2);
+    expect(ci.epochsPassed).toBe(1); // only the settled+passing epoch
+    expect(ci.epochsTotal).toBe(1); // only scored epochs count
   });
 });

@@ -78,6 +78,36 @@ export interface LogSummary {
   avgUptimePct: number;
 }
 
+/**
+ * The inputs a nullifier claim should carry, derived from the watcher's own
+ * verdict log rather than taken on trust. The claim circuit (H4) should verify
+ * these against the on-chain per-epoch record (epochUptime) before crediting the
+ * profile, so the record can't be inflated.
+ */
+export interface ClaimInput {
+  engagementId: string;
+  /** Difficulty tier as the claim circuit expects it (0=C/sandbox, 1=B, 2=A). */
+  tier: number;
+  /** Scored epochs whose delivery verdict passed every invariant. */
+  epochsPassed: number;
+  /** Total scored (settled) epochs. */
+  epochsTotal: number;
+}
+
+export function buildClaimInput(
+  engagement: Engagement,
+  entries: readonly EpochLogEntry[],
+  tier: number,
+): ClaimInput {
+  const s = summarizeLog(entries);
+  return {
+    engagementId: engagement.id,
+    tier,
+    epochsPassed: s.epochsPassed,
+    epochsTotal: s.epochsScored,
+  };
+}
+
 export function summarizeLog(entries: readonly EpochLogEntry[]): LogSummary {
   const scored = entries.filter((e) => e.scored);
   const passed = scored.filter((e) => e.verdict.pass).length;
