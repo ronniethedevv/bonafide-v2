@@ -1,0 +1,24 @@
+{
+  "name": "@mmr/watcher",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Independent epoch verifier: recompute the root-of-roots from published trees (challenge watchdog) and keep a per-epoch client verdict log.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/indexer": "workspace:*",
+    "@mmr/merkle": "workspace:*",
+    "@mmr/prover": "workspace:*",
+    "@mmr/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
