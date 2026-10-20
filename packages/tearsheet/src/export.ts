@@ -17,7 +17,17 @@ async function runChrome(args: string[]): Promise<void> {
   try {
     await run(
       chrome,
-      ["--headless=new", "--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, ...args],
+      [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        // CI containers (e.g. GitHub runners) give Chromium a tiny /dev/shm, which
+        // makes rendering hang or crash; write shared memory to a regular temp file
+        // instead. Without this the render can exceed the test timeout.
+        "--disable-dev-shm-usage",
+        `--user-data-dir=${profile}`,
+        ...args,
+      ],
       { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
     );
   } finally {

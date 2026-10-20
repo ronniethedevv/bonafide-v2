@@ -38,5 +38,7 @@ describe.skipIf(findChrome() === null)("renderHtmlToPdf (real Chromium)", () => 
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  }, 60_000);
+    // Match Chrome's own 120s execFile timeout: a slow-but-working render in CI
+    // must not be killed early by a shorter test timeout.
+  }, 120_000);
 });
