@@ -17,6 +17,7 @@ async function main(): Promise<void> {
   process.stdout.write(`engagement         : ${r.engagement.id}\n`);
   process.stdout.write(`active wallets     : ${r.engagement.wallets.activeCount}\n`);
   process.stdout.write(`witness verifies   : ${r.witnessValid ? "yes" : "NO"}\n`);
+  process.stdout.write(`depth bound (H1)   : ${r.depthBound ? "yes" : "NO"}\n`);
   process.stdout.write(
     `uptime             : ${r.verdict.uptimeBuckets}/${r.verdict.totalBuckets} buckets\n`,
   );
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
     process.stdout.write(`  ${ok ? "✓" : "✗"}  ${name}\n`);
   }
   process.stdout.write(`${line}\n`);
-  const overall = r.verdict.pass && r.witnessValid;
+  const overall = r.verdict.pass && r.witnessValid && r.depthBound;
   process.stdout.write(` VERDICT: ${overall ? "PASS" : "FAIL"}\n${line}\n`);
 
   process.exitCode = overall ? 0 : 1;

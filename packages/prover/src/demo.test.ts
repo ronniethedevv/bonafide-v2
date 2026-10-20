@@ -6,6 +6,7 @@ describe("runDemoEpoch — end-to-end pipeline", () => {
     const r = await runDemoEpoch();
     expect(r.poolCount).toBe(1);
     expect(r.witnessValid).toBe(true);
+    expect(r.depthBound).toBe(true);
     expect(r.verdict.pass).toBe(true);
     expect(r.verdict.uptimeBuckets).toBe(r.verdict.totalBuckets);
     expect(Object.values(r.verdict.invariants).every(Boolean)).toBe(true);

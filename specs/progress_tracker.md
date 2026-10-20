@@ -32,6 +32,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | **H2 + L1** — `epoch_proof.compact`: `activeCount(): Uint<8>` witness; `assertWalletLayout` forces active wallets in `[0,n)` non-zero and strictly increasing, padding exactly 0 (rejects `[a,0,b]`, closes L1; `n` is determined by `W`). Merkle path + I2 only for active slots; padding forced `present=false` (no bogus opening needed). I6 depth now masked to member slots (padding / non-member depth no longer counts). Oracle unchanged: it already processes `activeCount` and only members | **done (+10 KAT tests)** |
 | 2026-10-19 | **C2** — `proveEpoch` now returns `disclose(EpochResult { uptime, walletCommit, termsCommit })`: `wc = persistentCommit<Vector<16,Uint<160>>>(w, walletSalt)` (same scheme as registration) and `tc = persistentCommit<Terms>(terms, termsSalt)`. `registration.compact` now commits the structured `Terms` (identical struct) with a salt instead of `persistentHash(termsPreimage)` (DD-9). Caller accepts only if both equal `walletCommit[id]` / `termsCommit[id]` (I8-style "enforced by the caller"). `@mmr/prover` `commitWallets` fixed to persistentCommit's layout (`SHA-256(salt ‖ LE image)`; was BE image ‖ salt) + new `commitTerms`. KAT executes compiled `register` then `proveEpoch`: honest commitments match the ledger and the TS helpers; loosened terms, a dropped wallet, or a changed salt still prove but fail the caller check | **done (+5 KAT tests)** |
 | 2026-10-20 | **Poseidon migration** — `epoch_proof.compact` Merkle hashing moved from `persistentHash` (SHA-256) to `transientHash` (Poseidon): slot leaves `transientHash<SlotLeafCore>`, pool leaves `transientHash<PoolEntry>`, nodes `transientHash<Vector<2, Field>>`; `PathStep.sibling` and `PoolEntry.poolRoot` are `Field`; public `rootOfRoots` stays `Bytes<32>` (DD-10). `@mmr/merkle/poseidon` `PoseidonHasher` calls compact-runtime's own `transientHash` (no re-implementation); digest = Field's 32-byte LE image (`Field as Bytes<32>`). Indexer trees + root-of-roots default to it (`commitHasher` split off for depth/flow commitments). KAT: honest witness passes; all tamper cases revert, plus new: pre-migration `CompactHasher` roots rejected, non-canonical digest rejected, pool-leaf/node hash equivalence pinned (safe by fixed path depth) | **done (32 KAT tests; 140 total)** |
+| 2026-10-20 | **H1 (TS half)** — `@mmr/prover/depth-openings`: `assembleDepthOpenings` builds, per active member slot, the contracted-band (`terms.bandBps`) `(minBid,minAsk)` series + its Merkle opening against the wallet's `depth_root` (via `openBand`); `verifyDepthOpenings` checks the band leaf is the exact reconstruction of the witness series (`bandSeriesLeaf`, new export in `@mmr/indexer/commit`) **and** opens to `depth_root`; `uptimeFromOpenings` recomputes I6 from the bound values and equals the oracle's `uptimeBuckets`. Demo + CLI now assert `depthBound`. Tests: openings verify, oracle-equivalence, tamper (inflated bucket), wrong band, corrupted path. Also fixed: `pnpm install` was missing `@midnight-ntwrk/compact-runtime` in this container (declared by `@mmr/merkle`), which had left `epoch.test.ts` red here. **Circuit half (laptop):** add per-slot depth witness (band series + path), reconstruct `bandSeriesLeaf` in Compact, `verifyBandOpening` against `leaves[j].depth_root`, fold series into I6 — this TS module is its known-answer spec | **done (TS: +5 prover tests, 69 green in merkle+indexer+prover; circuit edit pending)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -75,11 +76,22 @@ that already exist and are tested against in-memory fakes.
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
 Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved).
+H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remains.
 
-- [ ] **H1** — bind `bidMin`/`askMin` to each leaf's `depth_root` and select the
-      contracted band (I6). Today the depth witnesses are unconstrained. Pick the
-      depth-tree hash here (Poseidon, to match the slot trees) and move
-      `commitHasher` off `Sha256Hasher`.
+- [ ] **H1 (circuit half)** — bind `bidMin`/`askMin` to each leaf's `depth_root`
+      and select the contracted band (I6). The TS reference is
+      `@mmr/prover/depth-openings` (+ `bandSeriesLeaf` in `@mmr/indexer/commit`):
+      reconstruct the band leaf from the per-slot depth witness, `verifyBandOpening`
+      against `leaves[j].depth_root`, fold the series into the I6 sum. Open
+      decisions to settle **with the compiler in the loop**:
+      (a) witness the band series as a **dense fixed 48-bucket** vector (maps
+      straight to `Vector<48>`, easiest in Compact) vs the sparse `encodeBandSeries`
+      the TS currently commits — if dense, change `encodeBandSeries`/`bandSeriesLeaf`
+      to match and the prover tests will flag any divergence;
+      (b) the band tree is **shallow** (one leaf per band), so its hash can stay
+      `commitHasher` = `Sha256Hasher` (persistentHash) — no Poseidon needed, unlike
+      the depth-16 slot tree. Keep `uptimeFromOpenings == oracle.uptimeBuckets` as
+      the KAT.
 - [ ] **M1** — I7 round-trip cap: open `flow_root` per window in-circuit
       (TS openings already exist).
 - [ ] **H3** — timestamps from a trusted source.

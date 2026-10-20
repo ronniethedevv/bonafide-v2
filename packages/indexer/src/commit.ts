@@ -132,6 +132,22 @@ export function verifyBandOpening(
   return digestsEqual(h, depthRoot);
 }
 
+/**
+ * The committed leaf digest for one band's bucket series — exactly the leaf the
+ * depth tree stores for `bandBps`. The epoch circuit reconstructs this from its
+ * per-slot depth witness and checks the band opening against the leaf's
+ * `depth_root` (H1); this is the off-chain mirror of that reconstruction, so the
+ * witness depth cannot be fabricated. Byte image is identical to the leaf
+ * `openBand` returns for the same series.
+ */
+export function bandSeriesLeaf(
+  hasher: Hasher,
+  bandBps: number,
+  series: ReadonlyArray<{ bucket: number; minBid: bigint; minAsk: bigint }>,
+): Digest {
+  return hasher.hashLeaf(encodeBandSeries(bandBps, series));
+}
+
 // One leaf per window, so the epoch circuit can open a single window from
 // flow_root to enforce the round-trip cap (I7) without revealing the whole series.
 function flowWindowLeaf(hasher: Hasher, w: FlowWindowSample): Digest {

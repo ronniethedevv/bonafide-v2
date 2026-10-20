@@ -20,6 +20,11 @@ import {
 import { Sha256Hasher } from "@mmr/merkle";
 import { createEngagement, type Engagement, type EngagementTerms } from "./engagement.js";
 import { assembleWitness, verifyWitness } from "./openings.js";
+import {
+  assembleDepthOpenings,
+  uptimeFromOpenings,
+  verifyDepthOpenings,
+} from "./depth-openings.js";
 import { evaluateEpoch, type EpochVerdict } from "./oracle.js";
 
 const DEMO_POOL = 0xabcdn;
@@ -105,6 +110,8 @@ class DemoProvider implements ChainProvider {
 export interface DemoResult {
   rootOfRootsHex: string;
   witnessValid: boolean;
+  /** H1: every contracted-band depth opening verifies and reproduces the uptime. */
+  depthBound: boolean;
   verdict: EpochVerdict;
   engagement: Engagement;
   poolCount: number;
@@ -139,9 +146,22 @@ export async function runDemoEpoch(): Promise<DemoResult> {
     settled: true,
   });
 
+  // H1: open each wallet's contracted-band depth against its committed depth_root
+  // (the demo's commit hasher defaults to Sha256Hasher, same as `hasher`), and
+  // confirm the bound depth reproduces the oracle's uptime.
+  const depthOpenings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, RANGE);
+  const depthRootByAddr = new Map(
+    tree.leaves.filter((l) => l.addr !== 0n).map((l) => [l.addr, l.depthRoot]),
+  );
+  const depthBound =
+    verifyDepthOpenings(hasher, depthRootByAddr, depthOpenings, TERMS.bandBps) &&
+    uptimeFromOpenings(depthOpenings, bucketsPerEpoch(DEFAULT_CONFIG), TERMS.depthTarget) ===
+      verdict.uptimeBuckets;
+
   return {
     rootOfRootsHex: epoch.rootOfRoots.rootHex(),
     witnessValid,
+    depthBound,
     verdict,
     engagement,
     poolCount: epoch.manifest.poolCount,
