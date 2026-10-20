@@ -39,12 +39,13 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **H4 (TS half)** — decision A1+B1 (DD-12): uptime pass threshold is a committed term (bucket count, matching the oracle's `minUptimeBuckets`), and `epochsTotal` is the committed contract length. `@mmr/watcher/verdict-log`: `EpochRecord` (mirrors an `epochUptime` entry), `deriveClaimFromRecords` (passed = records meeting the threshold over epochs 1..epochsTotal; a missing/failed epoch counts to total, not passed), `verifyClaimAgainstRecords` (denominator must equal the committed total; passed must equal the derived count). Tests: honest verifies, inflated passed rejected, wrong denominator rejected, out-of-range records ignored, stricter threshold credits fewer, passed never exceeds total. Threshold/total are explicit params for now — committing them in `Terms` is **atomic with the circuit** (commitTerms + circuit `Terms` struct + registration + KAT), deferred to the laptop session (DD-12). **Circuit half (laptop):** read the two terms, iterate 1..epochsTotal over `epochUptime`, assert claimed counters == counts | **done (TS: +7 watcher tests, 13 green; Terms-commit + circuit edit pending)** |
 | 2026-10-20 | **M2(a) (circuit)** — `epoch_proof.compact` I5 sign fix (DD-11): `assert(xferOut + fromTreasury <= xferIn + t.disposal_D)` (was `xferOut <= xferIn + D + fromTreasury`, which granted the loan as outflow budget). Now agrees with the oracle. KAT harness `buildScenario` takes wallet-A metric overrides (tree rebuilt, so openings stay valid). New KAT: loan-rug (`xfer_out == from_treasury`, `xfer_in` = loan only) reverts, D+1 reverts, exactly-D passes, non-loan inflow still funds outflow. Verified against a draft build of the old formula: the rug and D+1 cases **passed** there (bug reproduced), so the tests bite | **done (+4 KAT tests; 36 KAT, 166 total)** |
 | 2026-10-20 | **H1 (circuit)** — `epoch_proof.compact` binds member depth to `depth_root`: new `struct BandSeries { band_bps: Uint<64>, bid/ask: Vector<48, Uint<128>> }` and `witness depthPaths(): Vector<16, Vector<2, PathStep>>`; per member slot, `verifyBandPath(transientHash<BandSeries>({t.band_bps, bidMin[j], askMin[j]}), depthPaths[j], L.depth_root)` ("depth_root opening mismatch (H1)"), then the existing masked I6 fold. **Decision (DD-13): dense 48-bucket series, fixed depth-2 band tree, Poseidon** (see DD-13). TS: `@mmr/indexer` `encodeBandSeries` is now the dense LE `BandSeries` image (+ `denseBandSeries`, `BAND_SERIES_BUCKETS`, `BAND_TREE_DEPTH`); flow leaf is the LE `FlowWindow` image; tree padding is a hashable empty leaf (was `hashLeaf(empty)`, which Poseidon cannot hash); `PoseidonHasher` gains the band (1544 B) + flow (36 B) layouts; `buildEpoch` `commitHasher` defaults to `PoseidonHasher`; depth/flow-openings tests + `runDemoEpoch` use it. KAT: harness commits real member `depth_root`s (`memberDepth`); 3 H2 depth tests now commit their member depth instead of mutating it post-hoc (same masking property); new H1 block: inflated minBid, tampered minAsk, band-path sibling, flipped direction, other band with its own valid path, Sha256Hasher `depth_root` — all revert; the prover's `assembleDepthOpenings` output is the circuit witness and circuit uptime == `uptimeFromOpenings` == oracle `uptimeBuckets` (43). Verified against a draft of the pre-H1 circuit: all 6 tamper cases **passed** there | **done (+7 KAT, +5 indexer tests)** |
+| 2026-10-20 | **M1 (circuit)** — I7 now enforced in `epoch_proof.compact`. **Decision (DD-14): `flow_root` = `transientHash<FlowSeries { buy, sell: Vector<48, Uint<128>> }>` over the wallet's WHOLE dense series, no per-window tree** — per-window openings let the prover choose which windows to open, i.e. omit round-trip-heavy ones (completeness hole), and per-id cross-slot aggregation is costly in-circuit. New witnesses `flowBuy`/`flowSell: Vector<16, Vector<48, Uint<128>>>`; per member slot `assert(transientHash<FlowSeries>(…) as Bytes<32> == L.flow_root, "flow_root opening mismatch (M1)")`; then per window over members `rt_w = min(Σbuy, Σsell)`, `gross_w = Σbuy + Σsell` (`map`/`fold` over a window-index vector, reusing the masked `bidSum`), `assert(roundTrip·1e6 <= ppm·gross, "round-trip cap (I7)")`. TS: `@mmr/indexer` `commitFlow` = hash of the dense `FlowSeries` image (`FLOW_WINDOWS`, `denseFlowSeries`, `openFlow`, `verifyFlowOpening` replace `openWindow`/`verifyWindowOpening`); `PoseidonHasher` flow layout is now `FlowSeries` (1536 B); `@mmr/prover/flow-openings` carries the dense series (`assembleFlowOpenings(engagement, activities)` — no hasher needed); its "corrupted path" test (no path any more) became "omitted window rejected" + "series swapped between wallets rejected". Oracle unchanged. KAT: prover openings as witness, rt/gross == oracle sums (130/330), cap enforced at the exact boundary (ppm 393 940 holds, 393 939 reverts, as `roundTripCapHolds`); deflated sell, omitted window, swapped series, Sha256 `flow_root` all revert; non-member/padding flow masked. Verified against a draft of the pre-M1 circuit: all 5 reject cases **passed** there | **done (+6 KAT, +1 prover tests)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 178 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
+Total: 185 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -81,17 +82,12 @@ that already exist and are tested against in-memory fakes.
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
-Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved).
-H1 done (TS + circuit, 2026-10-20).
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2(a), H1, M1.
 
 - [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
       `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
-- [ ] **M1 (circuit half)** — I7 round-trip cap. **TS half done** (status log
-      2026-10-20): `@mmr/prover/flow-openings` assembles/verifies per-window
-      `flow_root` openings and reproduces the oracle's round-trip/gross. Circuit
-      edit remaining: open each window from `leaves[j].flow_root`, aggregate per
-      window across slots, enforce `rt·1e6 ≤ ppm·gross`. `flow-openings.ts` is the
-      known-answer spec; keep the KAT in the loop.
+- [x] **M1 (circuit half)** — done (status log 2026-10-20, DD-14): whole dense
+      `FlowSeries` committed as `flow_root`, I7 cap enforced; KAT green.
 - [ ] **H3** — timestamps from a trusted source.
 - [ ] **H4 (circuit half + Terms commit)** — `claim` must verify the epochs it
       credits. **TS half done** (status log 2026-10-20, DD-12):
@@ -188,9 +184,18 @@ H1 done (TS + circuit, 2026-10-20).
   the earlier note that the band tree could stay `Sha256Hasher`: everything the
   circuit verifies is Poseidon. The opened leaf carries `t.band_bps`, so only
   the contracted band opens; its index is not checked. Proving requires
-  `bucketsPerEpoch == 48` and ≤ 4 bands (`DEFAULT_CONFIG`). The flow leaf
-  (`FlowWindow`, 36 B LE) and its zero-flow padding are set here only so
-  `flow_root` is Poseidon-hashable; M1 finalizes the flow tree shape.
+  `bucketsPerEpoch == 48` and ≤ 4 bands (`DEFAULT_CONFIG`). The flow
+  commitment is settled by DD-14.
+
+- **DD-14** (M1) `flow_root` is `transientHash<FlowSeries { buy: Vector<48,
+  Uint<128>>, sell: Vector<48, Uint<128>> }>` — the hash of the wallet's WHOLE
+  dense per-window series (window = 30-min bucket index, 0 = no trade), with no
+  per-window tree. The circuit rebuilds it from the full witness, so every window
+  is in the I7 sum. Chosen over per-window leaves + paths (the TS-half spec):
+  there the prover picks which windows to open and can omit round-trip-heavy
+  ones, and aggregating arbitrary window ids across 16 slots in-circuit is
+  costly. Windows outside [0, 48) cannot be committed (the indexer throws); the
+  oracle, which aggregates any window id, agrees on every committable input.
 
 ## Open decisions (carry from spec)
 

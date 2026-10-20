@@ -10,8 +10,9 @@ import {
   commitFlow,
   openBand,
   verifyBandOpening,
-  openWindow,
-  verifyWindowOpening,
+  FLOW_WINDOWS,
+  openFlow,
+  verifyFlowOpening,
 } from "./commit.js";
 import type { DepthBucketSample, FlowWindowSample } from "./provider.js";
 
@@ -95,37 +96,42 @@ describe("flow commitment", () => {
   });
 });
 
-describe("flow window openings (I7)", () => {
+describe("flow opening: whole dense series (I7, DD-14)", () => {
   const windows: FlowWindowSample[] = [
     { window: 0, buy: 5n, sell: 7n },
     { window: 1, buy: 9n, sell: 2n },
     { window: 2, buy: 4n, sell: 4n },
   ];
 
-  it("opens each window against flow_root", () => {
+  it("opens the dense series against flow_root", () => {
     const root = commitFlow(hasher, windows);
-    for (const w of windows) {
-      const opening = openWindow(hasher, windows, w.window);
-      expect(opening.buy).toBe(w.buy);
-      expect(opening.sell).toBe(w.sell);
-      expect(verifyWindowOpening(hasher, root, opening)).toBe(true);
-    }
+    const opening = openFlow(windows);
+    expect(opening.buy.length).toBe(FLOW_WINDOWS);
+    expect([opening.buy[1], opening.sell[1], opening.buy[47]]).toEqual([9n, 2n, 0n]);
+    expect(verifyFlowOpening(hasher, root, opening)).toBe(true);
   });
 
-  it("rejects an opening with tampered amounts", () => {
+  it("rejects tampered amounts and an omitted window", () => {
     const root = commitFlow(hasher, windows);
-    const opening = openWindow(hasher, windows, 1);
-    expect(verifyWindowOpening(hasher, root, { ...opening, sell: 999n })).toBe(false);
+    const tampered = openFlow(windows);
+    tampered.sell[1] = 999n;
+    expect(verifyFlowOpening(hasher, root, tampered)).toBe(false);
+    const omitted = openFlow(windows);
+    omitted.buy[0] = 0n;
+    omitted.sell[0] = 0n;
+    expect(verifyFlowOpening(hasher, root, omitted)).toBe(false);
   });
 
   it("rejects an opening against a different flow_root", () => {
-    const opening = openWindow(hasher, windows, 0);
     const otherRoot = commitFlow(hasher, [{ window: 0, buy: 1n, sell: 1n }]);
-    expect(verifyWindowOpening(hasher, otherRoot, opening)).toBe(false);
+    expect(verifyFlowOpening(hasher, otherRoot, openFlow(windows))).toBe(false);
   });
 
-  it("throws for a missing window", () => {
-    expect(() => openWindow(hasher, windows, 99)).toThrow(/not present/);
+  it("rejects out-of-range and duplicate windows", () => {
+    expect(() => commitFlow(hasher, [{ window: FLOW_WINDOWS, buy: 1n, sell: 1n }])).toThrow(RangeError);
+    expect(() => commitFlow(hasher, [
+      { window: 3, buy: 1n, sell: 1n }, { window: 3, buy: 2n, sell: 2n },
+    ])).toThrow(/duplicate/);
   });
 });
 
@@ -161,13 +167,12 @@ describe("dense band series + fixed-depth band tree (H1 circuit layout)", () => 
     ])).toThrow(/duplicate/);
   });
 
-  it("PoseidonHasher commits and opens depth and flow (padding leaves are hashable)", () => {
+  it("PoseidonHasher commits and opens depth (padded band tree) and flow", () => {
     const root = commitDepth(poseidon, buckets, [50, 100, 200]); // one padded position
     expect(verifyBandOpening(poseidon, root, openBand(poseidon, buckets, [50, 100, 200], 200))).toBe(true);
     const w: FlowWindowSample[] = [
       { window: 0, buy: 5n, sell: 7n }, { window: 1, buy: 9n, sell: 2n }, { window: 4, buy: 1n, sell: 1n },
     ];
-    const flowRoot = commitFlow(poseidon, w);
-    expect(verifyWindowOpening(poseidon, flowRoot, openWindow(poseidon, w, 4))).toBe(true);
+    expect(verifyFlowOpening(poseidon, commitFlow(poseidon, w), openFlow(w))).toBe(true);
   });
 });

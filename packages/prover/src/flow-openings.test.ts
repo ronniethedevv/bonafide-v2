@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildEpoch,
   DEFAULT_CONFIG,
+  FLOW_WINDOWS,
   InMemoryPublisher,
   type AddressActivity,
   type ChainProvider,
@@ -100,13 +101,6 @@ class TestProvider implements ChainProvider {
   }
 }
 
-/** A wrong but canonical (< field modulus) sibling: flip the LE low bit. */
-function flipLowBit(d: Digest): Digest {
-  const out = d.slice();
-  out[0] = out[0]! ^ 1;
-  return out;
-}
-
 async function buildFixture() {
   const hasher = new PoseidonHasher();
   const epoch = await buildEpoch(
@@ -129,17 +123,17 @@ async function buildFixture() {
 }
 
 describe("M1 flow openings (I7)", () => {
-  it("every window opening verifies against the wallet's flow_root", async () => {
+  it("every wallet's full flow series verifies against its flow_root", async () => {
     const { hasher, engagement, flowRootByAddr } = await buildFixture();
-    const openings = assembleFlowOpenings(hasher, engagement, ACTIVITIES);
+    const openings = assembleFlowOpenings(engagement, ACTIVITIES);
     expect(openings.length).toBe(2);
-    expect(openings.every((o) => o.windows.length === 2)).toBe(true);
+    expect(openings.every((o) => o.opening.buy.length === FLOW_WINDOWS)).toBe(true);
     expect(verifyFlowOpenings(hasher, flowRootByAddr, openings)).toBe(true);
   });
 
   it("round-trip and gross from the bound openings equal the oracle's sums", async () => {
-    const { hasher, engagement } = await buildFixture();
-    const openings = assembleFlowOpenings(hasher, engagement, ACTIVITIES);
+    const { engagement } = await buildFixture();
+    const openings = assembleFlowOpenings(engagement, ACTIVITIES);
 
     const verdict = evaluateEpoch(engagement, ACTIVITIES, DEFAULT_CONFIG, RANGE, { settled: true });
     const totals = roundTripFromOpenings(openings);
@@ -155,32 +149,39 @@ describe("M1 flow openings (I7)", () => {
 
   it("tampering an opened flow value breaks the binding (flow is not free)", async () => {
     const { hasher, engagement, flowRootByAddr } = await buildFixture();
-    const openings = assembleFlowOpenings(hasher, engagement, ACTIVITIES);
+    const openings = assembleFlowOpenings(engagement, ACTIVITIES);
 
     // Deflate wallet A's window-0 sell to shrink round-trip volume.
-    const forged = openings.map((o) =>
-      o.addr !== WALLET_A
-        ? o
-        : { ...o, windows: o.windows.map((w) => (w.window === 0 ? { ...w, sell: 0n } : w)) },
-    );
+    const forged = openings.map((o) => {
+      if (o.addr !== WALLET_A) return o;
+      const sell = [...o.opening.sell];
+      sell[0] = 0n;
+      return { ...o, opening: { ...o.opening, sell } };
+    });
     expect(verifyFlowOpenings(hasher, flowRootByAddr, forged)).toBe(false);
   });
 
-  it("a corrupted Merkle path is rejected", async () => {
+  it("omitting a window is rejected: the whole series is committed (DD-14)", async () => {
     const { hasher, engagement, flowRootByAddr } = await buildFixture();
-    const openings = assembleFlowOpenings(hasher, engagement, ACTIVITIES);
+    const openings = assembleFlowOpenings(engagement, ACTIVITIES);
 
-    const corrupted = openings.map((o, i) => {
-      if (i !== 0) return o;
-      const windows = o.windows.map((w, j) => {
-        if (j !== 0 || w.path.length === 0) return w;
-        const path = w.path.map((step, k) =>
-          k === 0 ? { ...step, sibling: flipLowBit(step.sibling) } : step,
-        );
-        return { ...w, path };
-      });
-      return { ...o, windows };
+    // Drop wallet A's window 0 entirely (its round-trip-heavy window).
+    const omitted = openings.map((o) => {
+      if (o.addr !== WALLET_A) return o;
+      const buy = [...o.opening.buy];
+      const sell = [...o.opening.sell];
+      buy[0] = 0n;
+      sell[0] = 0n;
+      return { ...o, opening: { buy, sell } };
     });
-    expect(verifyFlowOpenings(hasher, flowRootByAddr, corrupted)).toBe(false);
+    expect(roundTripFromOpenings(omitted).roundTripVolume).toBeLessThan(130n); // would help a cheat
+    expect(verifyFlowOpenings(hasher, flowRootByAddr, omitted)).toBe(false);
+  });
+
+  it("a series opened against another wallet's flow_root is rejected", async () => {
+    const { hasher, engagement, flowRootByAddr } = await buildFixture();
+    const [a, b] = assembleFlowOpenings(engagement, ACTIVITIES);
+    const swapped = [{ ...a!, opening: b!.opening }, { ...b!, opening: a!.opening }];
+    expect(verifyFlowOpenings(hasher, flowRootByAddr, swapped)).toBe(false);
   });
 });

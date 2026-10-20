@@ -4,16 +4,17 @@
 // can open only the contracted band (keeping leaves small, per the spec). Each
 // band leaf commits to that band's per-bucket (minBid, minAsk) series.
 //
-// flow_root commits to per-window (buy, sell) totals for the round-trip check.
+// flow_root commits to the wallet's per-window (buy, sell) totals for the
+// round-trip check (I7): a single leaf over the whole dense series.
 //
 // Leaf preimages are the byte images of Compact structs (little-endian Uints),
 // so PoseidonHasher can decode them and hash exactly as the circuit's
-// transientHash does (H1):
+// transientHash does (H1, M1):
 //   band leaf   BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>,
 //                            ask: Vector<48, Uint<128>> }          (1544 B)
-//   flow leaf   FlowWindow { window: Uint<32>, buy: Uint<128>, sell: Uint<128> } (36 B)
-// The band series is DENSE: a fixed 48-bucket vector (missing buckets are 0),
-// matching the circuit's depth witness. The band tree has a fixed depth of
+//   flow leaf   FlowSeries { buy: Vector<48, Uint<128>>, sell: Vector<48, Uint<128>> } (1536 B)
+// Both series are DENSE: fixed 48-entry vectors (missing buckets/windows are 0),
+// matching the circuit's depth and flow witnesses. The band tree has a fixed depth of
 // BAND_TREE_DEPTH (padded with an empty band-0 leaf), so the circuit's path is a
 // fixed-length vector.
 
@@ -195,84 +196,67 @@ export function bandSeriesLeaf(
   return hasher.hashLeaf(encodeBandSeries(bandBps, series));
 }
 
-// One leaf per window, so the epoch circuit can open a single window from
-// flow_root to enforce the round-trip cap (I7) without revealing the whole series.
-function flowWindowLeaf(hasher: Hasher, w: FlowWindowSample): Digest {
-  if (!Number.isInteger(w.window) || w.window < 0 || w.window > 0xffffffff) {
-    throw new RangeError(`window out of range: ${w.window}`);
+/** Windows in the circuit's dense flow witness: one per 30-min bucket (`Vector<48, Uint<128>>`). */
+export const FLOW_WINDOWS = 48;
+
+/**
+ * Dense form of a wallet's flow: (buy, sell) per window 0..47, 0 where the wallet
+ * did not trade. This is exactly the circuit's per-slot flow witness
+ * (flowBuy[j], flowSell[j]). Windows outside [0, 48) cannot be committed.
+ */
+export function denseFlowSeries(windows: readonly FlowWindowSample[]): { buy: bigint[]; sell: bigint[] } {
+  const buy = new Array<bigint>(FLOW_WINDOWS).fill(0n);
+  const sell = new Array<bigint>(FLOW_WINDOWS).fill(0n);
+  const seen = new Set<number>();
+  for (const w of windows) {
+    if (!Number.isInteger(w.window) || w.window < 0 || w.window >= FLOW_WINDOWS) {
+      throw new RangeError(`window out of range [0, ${FLOW_WINDOWS}): ${w.window}`);
+    }
+    if (seen.has(w.window)) throw new Error(`duplicate window ${w.window} in flow series`);
+    seen.add(w.window);
+    buy[w.window] = w.buy;
+    sell[w.window] = w.sell;
   }
-  return hasher.hashLeaf(
-    concat([encodeUintLE(BigInt(w.window), 32), encodeUintLE(w.buy, 128), encodeUintLE(w.sell, 128)]),
-  );
+  return { buy, sell };
 }
 
-/** Padding for unused flow-tree positions: a zero-flow leaf (adds nothing to rt or gross). */
-const emptyFlowLeaf = (hasher: Hasher): Digest =>
-  flowWindowLeaf(hasher, { window: 0, buy: 0n, sell: 0n });
-
-function flowTree(hasher: Hasher, sorted: readonly FlowWindowSample[]) {
-  return balancedTree(hasher, sorted.map((w) => flowWindowLeaf(hasher, w)), emptyFlowLeaf(hasher));
+/** Byte image of the circuit's FlowSeries struct: buy[0..48] | sell[0..48], 16 B LE each. */
+function encodeFlowSeries(buy: readonly bigint[], sell: readonly bigint[]): Uint8Array {
+  if (buy.length !== FLOW_WINDOWS || sell.length !== FLOW_WINDOWS) {
+    throw new RangeError(`flow series must have ${FLOW_WINDOWS} windows`);
+  }
+  return concat([...buy.map((v) => encodeUintLE(v, 128)), ...sell.map((v) => encodeUintLE(v, 128))]);
 }
 
-function sortedFlowWindows(
-  windows: readonly FlowWindowSample[],
-): FlowWindowSample[] {
-  return [...windows].sort((a, b) => a.window - b.window);
-}
-
+/**
+ * flow_root is the hash of the wallet's WHOLE dense flow series (a single leaf,
+ * no tree). The circuit rebuilds it from the full witness, so every window is
+ * always in the I7 sum: a prover cannot omit a round-trip-heavy window (M1, DD-14).
+ */
 export function commitFlow(
   hasher: Hasher,
   windows: readonly FlowWindowSample[],
 ): Digest {
-  const sorted = sortedFlowWindows(windows);
-  return flowTree(hasher, sorted).root;
+  const { buy, sell } = denseFlowSeries(windows);
+  return hasher.hashLeaf(encodeFlowSeries(buy, sell));
 }
 
-export interface WindowOpening {
-  window: number;
-  buy: bigint;
-  sell: bigint;
-  index: number;
-  leaf: Digest;
-  path: PathStep[];
+/** A wallet's full flow series, opened from flow_root (the circuit's flow witness). */
+export interface FlowOpening {
+  buy: bigint[];
+  sell: bigint[];
 }
 
-/** Open a single window from flow_root, for the epoch circuit's round-trip check. */
-export function openWindow(
-  hasher: Hasher,
-  windows: readonly FlowWindowSample[],
-  window: number,
-): WindowOpening {
-  const sorted = sortedFlowWindows(windows);
-  const index = sorted.findIndex((w) => w.window === window);
-  if (index < 0) throw new Error(`window ${window} not present`);
-  const w = sorted[index]!;
-  const { layers } = flowTree(hasher, sorted);
-  const path: PathStep[] = [];
-  let idx = index;
-  for (let l = 0; l < layers.length - 1; l++) {
-    const cur = layers[l]!;
-    const weAreRight = (idx & 1) === 1;
-    const sibIdx = weAreRight ? idx - 1 : idx + 1;
-    path.push({ sibling: cur[sibIdx]!, weAreRight });
-    idx >>= 1;
-  }
-  return { window: w.window, buy: w.buy, sell: w.sell, index, leaf: flowWindowLeaf(hasher, w), path };
+/** Open a wallet's flow_root: its dense per-window (buy, sell) series. */
+export function openFlow(windows: readonly FlowWindowSample[]): FlowOpening {
+  return denseFlowSeries(windows);
 }
 
-export function verifyWindowOpening(
+/** The opened series reconstructs exactly the committed flow_root (the circuit's M1 check). */
+export function verifyFlowOpening(
   hasher: Hasher,
   flowRoot: Digest,
-  opening: WindowOpening,
+  opening: FlowOpening,
 ): boolean {
-  let h = flowWindowLeaf(hasher, {
-    window: opening.window,
-    buy: opening.buy,
-    sell: opening.sell,
-  });
-  if (!digestsEqual(h, opening.leaf)) return false;
-  for (const step of opening.path) {
-    h = step.weAreRight ? hasher.hashNode(step.sibling, h) : hasher.hashNode(h, step.sibling);
-  }
-  return digestsEqual(h, flowRoot);
+  return digestsEqual(hasher.hashLeaf(encodeFlowSeries(opening.buy, opening.sell)), flowRoot);
 }

@@ -89,6 +89,12 @@ struct PoolEntry { poolAddr: Uint<160>, poolRoot: Field }
 // ask[0..48](16 LE each) = 1544 B; PoseidonHasher decodes it back to this struct.
 struct BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>, ask: Vector<48, Uint<128>> }
 
+// M1 — flow_root is transientHash<FlowSeries> over the wallet's WHOLE dense per-window
+// (buy, sell) series (one window per 30-min bucket; no tree, DD-14), so every window is
+// in the I7 sum and none can be omitted. Byte image (@mmr/indexer commit.ts):
+// buy[0..48] | sell[0..48], 16 LE each = 1536 B.
+struct FlowSeries { buy: Vector<48, Uint<128>>, sell: Vector<48, Uint<128>> }
+
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
@@ -107,6 +113,10 @@ witness termsSalt(): Bytes<32>;
 witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
 witness askMin(): Vector<16, Vector<48, Uint<128>>>;
 witness depthPaths(): Vector<16, Vector<2, PathStep>>;
+// M1: per-slot dense flow series; for member slots, FlowSeries { flowBuy[j], flowSell[j] }
+// must hash to leaves[j].flow_root. Other slots' flow is masked out of I7 and unchecked.
+witness flowBuy(): Vector<16, Vector<48, Uint<128>>>;
+witness flowSell(): Vector<16, Vector<48, Uint<128>>>;
 
 // C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
 // slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
@@ -401,6 +411,23 @@ circuit verifyBandPath(leafHash: Field, path: Vector<2, PathStep>, root: Bytes<3
   assert((h2 as Bytes<32>) == root, "depth_root opening mismatch (H1)");
 }
 
+// I7: window w's round-trip volume min(Σbuy, Σsell) over member slots (bidSum masks
+// to members, as for depth).
+circuit windowRoundTrip(buy: Vector<16, Vector<48, Uint<128>>>,
+                        sell: Vector<16, Vector<48, Uint<128>>>,
+                        w: Uint<6>, m: Vector<16, Boolean>): Uint<132> {
+  const b = bidSum(buy, w, m);
+  const s = bidSum(sell, w, m);
+  return b < s ? b : s;
+}
+
+// I7: window w's gross volume Σbuy + Σsell over member slots.
+circuit windowGross(buy: Vector<16, Vector<48, Uint<128>>>,
+                    sell: Vector<16, Vector<48, Uint<128>>>,
+                    w: Uint<6>, m: Vector<16, Boolean>): Uint<133> {
+  return bidSum(buy, w, m) + bidSum(sell, w, m);
+}
+
 // I1 + H2 (closes L1): active wallets fill slots [0, n), are non-zero and strictly
 // increasing; every padding slot [n, 16) is exactly 0. Mirrors the oracle's
 // sortedAppendOnly. Interior zeros ([a, 0, b]) are rejected.
@@ -454,6 +481,8 @@ export circuit proveEpoch(
   const bid = bidMin();
   const ask = askMin();
   const dp = depthPaths();
+  const fb = flowBuy();
+  const fs = flowSell();
 
   // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
   verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
@@ -475,6 +504,9 @@ export circuit proveEpoch(
         verifyBandPath(transientHash<BandSeries>(BandSeries {
                          band_bps: t.band_bps, bid: bid[j], ask: ask[j] }),
                        dp[j], L.depth_root);
+        // M1: this member's flow witness is the whole series committed in flow_root.
+        assert((transientHash<FlowSeries>(FlowSeries { buy: fb[j], sell: fs[j] }) as Bytes<32>)
+                 == L.flow_root, "flow_root opening mismatch (M1)");
       } else {
         assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
                "non-membership low-leaf does not bracket (I2)");
@@ -548,9 +580,21 @@ export circuit proveEpoch(
   // Member depth is bound to depth_root above (H1); non-member depth is masked by pf.
   const uptime = uptimeCount(bid, ask, t.depth_target, pf);
 
-  // I7: round-trip cap — per window, min(buy, sell) is round-trip volume.
-  // Flow-root opening and per-window aggregation are omitted in this skeleton;
-  // same min(buy,sell)/gross ≤ ppm pattern as the reference oracle.
+  // I7: round-trip cap — per window, rt_w = min(Σbuy, Σsell), gross_w = Σbuy + Σsell over
+  // member slots (flow bound to flow_root above, M1); then
+  // roundTrip / gross <= ppm / 1e6, written roundTrip * 1e6 <= ppm * gross (no division).
+  // Widths: rt_w <= 2^132, so Σ48 < 2^138; gross_w <= 2^133, so Σ48 < 2^139.
+  const windows: Vector<48, Uint<6>> = [
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47];
+  const rtVec = map((w: Uint<6>): Uint<132> => windowRoundTrip(fb, fs, w, pf), windows);
+  const grossVec = map((w: Uint<6>): Uint<133> => windowGross(fb, fs, w, pf), windows);
+  const roundTrip = fold((acc: Uint<138>, x: Uint<132>): Uint<138> => (acc + x) as Uint<138>,
+                         0 as Uint<138>, rtVec);
+  const gross = fold((acc: Uint<139>, x: Uint<133>): Uint<139> => (acc + x) as Uint<139>,
+                     0 as Uint<139>, grossVec);
+  assert(roundTrip * 1000000 <= t.roundtrip_share_ppm * gross, "round-trip cap (I7)");
 
   // I8 is enforced by the caller: proveEpoch is accepted only if >=2/3 attesters
   // signed rootOfRoots for `epoch` and its challenge window passed unchallenged.

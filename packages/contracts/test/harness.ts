@@ -27,7 +27,10 @@ import {
   zeroMetrics,
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField } from "@mmr/merkle/poseidon";
-import { DEFAULT_CONFIG, type DepthBucketSample, commitDepth, openBand } from "@mmr/indexer";
+import {
+  DEFAULT_CONFIG, type DepthBucketSample, type FlowWindowSample,
+  commitDepth, commitFlow, openBand, openFlow,
+} from "@mmr/indexer";
 
 // KAT_EPOCH_BUILD overrides the compiled-contract dir (e.g. to test a draft circuit).
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
@@ -71,6 +74,8 @@ export interface EpochWitness {
   bidMin: bigint[][];
   askMin: bigint[][];
   depthPaths: PathStepW[][];
+  flowBuy: bigint[][];
+  flowSell: bigint[][];
   slotPaths: PathStepW[][];
   poolEntry: { poolAddr: bigint; poolRoot: bigint };
   poolPath: PathStepW[];
@@ -174,23 +179,29 @@ export function buildScenario(
    * bucket; other members carry 0.
    */
   memberDepth: Partial<Record<number, MemberDepth>> = { 0: flatDepth(10n) },
-  /** Hasher for depth_root (H1). Only PoseidonHasher matches the circuit's transientHash. */
-  depthHasher: Hasher = hasher,
+  /** Hasher for depth_root / flow_root (H1, M1). Only PoseidonHasher matches the circuit. */
+  commitHasher: Hasher = hasher,
+  /** Flow windows per MEMBER slot (0 = A, 2.. = extras), committed in flow_root (M1). Default: none. */
+  memberFlow: Partial<Record<number, FlowWindowSample[]>> = {},
+  /** Hasher for flow_root only (defaults to commitHasher); isolates the M1 check in tests. */
+  flowHasher: Hasher = commitHasher,
 ): Scenario {
+  const flowOf = (slot: number): FlowWindowSample[] => memberFlow[slot] ?? [];
   const depthOf = (slot: number): MemberDepth => memberDepth[slot] ?? flatDepth(0n);
-  const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number, depth?: MemberDepth): Leaf => ({
+  // Member leaves (slot given) commit real depth/flow; other pool leaves get filler roots.
+  const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number, slot?: number): Leaf => ({
     addr, nextAddr: 0n, isProtocol: false,
     metrics: { ...zeroMetrics(), ...over },
-    depthRoot: depth ? commitDepth(depthHasher, depthSamples(depth), BANDS) : fill32(tag),
-    flowRoot: fill32(tag + 1),
+    depthRoot: slot === undefined ? fill32(tag) : commitDepth(commitHasher, depthSamples(depthOf(slot)), BANDS),
+    flowRoot: slot === undefined ? fill32(tag + 1) : commitFlow(flowHasher, flowOf(slot)),
   });
   const tree = IndexedMerkleTree.build(hasher, [
     leaf(WALLET_A, { baseStart: 900n, baseEnd: 1_000n, quoteEnd: 5n, lpBase: 7n, lpQuote: 3n,
                      xferIn: 4n, xferOut: 2n, swapBaseIn: 50n, swapBaseOut: 60n,
-                     swapQuoteIn: 120n, swapQuoteOut: 100n, ...walletA }, 0xa0, depthOf(0)),
+                     swapQuoteIn: 120n, swapQuoteOut: 100n, ...walletA }, 0xa0, 0),
     leaf(OTHER_C, { baseEnd: 77n }, 0xc0),
     leaf(OTHER_D, { baseEnd: 88n, xferOut: 9n }, 0xd0),
-    ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0, depthOf(k + 2))),
+    ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0, k + 2)),
   ]);
   const ror = RootOfRoots.build(hasher, 7, [
     { poolAddr: 0xa1n, poolRoot: fill32(0x11) },
@@ -219,16 +230,22 @@ export function buildScenario(
     else { slotLeaves.push(toSlotLeaf(emptyLeaf(), false)); slotPaths.push(toPath(zeroPath)); }
   }
 
-  // Depth (H1): each member slot's dense series + its band opening against depth_root.
+  // Depth (H1) + flow (M1): each member slot's dense series + its band opening against
+  // depth_root; its full flow series (flow_root is that series' hash).
   const bidMin = zeroGrid();
   const askMin = zeroGrid();
+  const flowBuy = zeroGrid();
+  const flowSell = zeroGrid();
   const depthPaths = Array.from({ length: SLOTS }, () => ZERO_BAND_PATH);
   for (let j = 0; j < active.length; j++) {
     if (j === 1) continue; // B is not in the pool: no depth_root to open
     const d = depthOf(j);
     bidMin[j] = [...d.bid];
     askMin[j] = [...d.ask];
-    depthPaths[j] = toPath(openBand(depthHasher, depthSamples(d), BANDS, BAND).path);
+    depthPaths[j] = toPath(openBand(commitHasher, depthSamples(d), BANDS, BAND).path);
+    const f = openFlow(flowOf(j));
+    flowBuy[j] = f.buy;
+    flowSell[j] = f.sell;
   }
 
   return {
@@ -244,7 +261,7 @@ export function buildScenario(
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
       },
       termsSalt: fill32(0x7e),
-      bidMin, askMin, depthPaths, slotPaths,
+      bidMin, askMin, depthPaths, flowBuy, flowSell, slotPaths,
       poolEntry: { poolAddr: pool.poolAddr, poolRoot: toField(pool.poolRoot) },
       poolPath: toPath(pool.path),
     },
@@ -286,6 +303,8 @@ export async function runProveEpoch(
     bidMin: (c: { privateState: unknown }) => [c.privateState, w.bidMin],
     askMin: (c: { privateState: unknown }) => [c.privateState, w.askMin],
     depthPaths: (c: { privateState: unknown }) => [c.privateState, w.depthPaths],
+    flowBuy: (c: { privateState: unknown }) => [c.privateState, w.flowBuy],
+    flowSell: (c: { privateState: unknown }) => [c.privateState, w.flowSell],
     slotPaths: (c: { privateState: unknown }) => [c.privateState, w.slotPaths],
     poolEntry: (c: { privateState: unknown }) => [c.privateState, w.poolEntry],
     poolPath: (c: { privateState: unknown }) => [c.privateState, w.poolPath],

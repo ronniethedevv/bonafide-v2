@@ -13,19 +13,24 @@ import {
   IndexedMerkleTree,
   RootOfRoots,
   Sha256Hasher,
+  type Hasher,
   encodeLeaf,
   encodePoolLeaf,
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField, fieldToDigest } from "@mmr/merkle/poseidon";
 import {
   assembleDepthOpenings,
+  assembleFlowOpenings,
   buildWalletVector,
   commitTerms,
   commitWallets,
   createEngagement,
   evaluateEpoch,
+  roundTripCapHolds,
+  roundTripFromOpenings,
   uptimeFromOpenings,
   verifyDepthOpenings,
+  verifyFlowOpenings,
 } from "@mmr/prover";
 import {
   DEFAULT_CONFIG,
@@ -35,6 +40,7 @@ import {
   type AddressActivity,
   type DepthBucketSample,
   type EpochRange,
+  type FlowWindowSample,
 } from "@mmr/indexer";
 import {
   HAVE_BUILD,
@@ -391,6 +397,96 @@ describe.skipIf(!HAVE_BUILD)("H1: depth witness bound to depth_root (I6)", () =>
     expect(fromOpenings).toBe(verdict.uptimeBuckets);
     expect(r.uptime).toBe(BigInt(fromOpenings));
     expect(r.uptime).toBe(43n);
+  });
+});
+
+describe.skipIf(!HAVE_BUILD)("M1: flow witness bound to flow_root; round-trip cap (I7)", () => {
+  const M1 = /flow_root opening mismatch \(M1\)/;
+  const I7 = /round-trip cap \(I7\)/;
+  const run = (w: ReturnType<typeof buildScenario>["witness"], root: Uint8Array) =>
+    runProveEpoch(w, ID, root, EPOCH);
+  // The flow-openings.test.ts fixture, A in slot 0 and the extra member in slot 2:
+  //   window 0: buy Σ=100, sell Σ=150 -> rt=100 · window 1: buy Σ=50, sell Σ=30 -> rt=30
+  //   roundTrip = 130, gross = 330
+  const FLOW_A: FlowWindowSample[] = [{ window: 0, buy: 100n, sell: 100n }, { window: 1, buy: 50n, sell: 0n }];
+  const FLOW_C: FlowWindowSample[] = [{ window: 0, buy: 0n, sell: 50n }, { window: 1, buy: 0n, sell: 30n }];
+  const scenario = (flowHasher?: Hasher) =>
+    buildScenario(undefined, 1, {}, undefined, undefined, { 0: FLOW_A, 2: FLOW_C }, flowHasher);
+  const withPpm = (w: ReturnType<typeof buildScenario>["witness"], ppm: bigint) => {
+    const x = cloneWitness(w);
+    x.terms.roundtrip_share_ppm = ppm;
+    return x;
+  };
+
+  it("prover openings as witness: rt/gross == oracle sums; cap enforced at the exact boundary", async () => {
+    const s = scenario();
+    const wallets = s.witness.committedWallets.slice(0, Number(s.witness.activeCount));
+    const activities = new Map<bigint, AddressActivity>([
+      [wallets[0]!, { ...katActivity(wallets[0]!, depthSamples(flatDepth(10n))), flowWindows: FLOW_A }],
+      [wallets[2]!, { ...katActivity(wallets[2]!, depthSamples(flatDepth(0n))), flowWindows: FLOW_C }],
+    ]);
+    const engagement = createEngagement({
+      id: "m1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
+      terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
+               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND },
+    });
+    const openings = assembleFlowOpenings(engagement, activities);
+    const hasher = new PoseidonHasher();
+    const flowRootByAddr = new Map(s.tree.leaves.map((l) => [l.addr, l.flowRoot] as const));
+    expect(openings.map((o) => o.slot)).toEqual([0, 2]);
+    expect(verifyFlowOpenings(hasher, flowRootByAddr, openings)).toBe(true);
+
+    const totals = roundTripFromOpenings(openings);
+    const verdict = evaluateEpoch(engagement, activities, DEFAULT_CONFIG, KAT_RANGE, { settled: true });
+    expect(totals).toEqual({ roundTripVolume: verdict.sums.roundTripVolume, grossVolume: verdict.sums.grossVolume });
+    expect(totals).toEqual({ roundTripVolume: 130n, grossVolume: 330n });
+
+    // Circuit witness = the prover's openings.
+    const w = cloneWitness(s.witness);
+    for (const o of openings) { w.flowBuy[o.slot] = o.opening.buy; w.flowSell[o.slot] = o.opening.sell; }
+    await expect(run(w, s.rootOfRoots)).resolves.toMatchObject({ uptime: 48n });
+
+    // 130·1e6 vs ppm·330: 393_940 -> 130_000_200 (holds), 393_939 -> 129_999_870 (breach).
+    for (const [ppm, holds] of [[393_940n, true], [393_939n, false]] as const) {
+      expect(roundTripCapHolds(totals, ppm)).toBe(holds);
+      const p = run(withPpm(w, ppm), s.rootOfRoots);
+      if (holds) await expect(p).resolves.toMatchObject({ uptime: 48n });
+      else await expect(p).rejects.toThrow(I7);
+    }
+  });
+
+  it("rejects a deflated sell on a member slot (leaf mismatch)", async () => {
+    const { rootOfRoots, witness } = scenario();
+    const w = cloneWitness(witness);
+    w.flowSell[0]![0] = 0n; // would drop window-0 rt from 100 to 0
+    await expect(run(w, rootOfRoots)).rejects.toThrow(M1);
+  });
+
+  it("rejects omitting a window (whole series is committed, DD-14)", async () => {
+    const { rootOfRoots, witness } = scenario();
+    const w = cloneWitness(witness);
+    w.flowBuy[0]![0] = 0n; w.flowSell[0]![0] = 0n;
+    await expect(run(w, rootOfRoots)).rejects.toThrow(M1);
+  });
+
+  it("rejects swapping two members' flow series", async () => {
+    const { rootOfRoots, witness } = scenario();
+    const w = cloneWitness(witness);
+    [w.flowBuy[0], w.flowBuy[2]] = [witness.flowBuy[2]!, witness.flowBuy[0]!];
+    [w.flowSell[0], w.flowSell[2]] = [witness.flowSell[2]!, witness.flowSell[0]!];
+    await expect(run(w, rootOfRoots)).rejects.toThrow(M1);
+  });
+
+  it("rejects a flow_root committed with Sha256Hasher (only PoseidonHasher matches)", async () => {
+    const { rootOfRoots, witness } = scenario(new Sha256Hasher());
+    await expect(run(witness, rootOfRoots)).rejects.toThrow(M1);
+  });
+
+  it("non-member and padding flow is masked out of I7 (and unchecked)", async () => {
+    const { rootOfRoots, witness } = buildScenario(); // members carry no flow: rt = gross = 0
+    const w = withPpm(witness, 0n);                  // 0·1e6 <= 0·0 holds
+    for (const j of [1, 5]) { w.flowBuy[j]!.fill(100n); w.flowSell[j]!.fill(100n); }
+    await expect(run(w, rootOfRoots)).resolves.toMatchObject({ uptime: 48n });
   });
 });
 

@@ -17,7 +17,7 @@
 //   encodeLeaf      ( 297 B) -> SlotLeafCore -> transientHash<SlotLeafCore>
 //   encodePoolLeaf  (  52 B) -> PoolEntry    -> transientHash<PoolEntry>
 //   band leaf       (1544 B) -> BandSeries   -> transientHash<BandSeries>  (depth_root, H1)
-//   flow leaf       (  36 B) -> FlowWindow   -> transientHash<FlowWindow>  (flow_root, M1)
+//   flow leaf       (1536 B) -> FlowSeries   -> transientHash<FlowSeries>  (flow_root, M1)
 // (band/flow images are built by @mmr/indexer commit.ts.) Any other preimage
 // throws: wallet/terms commitments are persistentCommit, not tree leaves (DD-8).
 //
@@ -31,7 +31,6 @@ import { BITS } from "./uint.js";
 /** A CompactType built from parts, the way the compiler emits struct descriptors. */
 type Desc = rt.CompactType<unknown>;
 
-const U32 = new rt.CompactTypeUnsignedInteger((1n << 32n) - 1n, 4);
 const U64 = new rt.CompactTypeUnsignedInteger((1n << 64n) - 1n, 8);
 const U160 = new rt.CompactTypeUnsignedInteger((1n << 160n) - 1n, BITS.ADDR / 8);
 const U128 = new rt.CompactTypeUnsignedInteger((1n << 128n) - 1n, BITS.U128 / 8);
@@ -74,15 +73,16 @@ const BAND_SERIES: readonly Part[] = [
   uint(U64, 8),
   ...Array.from({ length: 2 * 48 }, () => uint(U128, 16)),
 ];
-// FlowWindow (I7 / M1): { window: Uint<32>, buy: Uint<128>, sell: Uint<128> }.
-const FLOW_WINDOW: readonly Part[] = [uint(U32, 4), uint(U128, 16), uint(U128, 16)];
+// FlowSeries in epoch_proof.compact (I7 / M1): { buy: Vector<48, Uint<128>>,
+// sell: Vector<48, Uint<128>> }. flow_root is this leaf's hash (no tree).
+const FLOW_SERIES: readonly Part[] = Array.from({ length: 2 * 48 }, () => uint(U128, 16));
 
 const imageLen = (parts: readonly Part[]) => parts.reduce((s, p) => s + p.n, 0);
 const LAYOUTS = new Map<number, readonly Part[]>([
   [imageLen(SLOT_LEAF_CORE), SLOT_LEAF_CORE], // 297
   [imageLen(POOL_ENTRY), POOL_ENTRY],         // 52
   [imageLen(BAND_SERIES), BAND_SERIES],       // 1544
-  [imageLen(FLOW_WINDOW), FLOW_WINDOW],       // 36
+  [imageLen(FLOW_SERIES), FLOW_SERIES],       // 1536
 ]);
 
 /** Decode a leaf image into a struct value and hash it as the circuit does. */
@@ -119,7 +119,7 @@ export class PoseidonHasher implements Hasher {
     const layout = LAYOUTS.get(preimage.length);
     if (!layout) {
       throw new RangeError(
-        `PoseidonHasher hashes only slot (297 B) / pool (52 B) / band (1544 B) / flow (36 B) leaf images, got ${preimage.length} B`,
+        `PoseidonHasher hashes only slot (297 B) / pool (52 B) / band (1544 B) / flow (1536 B) leaf images, got ${preimage.length} B`,
       );
     }
     return fieldToDigest(hashStruct(layout, preimage));
