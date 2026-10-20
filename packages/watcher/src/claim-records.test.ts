@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  MAX_EPOCHS,
   deriveClaimFromRecords,
+  planClaimWitness,
   verifyClaimAgainstRecords,
   type EpochRecord,
 } from "./verdict-log.js";
@@ -57,5 +59,41 @@ describe("H4 claim derivation from on-chain records", () => {
     const claim = deriveClaimFromRecords("eng", 1, sparse, THRESHOLD, TOTAL);
     expect(claim.epochsPassed).toBe(1);
     expect(claim.epochsPassed).toBeLessThanOrEqual(claim.epochsTotal);
+  });
+});
+
+describe("H4 claim witness plan (DD-15)", () => {
+  it("lays out MAX_EPOCHS slots; slot s binds epoch s+1", () => {
+    const plan = planClaimWitness(RECORDS, THRESHOLD, TOTAL);
+    expect(plan.slots.length).toBe(MAX_EPOCHS);
+    expect(plan.slots.every((s) => s.epoch === s.slot + 1)).toBe(true);
+  });
+
+  it("credited slots and count match deriveClaimFromRecords", () => {
+    const plan = planClaimWitness(RECORDS, THRESHOLD, TOTAL);
+    const derived = deriveClaimFromRecords("eng", 2, RECORDS, THRESHOLD, TOTAL);
+    expect(plan.epochsPassed).toBe(derived.epochsPassed); // 3
+    expect(plan.epochsPassed).toBe(plan.slots.filter((s) => s.credited).length);
+    // epoch 1 (48) & 2 (44) & 5 (46) credited; epoch 3 (40) present but below threshold
+    expect(plan.slots[0]).toMatchObject({ epoch: 1, present: true, credited: true });
+    expect(plan.slots[2]).toMatchObject({ epoch: 3, present: true, credited: false });
+    expect(plan.slots[3]).toMatchObject({ epoch: 4, present: false, credited: false });
+  });
+
+  it("drops records outside the contracted range (slots >= epochsTotal are empty)", () => {
+    const withExtra = [...RECORDS, { epoch: 6, uptime: 48 }];
+    const plan = planClaimWitness(withExtra, THRESHOLD, TOTAL);
+    expect(plan.slots[5]).toMatchObject({ epoch: 6, present: false, credited: false });
+    expect(plan.epochsPassed).toBe(3);
+  });
+
+  it("a withheld record only lowers the count", () => {
+    const withheld = RECORDS.filter((r) => r.epoch !== 1); // drop the epoch-1 pass
+    expect(planClaimWitness(withheld, THRESHOLD, TOTAL).epochsPassed).toBe(2);
+  });
+
+  it("rejects epochsTotal outside 1..MAX_EPOCHS", () => {
+    expect(() => planClaimWitness(RECORDS, THRESHOLD, 0)).toThrow();
+    expect(() => planClaimWitness(RECORDS, THRESHOLD, MAX_EPOCHS + 1)).toThrow();
   });
 });

@@ -181,6 +181,78 @@ export function verifyClaimAgainstRecords(
   return claim.epochsPassed === expected.epochsPassed;
 }
 
+/**
+ * The compile-time bound on the claim loop (DD-15): `epoch_proof.claim` iterates a
+ * fixed `MAX_EPOCHS` slots regardless of the real `epochsTotal`, so the number of
+ * iterations never leaks the contract length. `epochsTotal` must be <= this.
+ */
+export const MAX_EPOCHS = 90;
+
+/** One slot of the claim witness: slot `s` (0-based) corresponds to epoch `s + 1`. */
+export interface ClaimSlot {
+  readonly slot: number;
+  readonly epoch: number;
+  /**
+   * The record the MM presents for this slot, or null when nothing is presented
+   * (epoch outside the contracted range, no on-ledger record, or deliberately
+   * withheld). A null slot gets the genesis path on-chain and never counts.
+   */
+  readonly record: EpochRecord | null;
+  /** Whether a record is presented here (mirrors the circuit's `claimRecordPresent`). */
+  readonly present: boolean;
+  /** present && epoch within range && uptime meets the threshold — this slot is credited. */
+  readonly credited: boolean;
+}
+
+export interface ClaimWitnessPlan {
+  readonly slots: readonly ClaimSlot[]; // exactly MAX_EPOCHS
+  readonly epochsPassed: number;
+  readonly epochsTotal: number;
+}
+
+/**
+ * Assemble the claim witness layout the production claim-builder feeds to
+ * `epoch_proof.claim` (DD-15): a fixed MAX_EPOCHS-slot vector of present flags and
+ * the record presented in each slot, plus the resulting counters. Slot `s` binds
+ * epoch `s + 1`; a slot is credited only when `s < epochsTotal`, a record is
+ * presented, and its uptime meets `minUptimeBuckets`. Records outside the
+ * contracted range are dropped; absent/withheld epochs are left empty (genesis
+ * path on-chain) and only lower the count.
+ *
+ * This produces everything the claim witness needs EXCEPT the raw
+ * `MerkleTreePath<20, EpochRecord>` for each presented record — those are read from
+ * the published `epochRecords` tree at claim time via the ledger's
+ * `findPathForLeaf`, a chain-state operation outside this package. `epochsPassed`
+ * here equals `deriveClaimFromRecords(...).epochsPassed` by construction.
+ */
+export function planClaimWitness(
+  records: readonly EpochRecord[],
+  minUptimeBuckets: number,
+  epochsTotal: number,
+): ClaimWitnessPlan {
+  if (!Number.isInteger(epochsTotal) || epochsTotal < 1 || epochsTotal > MAX_EPOCHS) {
+    throw new RangeError(`epochsTotal must be in 1..${MAX_EPOCHS}, got ${epochsTotal}`);
+  }
+  // Latest record wins per epoch; only epochs within the contracted range are usable.
+  const byEpoch = new Map<number, EpochRecord>();
+  for (const r of records) {
+    if (r.epoch >= 1 && r.epoch <= epochsTotal) byEpoch.set(r.epoch, r);
+  }
+
+  const slots: ClaimSlot[] = [];
+  let epochsPassed = 0;
+  for (let slot = 0; slot < MAX_EPOCHS; slot++) {
+    const epoch = slot + 1;
+    const inRange = slot < epochsTotal;
+    const record = inRange ? byEpoch.get(epoch) ?? null : null;
+    const present = record !== null;
+    const credited = present && record!.uptime >= minUptimeBuckets;
+    if (credited) epochsPassed++;
+    slots.push({ slot, epoch, record, present, credited });
+  }
+  return { slots, epochsPassed, epochsTotal };
+}
+
 export function summarizeLog(entries: readonly EpochLogEntry[]): LogSummary {
   const scored = entries.filter((e) => e.scored);
   const passed = scored.filter((e) => e.verdict.pass).length;
