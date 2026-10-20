@@ -13,6 +13,7 @@ import {
   HAVE_BOND_BUILD,
   HAVE_REG_BUILD,
   buildScenario,
+  runBond,
   runBondGate,
   runRegister,
   type BondGate,
@@ -28,16 +29,24 @@ describe.skipIf(!HAVE_BOND_BUILD)("H3: bond window gates use block time", () => 
     ["defaultEngagement", 86_400n, /proving window open/],   // deadline + 24h
   ];
 
+  // Every gate runs against a posted bond (M3: release needs something escrowed).
+  const posted = () => runBond("postBond", [ID, 0n, { bytes: new Uint8Array(32).fill(0xbe) }], {
+    coin: { nonce: new Uint8Array(32).fill(1), color: new Uint8Array(32).fill(2), value: 100n },
+  });
+
   for (const [gate, window, err] of gates) {
     it(`${gate}: reverts one second before the window ends, passes at the end`, async () => {
+      const { state } = await posted();
       const end = ANCHOR + window;
-      await expect(runBondGate(gate, ID, ANCHOR, end - 1n)).rejects.toThrow(err);
-      await expect(runBondGate(gate, ID, ANCHOR, end)).resolves.toBeUndefined();
+      await expect(runBondGate(gate, ID, ANCHOR, end - 1n, { state, amount: 1n })).rejects.toThrow(err);
+      await expect(runBondGate(gate, ID, ANCHOR, end, { state, amount: 1n })).resolves.toBeDefined();
     });
   }
 
   it("releaseEpoch long before the window ends reverts (no caller 'now' to forge)", async () => {
-    await expect(runBondGate("releaseEpoch", ID, ANCHOR, ANCHOR + 60n)).rejects.toThrow(/challenge window open/);
+    const { state } = await posted();
+    await expect(runBondGate("releaseEpoch", ID, ANCHOR, ANCHOR + 60n, { state, amount: 1n }))
+      .rejects.toThrow(/challenge window open/);
   });
 });
 

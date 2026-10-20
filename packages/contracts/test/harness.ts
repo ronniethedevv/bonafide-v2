@@ -448,19 +448,61 @@ export function callerAccepts(reg: Registered, r: ProveResult): boolean {
   return eq(reg.walletCommit, r.walletCommit) && eq(reg.termsCommit, r.termsCommit);
 }
 
-// --- bond (H3: window gates read block time) ----------------------------------
+// --- bond (H3: window gates read block time; M3: real shielded custody) ----------
 
 export type BondGate = "releaseEpoch" | "voidUnfunded" | "defaultEngagement";
 
+export interface CoinW { nonce: Uint8Array; color: Uint8Array; value: bigint }
+export interface ZswapOutputW { coinInfo: CoinW; recipient: { is_left: boolean; left: { bytes: Uint8Array }; right: { bytes: Uint8Array } } }
+
+export interface BondRun {
+  state: rt.ChargedState;
+  /** Zswap outputs the call created (where value went). */
+  outputs: ZswapOutputW[];
+  /** Zswap inputs the call spent (escrowed coins). */
+  inputs: CoinW[];
+  escrowed: (CoinW & { mt_index: bigint }) | undefined;
+  slashed: boolean;
+}
+
+/** The caller's coin public key in every bond call (ownPublicKey() in-circuit). */
+export const BOND_CALLER_PK = new Uint8Array(32);
+
 /**
- * Execute one of bond's time-gated circuits at `blockTime` (the trusted "now").
- * `anchor` is the gate's reference time (settledAt / registeredAt / deadline).
+ * Execute one bond circuit at `blockTime` (the trusted "now") against `state`.
+ * `coin` is the bondCoin witness (postBond only).
  */
-export async function runBondGate(gate: BondGate, id: Uint8Array, anchor: bigint, blockTime: bigint): Promise<void> {
+export async function runBond(
+  circuit: "postBond" | BondGate,
+  args: readonly unknown[],
+  opts: { state?: rt.ChargedState | undefined; blockTime?: bigint; coin?: CoinW } = {},
+): Promise<BondRun> {
   const mod = await import(BOND_BUILD_DIR);
-  const unused = () => { throw new Error("bond witness not used by time gates"); };
-  const contract = new mod.Contract({ bondCoin: unused, bondSalt: unused });
-  contract.circuits[gate](freshContext(contract, undefined, blockTime), id, anchor);
+  const contract = new mod.Contract({
+    bondCoin: (c: { privateState: unknown }) => {
+      if (!opts.coin) throw new Error("bondCoin witness only for postBond");
+      return [c.privateState, opts.coin];
+    },
+  });
+  const res = contract.circuits[circuit](freshContext(contract, opts.state, opts.blockTime), ...args);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const led = mod.ledger(after);
+  const id = args[0] as Uint8Array;
+  const z = res.context.currentZswapLocalState as { outputs: ZswapOutputW[]; inputs: CoinW[] };
+  return {
+    state: after, outputs: z.outputs, inputs: z.inputs,
+    escrowed: led.escrowed.member(id) ? led.escrowed.lookup(id) : undefined,
+    slashed: led.slashed.member(id) && led.slashed.lookup(id),
+  };
+}
+
+/** Run a time gate with its anchor; release also takes a tranche amount. */
+export async function runBondGate(
+  gate: BondGate, id: Uint8Array, anchor: bigint, blockTime: bigint,
+  opts: { state?: rt.ChargedState | undefined; amount?: bigint } = {},
+): Promise<BondRun> {
+  const args = gate === "releaseEpoch" ? [id, anchor, opts.amount ?? 0n] : [id, anchor];
+  return runBond(gate, args, { state: opts.state, blockTime });
 }
 
 // --- H4: a run of proven epochs, then claim ----------------------------------------

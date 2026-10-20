@@ -4,23 +4,27 @@
 // defaults in the product spec. Bonds are shielded USDM on Midnight (v1);
 // cross-chain slashing via VIA Labs is deferred.
 //
-// The bond keeps the MM's treasury unlinked from the engagement: it is escrowed
-// as a shielded token, so the amount and source are private. Only "a valid bond
-// of at least the tier minimum exists" is disclosed.
+// The bond keeps the MM's treasury unlinked from the engagement: it arrives as a
+// shielded token, so its source is private.
 //
-// NOTE on receiveShielded: the real postBond must call receiveShielded(coin) to
-// take on-chain custody. That call requires a "declared disclosure" annotation
-// (Compact 0.31.x privacy analysis). The skeleton omits it; the full
-// implementation will add that annotation once the ZSwap API is finalised.
+// M3: the bond is REAL shielded custody. postBond receives the MM's coin into the
+// contract (receiveShielded) and keeps it as a contract-owned qualified coin; release,
+// void and slash spend it with sendShielded to the recorded owner or beneficiary, with
+// any change returned to escrow. Compact requires the coin to be disclosed to do so
+// (declared disclosure), so the bond's VALUE and color are public in contract state —
+// the MM's treasury stays unlinked (the coin is shielded until it reaches the
+// contract), but "amount private" no longer holds for a custodial bond.
 
 pragma language_version 0.23.0;
 
 import CompactStandardLibrary;
 
-// escrow: map coin-nonce -> escrowed value; tracks shielded USDM held by contract.
-// (In production the ZSwap-native coin balance replaces this map.)
-export ledger escrow: Map<Bytes<32>, Uint<128>>;
-export ledger bondOf: Map<Bytes<32>, Bytes<32>>;   // engagement id -> bond commitment
+// M3: engagement id -> the escrowed bond coin, held by this contract.
+export ledger escrowed: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+// Where a release / void returns value (the poster's coin key) and where a slash sends
+// it (the client, fixed at posting so the MM cannot redirect it).
+export ledger bondOwner: Map<Bytes<32>, ZswapCoinPublicKey>;
+export ledger bondBeneficiary: Map<Bytes<32>, ZswapCoinPublicKey>;
 export ledger slashed: Map<Bytes<32>, Boolean>;
 
 // Timing defaults (seconds) — Compact 0.31.x does not allow top-level const,
@@ -33,27 +37,44 @@ export ledger slashed: Map<Bytes<32>, Boolean>;
 // arguments; they must come from ledger state (settlement / registration records).
 
 witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
-witness bondSalt(): Bytes<32>;
 
-// Post a shielded bond for an engagement. Amount stays private; we disclose only
-// that a bond >= the tier minimum was posted.
-export circuit postBond(id: Bytes<32>, tierMin: Uint<128>): [] {
-  const coin = bondCoin();
+// Pay `amount` out of id's escrowed coin to `to`; the change (if any) stays escrowed.
+circuit payOut(id: Bytes<32>, to: ZswapCoinPublicKey, amount: Uint<128>): [] {
+  const coin = escrowed.lookup(id);
+  assert(amount <= coin.value, "release exceeds escrow (M3)");
+  const sent = sendShielded(coin, left<ZswapCoinPublicKey, ContractAddress>(to), amount);
+  if (sent.change.is_some) {
+    escrowed.insertCoin(id, sent.change.value, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  } else {
+    escrowed.remove(id);
+  }
+}
+
+// Post a shielded bond for an engagement: the coin moves into this contract's custody.
+// `beneficiary` (the client) receives the bond if the engagement defaults.
+export circuit postBond(id: Bytes<32>, tierMin: Uint<128>, beneficiary: ZswapCoinPublicKey): [] {
+  const key = disclose(id);
+  assert(!escrowed.member(key), "bond already posted");
+  // Declared disclosure: a contract can only take custody of a coin it can see.
+  const coin = disclose(bondCoin());
   assert(coin.value >= tierMin, "bond below tier minimum");
-  // NOTE: receiveShielded(coin) omitted — needs declared-disclosure annotation.
-  // Tracking the commitment is sufficient for the skeleton's state machine.
-  const bc = persistentCommit<ShieldedCoinInfo>(coin, bondSalt());
-  bondOf.insert(disclose(id), disclose(bc));
-  escrow.insert(disclose(coin.nonce), disclose(coin.value));
+  receiveShielded(coin);
+  escrowed.insertCoin(key, coin, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bondOwner.insert(key, ownPublicKey());
+  bondBeneficiary.insert(key, disclose(beneficiary));
 }
 
 // Release the bond automatically once an epoch's proof is accepted and its
 // challenge window has passed. No client veto (I8 gates acceptance upstream).
-export circuit releaseEpoch(id: Bytes<32>, settledAt: Uint<64>): [] {
+// `amount` is this epoch's tranche (the tranche schedule is not yet specified); it
+// always goes to the bond's owner, never above what is escrowed.
+export circuit releaseEpoch(id: Bytes<32>, settledAt: Uint<64>, amount: Uint<128>): [] {
   const CHALLENGE: Uint<64> = 43200;   // 12h
   assert(blockTimeGte((disclose(settledAt) + CHALLENGE) as Uint<64>), "challenge window open");
-  assert(!slashed.member(disclose(id)) || !slashed.lookup(disclose(id)), "already slashed");
-  // Partial release logic (per-epoch tranche) omitted in this skeleton.
+  const key = disclose(id);
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  assert(escrowed.member(key), "no bond escrowed (M3)");
+  payOut(key, bondOwner.lookup(key), disclose(amount));
 }
 
 // Anyone can void an unfunded engagement after the funding window — no penalty.
@@ -61,6 +82,10 @@ export circuit voidUnfunded(id: Bytes<32>, registeredAt: Uint<64>): [] {
   const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
   assert(blockTimeGte((disclose(registeredAt) + FUNDING_WINDOW) as Uint<64>), "funding window open");
   // transition handled jointly with registration.status; bond returned in full.
+  const key = disclose(id);
+  if (escrowed.member(key)) {
+    payOut(key, bondOwner.lookup(key), escrowed.lookup(key).value);
+  }
 }
 
 // Default once the proving window passes with no valid proof (grace handled by
@@ -68,5 +93,11 @@ export circuit voidUnfunded(id: Bytes<32>, registeredAt: Uint<64>): [] {
 export circuit defaultEngagement(id: Bytes<32>, deadline: Uint<64>): [] {
   const PROVING: Uint<64> = 86400;   // 24h after challenge
   assert(blockTimeGte((disclose(deadline) + PROVING) as Uint<64>), "proving window open");
-  slashed.insert(disclose(id), true);
+  const key = disclose(id);
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  slashed.insert(key, true);
+  // M3: the whole escrowed bond goes to the beneficiary fixed at posting.
+  if (escrowed.member(key)) {
+    payOut(key, bondBeneficiary.lookup(key), escrowed.lookup(key).value);
+  }
 }

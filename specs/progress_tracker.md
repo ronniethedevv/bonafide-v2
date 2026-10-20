@@ -43,12 +43,13 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **M2(b) (circuit)** — I5 carry-forward across epochs in `epoch_proof.compact`: `struct CarryTotals { xfer_in, xfer_out, from_treasury: Uint<192> }`, `ledger carryCommitment: Map<Bytes<32>, Bytes<32>>` (engagement id → salted commitment), witnesses `carryPrev`/`carryPrevSalt`/`carryNewSalt`. Mirrors `carryStep`: if an entry exists, `persistentCommit<CarryTotals>(prev, prevSalt)` must equal it ("carry-forward chain broken (M2)"); **genesis = no entry, and prev must then be zero** ("carry-forward genesis not zero (M2)" — else a first epoch could claim phantom prior inflow as budget); add this epoch's member sums; `assert(cum.xfer_out + cum.from_treasury <= cum.xfer_in + D, "cumulative outflow cap (I5, M2)")`; insert the new commitment under a fresh salt. Per-epoch I5 unchanged. TS spec unchanged: `carryCommit` with `CompactHasher` byte-matches the ledger value (`genesisCarry` ≡ the circuit's absent-entry branch). Harness: carry witnesses (genesis default) and optional ledger `state` in/out of `runProveEpoch` to chain epochs; `ledgerUptime` now reads this epoch's own `EpochRef` key. KAT: 3 epochs × 40 out with D = 100 — epochs 1–2 prove with ledger == `carryStep` commitment, epoch 3 reverts on the cumulative cap while the same activity proves alone; understated prevTotals, wrong salt, non-zero genesis revert. On the pre-M2(b) circuit the genesis case is accepted and the chained cases fail (no carry ledger) | **done (+4 KAT)** |
 | 2026-10-20 | **H3 (trusted time)** — compiler-confirmed: Compact 0.31.1 exposes block time **only as comparisons** (`blockTimeLt/Lte/Gt/Gte(t: Uint<64>): Boolean`, checked on-chain against the tx block; `blockTime`/`blockTimeGreaterThan` are unbound). `bond.compact`: `nowTs` removed from `releaseEpoch`/`voidUnfunded`/`defaultEngagement`; each gate is `assert(blockTimeGte(anchor + WINDOW))`. `registration.register`: no block-time *value* exists to store in `registeredAt`, so the arg stays (renamed `registeredTs`) but is **verified**: `blockTimeGte(ts)` and `blockTimeLt(ts + 600)` — recorded time is within 10 min of the block. KAT (`test/time.kat.test.ts`, harness sets `QueryContext.block.secondsSinceEpoch`): every bond gate reverts at window end − 1 s and passes at window end; release 60 s after settlement reverts; register accepts ts = block time and block − 599 s, rejects block − 600 s and block + 1 s. Pre-H3 `bond` (ad-hoc probe): release 60 s after settlement **accepted** with a forged `nowTs`. `kat:build` now also builds `bond`. No TS circuit callers besides the harness (`@mmr/protocol` statemachine is an off-chain model with explicit times) | **done (+8 KAT); H3b open** |
 | 2026-10-20 | **H4 (claim verifies epochs) + Terms schema** — atomic (DD-9): `minUptimeBuckets` + `epochsTotal` (Uint<64>, after `band_bps`) added to `EngagementTerms`/`commitTerms` (`MAX_EPOCHS = 90`, enforced by `assertTerms`), the `Terms` struct in `registration.compact` **and** `epoch_proof.compact`, harness `TermsW` (+ `termsToEngagement`, now used by the byte-identity KAT), every TS literal; oracle I6 defaults to `terms.minUptimeBuckets`. **Decision (DD-15): `claim` moved into `epoch_proof.compact` and reads records privately** — see DD-15. `proveEpoch` appends `EpochRecord { id, epoch, uptime, termsCommit }` to `HistoricMerkleTree<20>` `epochRecords` (constructor seeds a zero genesis record); `claim` checks `persistentHash(secret) == engagementId` (closes claiming someone else's public records), opens terms → `tc`, for all 90 slots unconditionally `checkRoot(merkleTreePathRoot(path))` (a witness-gated ledger op would leak epochs_total — the compiler rejected it), for presented slots `e < epochs_total` asserts the leaf is `{id, e+1, tc}`, counts `uptime >= min_uptime_buckets`, asserts claimed `epochsPassed`/`epochsTotal` == count / committed total. Also fixed: the old claim reverted on any first claim (`Counter.lookup` of an absent key) — now `insertDefault`. `claim.compact` deleted (scripts/docs updated). KAT (register → 3 chained proveEpochs with carry → claim): honest 2/3 == `deriveClaimFromRecords`, counters (1, 2, 3), repeat claim reverts (I10); inflated passed, wrong denominator, fabricated record, record in wrong slot, foreign id, loosened threshold all revert; epoch beyond `epochs_total` not credited; withholding only lowers the count | **done (+8 KAT)** |
+| 2026-10-20 | **M3 (real bond custody)** — API confirmed with the compiler: `receiveShielded(ShieldedCoinInfo)`, `sendShielded(QualifiedShieldedCoinInfo, Either<ZswapCoinPublicKey, ContractAddress>, Uint<128>)` → `{ change: Maybe<…>, sent }`, `Map.insertCoin(key, coin, right(kernel.self()))`, `ownPublicKey()`. `bond.compact`: `postBond(id, tierMin, beneficiary)` discloses the coin (declared disclosure), `receiveShielded`s it and stores it as a contract-owned qualified coin in `escrowed[id]`, recording `bondOwner = ownPublicKey()` and the slash `bondBeneficiary` (the client; DD-16); one bond per engagement. `payOut` asserts `amount <= escrowed value` ("release exceeds escrow (M3)"), `sendShielded`s to the recipient and re-escrows the change. `releaseEpoch(id, settledAt, amount)` pays the owner; `voidUnfunded` returns the whole bond to the owner; `defaultEngagement` marks slashed and sends the whole remaining bond to the beneficiary. Removed the old `escrow`/`bondOf` maps and `bondSalt` witness. KAT (`test/bond.kat.test.ts`, runtime-simulated Zswap): post creates an output to the contract and escrows the coin; release 400 → 400 to owner + 600 change re-escrowed, then 600 drains it; release > escrow (1 001, and 601 after a partial) reverts; slash sends 1 000 (or the 700 left) to the beneficiary and blocks later release; void returns 1 000 to the owner; below-tier / double post revert. H3 gate tests now run against a posted bond. Pre-M3 `postBond` (probe): 0 Zswap outputs — no custody. **Privacy note:** custody requires disclosing the coin, so the bond value is public in contract state (the old skeleton already disclosed it in `escrow`) | **done (+7 KAT)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 205 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
+Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -85,7 +86,7 @@ that already exist and are tested against in-memory fakes.
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
-Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3 (H3b open), H4.
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3 (H3b open), H4, M3 (M3b open).
 
 - [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
       `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
@@ -102,7 +103,11 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
       `claim` inside `epoch_proof`, private record membership, Terms schema extended.
 - [x] **M2 (circuit half)** — done: (a) I5 sign fix; (b) carry-forward
       commitment ledger (status log 2026-10-20). KAT green.
-- [ ] **M3** — `bond.postBond` takes real custody (`receiveShielded`).
+- [x] **M3** — `bond.postBond` takes real shielded custody; release / void / slash move
+      real value (status log 2026-10-20, DD-16).
+- [ ] **M3b** — release tranche schedule: `releaseEpoch`'s `amount` is caller-chosen
+      (always paid to the owner, never above escrow) until the per-epoch tranche rule is
+      specified; tie it to proven epochs with H3b's anchors.
 - [ ] Proving benchmark / full keygen for `proveEpoch` (k, rows): see below.
 
 ## Immutable design decisions
@@ -209,6 +214,13 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   count) but cannot add one. Claim requires `persistentHash(secret) ==
   engagementId`. Tree depth 20 (~1M records) and 90 slots are the claim circuit's
   size drivers.
+
+- **DD-16** (M3) A defaulted engagement's bond goes to a **beneficiary key fixed
+  at `postBond`** (the client — the harmed party), so the MM cannot redirect it
+  later. The spec did not name a slash destination; burning
+  (`shieldedBurnAddress()`) or a protocol treasury are one-line alternatives.
+  Custody makes the bond value public (a contract can only hold a coin it can
+  see); the MM's treasury source stays shielded.
 
 ## Open decisions (carry from spec)
 
