@@ -64,6 +64,10 @@ export interface TermsW {
 
 export interface PathStepW { sibling: bigint; weAreRight: boolean }
 
+/** M2(b): cumulative member transfer totals (circuit CarryTotals). */
+export interface CarryTotalsW { xfer_in: bigint; xfer_out: bigint; from_treasury: bigint }
+export const ZERO_CARRY_W: CarryTotalsW = { xfer_in: 0n, xfer_out: 0n, from_treasury: 0n };
+
 export interface EpochWitness {
   committedWallets: bigint[];
   activeCount: bigint;
@@ -79,6 +83,10 @@ export interface EpochWitness {
   slotPaths: PathStepW[][];
   poolEntry: { poolAddr: bigint; poolRoot: bigint };
   poolPath: PathStepW[];
+  /** M2(b): previous cumulative totals + their salt, and the new commitment's salt. */
+  carryPrev: CarryTotalsW;
+  carryPrevSalt: Uint8Array;
+  carryNewSalt: Uint8Array;
 }
 
 export function toSlotLeaf(leaf: Leaf, present: boolean): SlotLeafW {
@@ -261,6 +269,7 @@ export function buildScenario(
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
       },
       termsSalt: fill32(0x7e),
+      carryPrev: { ...ZERO_CARRY_W }, carryPrevSalt: fill32(0), carryNewSalt: fill32(0xc1), // genesis
       bidMin, askMin, depthPaths, flowBuy, flowSell, slotPaths,
       poolEntry: { poolAddr: pool.poolAddr, poolRoot: toField(pool.poolRoot) },
       poolPath: toPath(pool.path),
@@ -282,15 +291,40 @@ export interface ProveResult {
   termsCommit: Uint8Array;
   /** Ledger value written for this (id, epoch), read back from the new state. */
   ledgerUptime: bigint | undefined;
+  /** M2(b): carryCommitment[id] after the call (undefined on a pre-M2(b) build). */
+  carryCommitment: Uint8Array | undefined;
+  /** Contract state after the call; pass to the next runProveEpoch to chain epochs. */
+  state: rt.ChargedState;
 }
 
 const COIN_PK = "0".repeat(64);
+
+/** A struct descriptor from (field, descriptor) pairs, as the compiler emits them. */
+function structType<T extends object>(
+  fields: readonly (readonly [keyof T & string, rt.CompactType<any>])[],
+): rt.CompactType<T> {
+  return {
+    alignment: () => fields.flatMap(([, d]) => d.alignment()),
+    toValue: (v: T) => fields.flatMap(([k, d]) => d.toValue((v as Record<string, unknown>)[k])),
+    fromValue: () => { throw new Error("structType: fromValue unused"); },
+  } as unknown as rt.CompactType<T>;
+}
+const U64 = new rt.CompactTypeUnsignedInteger((1n << 64n) - 1n, 8);
+const U192 = new rt.CompactTypeUnsignedInteger((1n << 192n) - 1n, 24);
+/** epoch_proof EpochRef { id: Bytes<32>, epoch: Uint<64> } — the epochUptime key preimage. */
+const EPOCH_REF = structType<{ id: Uint8Array; epoch: bigint }>(
+  [["id", new rt.CompactTypeBytes(32)], ["epoch", U64]]);
+/** epoch_proof CarryTotals (M2(b)). */
+export const CARRY_TOTALS = structType<CarryTotalsW>(
+  [["xfer_in", U192], ["xfer_out", U192], ["from_treasury", U192]]);
 
 export async function runProveEpoch(
   w: EpochWitness,
   id: Uint8Array,
   rootOfRoots: Uint8Array,
   epoch: bigint,
+  /** Ledger state to run against (from a previous ProveResult); default a fresh contract. */
+  state?: rt.ChargedState,
 ): Promise<ProveResult> {
   const mod = await import(BUILD_DIR);
   const witnesses = {
@@ -308,24 +342,32 @@ export async function runProveEpoch(
     slotPaths: (c: { privateState: unknown }) => [c.privateState, w.slotPaths],
     poolEntry: (c: { privateState: unknown }) => [c.privateState, w.poolEntry],
     poolPath: (c: { privateState: unknown }) => [c.privateState, w.poolPath],
+    carryPrev: (c: { privateState: unknown }) => [c.privateState, w.carryPrev],
+    carryPrevSalt: (c: { privateState: unknown }) => [c.privateState, w.carryPrevSalt],
+    carryNewSalt: (c: { privateState: unknown }) => [c.privateState, w.carryNewSalt],
   };
   const contract = new mod.Contract(witnesses);
-  const res = contract.circuits.proveEpoch(freshContext(contract), id, rootOfRoots, epoch);
-  const led = mod.ledger(res.context.currentQueryContext.state);
-  let ledgerUptime: bigint | undefined;
-  for (const [, v] of led.epochUptime) ledgerUptime = v as bigint;
+  const res = contract.circuits.proveEpoch(freshContext(contract, state), id, rootOfRoots, epoch);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const led = mod.ledger(after);
+  const epochKey = rt.persistentHash(EPOCH_REF, { id, epoch });
+  const ledgerUptime = led.epochUptime.member(epochKey) ? led.epochUptime.lookup(epochKey) as bigint : undefined;
   const out = res.result as { uptime: bigint; walletCommit: Uint8Array; termsCommit: Uint8Array };
-  return { uptime: out.uptime, walletCommit: out.walletCommit, termsCommit: out.termsCommit, ledgerUptime };
+  return {
+    uptime: out.uptime, walletCommit: out.walletCommit, termsCommit: out.termsCommit, ledgerUptime,
+    carryCommitment: led.carryCommitment?.member(id) ? led.carryCommitment.lookup(id) as Uint8Array : undefined,
+    state: after,
+  };
 }
 
 interface CompiledContract {
   initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
 }
 
-function freshContext(contract: CompiledContract) {
+function freshContext(contract: CompiledContract, state?: rt.ChargedState) {
   const init = contract.initialState(rt.createConstructorContext({}, COIN_PK));
   return rt.createCircuitContext(
-    rt.dummyContractAddress(), COIN_PK, init.currentContractState.data, init.currentPrivateState,
+    rt.dummyContractAddress(), COIN_PK, state ?? init.currentContractState.data, init.currentPrivateState,
   );
 }
 

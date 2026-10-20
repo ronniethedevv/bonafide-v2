@@ -95,7 +95,16 @@ struct BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>, ask: Vector<
 // buy[0..48] | sell[0..48], 16 LE each = 1536 B.
 struct FlowSeries { buy: Vector<48, Uint<128>>, sell: Vector<48, Uint<128>> }
 
+// M2(b) — I5 carry-forward: running member transfer totals across the engagement's
+// proven epochs, committed as persistentCommit<CarryTotals>(totals, salt) (same family
+// as walletCommit/termsCommit; @mmr/prover carryCommit with CompactHasher is
+// byte-identical: SHA-256(salt ‖ 3 × 24 B LE)). Uint<192>: 2^64 epochs of Uint<128> headroom.
+struct CarryTotals { xfer_in: Uint<192>, xfer_out: Uint<192>, from_treasury: Uint<192> }
+
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
+// M2(b): engagement id -> salted commitment to its cumulative CarryTotals. Absent = genesis
+// (zero totals). The salt keeps the low-entropy totals hidden on the public ledger.
+export ledger carryCommitment: Map<Bytes<32>, Bytes<32>>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
 // H2: number of active wallets; they occupy slots [0, activeCount). Never disclosed.
@@ -117,6 +126,11 @@ witness depthPaths(): Vector<16, Vector<2, PathStep>>;
 // must hash to leaves[j].flow_root. Other slots' flow is masked out of I7 and unchecked.
 witness flowBuy(): Vector<16, Vector<48, Uint<128>>>;
 witness flowSell(): Vector<16, Vector<48, Uint<128>>>;
+// M2(b): the previous cumulative totals opened with their salt, and a fresh salt for
+// the new commitment. Never disclosed.
+witness carryPrev(): CarryTotals;
+witness carryPrevSalt(): Bytes<32>;
+witness carryNewSalt(): Bytes<32>;
 
 // C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
 // slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
@@ -575,6 +589,28 @@ export circuit proveEpoch(
   const xferOut = sumSlots16(xferOutVec, pf);
   const fromTreasury = sumSlots16(fromTreasuryVec, pf);
   assert(xferOut + fromTreasury <= xferIn + t.disposal_D, "outflow cap (I5)");
+
+  // M2(b): I5 across epochs — D is a lifetime budget. Mirrors @mmr/prover carryStep:
+  // open the prior commitment, add this epoch's member sums, check the cumulative cap,
+  // commit the new totals. Genesis (no entry) must open as zero, or a first epoch could
+  // claim phantom prior inflow as outflow budget.
+  const prev = carryPrev();
+  const key = disclose(id);
+  if (carryCommitment.member(key)) {
+    assert(persistentCommit<CarryTotals>(prev, carryPrevSalt()) == carryCommitment.lookup(key),
+           "carry-forward chain broken (M2)");
+  } else {
+    assert(prev.xfer_in == 0 && prev.xfer_out == 0 && prev.from_treasury == 0,
+           "carry-forward genesis not zero (M2)");
+  }
+  const cum = CarryTotals {
+    xfer_in: (prev.xfer_in + xferIn) as Uint<192>,
+    xfer_out: (prev.xfer_out + xferOut) as Uint<192>,
+    from_treasury: (prev.from_treasury + fromTreasury) as Uint<192>
+  };
+  assert(cum.xfer_out + cum.from_treasury <= cum.xfer_in + t.disposal_D,
+         "cumulative outflow cap (I5, M2)");
+  carryCommitment.insert(key, disclose(persistentCommit<CarryTotals>(cum, carryNewSalt())));
 
   // I6: uptime — count buckets with summed per-slot minimum depth >= target on both sides.
   // Member depth is bound to depth_root above (H1); non-member depth is masked by pf.

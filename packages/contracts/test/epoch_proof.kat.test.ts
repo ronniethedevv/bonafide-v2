@@ -22,15 +22,19 @@ import {
   assembleDepthOpenings,
   assembleFlowOpenings,
   buildWalletVector,
+  carryStep,
   commitTerms,
   commitWallets,
   createEngagement,
   evaluateEpoch,
+  genesisCarry,
   roundTripCapHolds,
   roundTripFromOpenings,
   uptimeFromOpenings,
   verifyDepthOpenings,
   verifyFlowOpenings,
+  ZERO_CARRY,
+  type CarryTotals,
 } from "@mmr/prover";
 import {
   DEFAULT_CONFIG,
@@ -56,6 +60,7 @@ import {
   BANDS,
   POOL,
   type MemberDepth,
+  type CarryTotalsW,
   runProveEpoch,
 } from "./harness.js";
 
@@ -487,6 +492,79 @@ describe.skipIf(!HAVE_BUILD)("M1: flow witness bound to flow_root; round-trip ca
     const w = withPpm(witness, 0n);                  // 0·1e6 <= 0·0 holds
     for (const j of [1, 5]) { w.flowBuy[j]!.fill(100n); w.flowSell[j]!.fill(100n); }
     await expect(run(w, rootOfRoots)).resolves.toMatchObject({ uptime: 48n });
+  });
+});
+
+describe.skipIf(!HAVE_BUILD)("M2(b): I5 carry-forward commitment across epochs", () => {
+  const CUM = /cumulative outflow cap \(I5, M2\)/;
+  const CHAIN = /carry-forward chain broken \(M2\)/;
+  const GENESIS = /carry-forward genesis not zero \(M2\)/;
+  // D = 100. Every epoch member A sends 40 out and receives nothing: per-epoch I5
+  // (40 <= 0 + 100) holds each epoch, but the lifetime total reaches 120 at epoch 3.
+  const scenario = () => buildScenario(undefined, 0, { xferIn: 0n, xferOut: 40n, fromTreasury: 0n });
+  const SUMS = { xferIn: 0n, xferOut: 40n, fromTreasury: 0n };
+  const D = 100n;
+  const salt = (k: number) => new Uint8Array(32).fill(0xc0 + k);
+  const toW = (t: CarryTotals): CarryTotalsW =>
+    ({ xfer_in: t.xferIn, xfer_out: t.xferOut, from_treasury: t.fromTreasury });
+  const ch = new CompactHasher(); // carryCommit with CompactHasher == persistentCommit<CarryTotals>
+  const withCarry = (w: ReturnType<typeof buildScenario>["witness"], prev: CarryTotals, prevSalt: Uint8Array, newSalt: Uint8Array) => {
+    const x = cloneWitness(w);
+    x.carryPrev = toW(prev); x.carryPrevSalt = prevSalt; x.carryNewSalt = newSalt;
+    return x;
+  };
+
+  /** Prove epochs 1..n in sequence on one ledger, checking each against carryStep. */
+  async function chain(n: number) {
+    const { rootOfRoots, witness } = scenario();
+    let state: Awaited<ReturnType<typeof runProveEpoch>>["state"] | undefined;
+    let prev: CarryTotals = ZERO_CARRY;
+    let prevSalt = salt(0);
+    let prevCommitment = genesisCarry(ch, prevSalt);
+    for (let e = 1; e <= n; e++) {
+      const step = carryStep(ch, { prevCommitment, prevTotals: prev, prevSalt, epochSums: SUMS, newSalt: salt(e), disposalD: D });
+      expect(step.ok).toBe(true);
+      const r = await runProveEpoch(withCarry(witness, prev, prevSalt, salt(e)), ID, rootOfRoots, BigInt(e), state);
+      expect(r.carryCommitment).toEqual(step.newCommitment); // byte-match: ledger == carryCommit
+      state = r.state; prev = step.newTotals; prevSalt = salt(e); prevCommitment = step.newCommitment;
+    }
+    return { rootOfRoots, witness, state: state!, prev, prevSalt, prevCommitment };
+  }
+
+  it("3 epochs: each passes per-epoch I5; the cumulative crosses D at epoch 3 and reverts", async () => {
+    const c = await chain(2);
+    expect(c.prev).toEqual({ xferIn: 0n, xferOut: 80n, fromTreasury: 0n });
+
+    const step3 = carryStep(ch, { prevCommitment: c.prevCommitment, prevTotals: c.prev, prevSalt: c.prevSalt,
+                                  epochSums: SUMS, newSalt: salt(3), disposalD: D });
+    expect(step3.chained).toBe(true);
+    expect(step3.capHolds).toBe(false); // 120 > 100
+    await expect(runProveEpoch(withCarry(c.witness, c.prev, c.prevSalt, salt(3)), ID, c.rootOfRoots, 3n, c.state))
+      .rejects.toThrow(CUM);
+
+    // The same epoch-3 activity passes on its own: only the carry-forward catches it.
+    await expect(runProveEpoch(c.witness, ID, c.rootOfRoots, 3n)).resolves.toMatchObject({ uptime: 48n });
+  });
+
+  it("rejects a broken chain: understated prevTotals", async () => {
+    const c = await chain(1);
+    expect(carryStep(ch, { prevCommitment: c.prevCommitment, prevTotals: ZERO_CARRY, prevSalt: c.prevSalt,
+                           epochSums: SUMS, newSalt: salt(2), disposalD: D }).chained).toBe(false);
+    await expect(runProveEpoch(withCarry(c.witness, ZERO_CARRY, c.prevSalt, salt(2)), ID, c.rootOfRoots, 2n, c.state))
+      .rejects.toThrow(CHAIN);
+  });
+
+  it("rejects a broken chain: right totals, wrong salt", async () => {
+    const c = await chain(1);
+    await expect(runProveEpoch(withCarry(c.witness, c.prev, salt(9), salt(2)), ID, c.rootOfRoots, 2n, c.state))
+      .rejects.toThrow(CHAIN);
+  });
+
+  it("rejects a non-zero genesis (phantom prior inflow would buy outflow budget)", async () => {
+    const { rootOfRoots, witness } = scenario();
+    const phantom: CarryTotals = { xferIn: 1_000n, xferOut: 0n, fromTreasury: 0n };
+    await expect(runProveEpoch(withCarry(witness, phantom, salt(0), salt(1)), ID, rootOfRoots, 1n))
+      .rejects.toThrow(GENESIS);
   });
 });
 
