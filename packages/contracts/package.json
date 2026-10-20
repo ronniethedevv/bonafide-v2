@@ -19,6 +19,7 @@
   "dependencies": {
     "@mmr/indexer": "workspace:*",
     "@mmr/merkle": "workspace:*",
+    "@mmr/protocol": "workspace:*",
     "@mmr/prover": "workspace:*",
     "@mmr/watcher": "workspace:*"
   }

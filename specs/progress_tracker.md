@@ -46,6 +46,7 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **M3 (real bond custody)** — API confirmed with the compiler: `receiveShielded(ShieldedCoinInfo)`, `sendShielded(QualifiedShieldedCoinInfo, Either<ZswapCoinPublicKey, ContractAddress>, Uint<128>)` → `{ change: Maybe<…>, sent }`, `Map.insertCoin(key, coin, right(kernel.self()))`, `ownPublicKey()`. `bond.compact`: `postBond(id, tierMin, beneficiary)` discloses the coin (declared disclosure), `receiveShielded`s it and stores it as a contract-owned qualified coin in `escrowed[id]`, recording `bondOwner = ownPublicKey()` and the slash `bondBeneficiary` (the client; DD-16); one bond per engagement. `payOut` asserts `amount <= escrowed value` ("release exceeds escrow (M3)"), `sendShielded`s to the recipient and re-escrows the change. `releaseEpoch(id, settledAt, amount)` pays the owner; `voidUnfunded` returns the whole bond to the owner; `defaultEngagement` marks slashed and sends the whole remaining bond to the beneficiary. Removed the old `escrow`/`bondOf` maps and `bondSalt` witness. KAT (`test/bond.kat.test.ts`, runtime-simulated Zswap): post creates an output to the contract and escrows the coin; release 400 → 400 to owner + 600 change re-escrowed, then 600 drains it; release > escrow (1 001, and 601 after a partial) reverts; slash sends 1 000 (or the 700 left) to the beneficiary and blocks later release; void returns 1 000 to the owner; below-tier / double post revert. H3 gate tests now run against a posted bond. Pre-M3 `postBond` (probe): 0 Zswap outputs — no custody. **Privacy note:** custody requires disclosing the coin, so the bond value is public in contract state (the old skeleton already disclosed it in `escrow`) | **done (+7 KAT)** |
 | 2026-10-20 | **Full zk keygen (after H1/M1/M2/H3/H4/M3)** — `compact compile` (no `--skip-zk`) under a 6 GB address-space cap (`ulimit -v`; host: 7 GB RAM + 2 GB swap, 4 cores). k/rows from `zkir mock-compile`. **bond**: postBond k=14 (13 333 rows), releaseEpoch k=15 (24 991); keys generated, 1.5 min, 312 MB peak. **registration**: register k=15 (24 019), activate k=10 (585); keys generated, 25 s, 310 MB peak. **epoch_proof**: claim k=19 (486 729 rows) — keys generated (153 MB prover key); **proveEpoch k=20 (599 529 rows) — keys generated** after a host upgrade to 14 GB RAM + 8 GB swap, under a 13 GiB `ulimit -v` cap: 305 MB prover key, 2.1 KB verifier key; epoch_proof full compile (claim + proveEpoch) 31 min wall, **9.46 GiB peak RSS** (`/usr/bin/time -v`: 9 916 012 KB, no swap) — proveEpoch alone ≈ 18 min. (First attempt under a 6 GB cap on the 7 GB host aborted: "memory allocation of 16777216 bytes failed", 5.96 GB peak.) contract-info: every circuit `proof: true` (proveEpoch, claim, register, activate, postBond, releaseEpoch, voidUnfunded, defaultEngagement); every circuit now keyed | **done** |
 | 2026-10-20 | **H3b (gate anchors from ledger state)** — compiler-confirmed: Compact 0.31.1 rejects cross-contract calls ("cross-contract calls are not yet supported"), so **registration + bond moved into `epoch_proof.compact` (DD-17)**; `registration.compact` / `bond.compact` deleted, `kat:build` builds one contract. New ledger fields are declared after every proveEpoch/claim field (both still compile, but their zkir changed with the ledger layout: proveEpoch k=20 / 599 532 rows (+3), claim k=19 / 486 726 (−3) — keys need one regen). Anchors are stored, block-time-bounded when written (`block − 600 s < ts ≤ block`, as H3's `registeredTs`), and read back by the gates; **no gate takes an anchor argument**: `voidUnfunded(id)` reads `registeredAt` (and needs status Registered — closes refunding a funded bond); `activate(id, root, activatedTs)` records `activatedAt` (epoch e ends at `activatedAt + e·24h`), only inside the funding window; new **`settleEpoch(id, epoch, settledTs)`** records `settledAt[epochKey]` for an epoch with a record in `epochRecords` (path witness, `checkRoot`) whose `termsCommit == termsCommit[id]` (the C2 terms check, now on-chain), after the epoch ends and before its grace deadline (`end + 6h attester + 12h challenge + 24h proving + 24h grace`), once; `releaseEpoch(id, epoch, amount)` reads `settledAt` (+12h); `defaultEngagement(id, epoch)` needs the epoch unsettled at its grace deadline, sets Defaulted. `postBond` needs a Registered/Funded engagement. KAT (`test/anchors.kat.test.ts`, +13): void opens at stored `registeredAt + 72h` exactly, a 599 s back-dated registration moves it ≤ 599 s, −600 s refused; activation bounded, closed after the funding window, blocks void; `settledAt` = recorded ts within 600 s of its block (−599 ok, −600 / +1 refused); settle before end / at grace deadline, unproven epoch, wrong epoch's record, double settle, **epoch proven under loosened terms** all revert; release on an unsettled epoch reverts however late; **back-dated settlement opens release ≤ 599 s early**; default exactly at the grace deadline, never on a settled epoch or an unactivated engagement. `bond.kat` (M3) rebuilt on register → post → activate → prove → settle (now also rejects a bond for an unregistered id); the 4 old H3 gate tests in `time.kat` are superseded. Mutation probe (drop the settledTs lower bound + the terms check): exactly the 3 covering tests fail | **done (+13 KAT, −4 superseded; 85 total)** |
+| 2026-10-20 | **M3b (release tranches tied to proven epochs)** — schedule decided as **DD-18**: one tranche per settled epoch, to the bond owner; after k released epochs of E the cumulative release is exactly ⌊B·k/E⌋ (B = posted bond). `register` opens the committed terms and stores `contractEpochs[id] = epochs_total` (asserts 1..90); `postBond` stores `bondValue[id]` and zeroes `releasedEpochs` / `releasedTotal`. `releaseEpoch(id, epoch, amount)` additionally requires the epoch's tranche unreleased (`epochReleased` set, per `epochKey`) and checks `amount` division-free: `cum·E ≤ B·k` ("release exceeds the earned tranche (M3b)") **and** `(cum+1)·E > B·k` ("release below …" — an exact step, so nothing is stranded once all E epochs are out); the E-th release sets status **Settled** (no default afterwards). `settleEpoch` / `defaultEngagement` now reject epochs outside `1..contractEpochs` (closes defaulting a finished engagement on epoch E+1). TS reference `@mmr/protocol` `cumulativeRelease` / `nextTranche` (+3 unit tests: 333/333/334 and 333/334/334 splits, sums == B for 5 (B, E) pairs). KAT (`test/tranche.kat.test.ts`, +9): honest releases in any epoch order pay `nextTranche` to the owner only, running sum == `cumulativeRelease` ≤ escrow, final == B, escrow empty, status Settled; 334 / whole bond / 334-after-333 revert (exceeds); 332 / 0 revert (below); double release reverts; epoch 4 cannot settle / release / default; completed engagement cannot default; B = 1001 pays 333 + 334 + 334; register rejects epochs_total 0 and 91. `bond.kat` / `anchors.kat` releases now pay the exact tranche (the "release > escrow" case is unreachable through the schedule; `payOut`'s escrow assert stays). Mutation probe (drop exceeds / below / once asserts, one at a time): exactly the covering test fails each time. Sizes (`zkir mock-compile`): releaseEpoch k=15 (27 621), settleEpoch k=13 (8 040), register k=15 (24 067), proveEpoch k=20 (599 532), claim k=19 (486 738) | **done (+9 KAT, +3 unit; 93 KAT total)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -88,7 +89,7 @@ that already exist and are tested against in-memory fakes.
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
-Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3, H3b, H4, M3 (M3b open).
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3, H3b, H4, M3, M3b.
 
 - [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
       `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
@@ -107,14 +108,13 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
       commitment ledger (status log 2026-10-20). KAT green.
 - [x] **M3** — `bond.postBond` takes real shielded custody; release / void / slash move
       real value (status log 2026-10-20, DD-16).
-- [ ] **M3b** — release tranche schedule: `releaseEpoch`'s `amount` is caller-chosen
-      (always paid to the owner, never above escrow) until the per-epoch tranche rule is
-      specified; tie it to proven epochs with H3b's anchors.
+- [x] **M3b** — release tranche schedule: one exact ⌊B·k/E⌋ step per settled epoch,
+      to the owner, summing to the bond (DD-18, status log 2026-10-20).
 - [~] Proving benchmark / full keygen: sizes measured (status log 2026-10-20) —
       proveEpoch k=20 / 599 529 rows, claim k=19 / 486 729; **all circuits keyed**
       (proveEpoch keygen peaks at 9.46 GiB RSS — needs a ≥ 12 GB host). **Keys stale
       since DD-17** (ledger layout changed proveEpoch/claim zkir; same k) — regen once
-      at the end of the H3b/M3b batch. Proving-time benchmark still to do.
+      at the end of the H3b/M3b batch (circuit sizes unchanged in k; see the M3b row). Proving-time benchmark still to do.
 
 ## Immutable design decisions
 
@@ -240,6 +240,21 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   attester timeout), since root publication is not on-chain yet — the most
   lenient anchor for the MM. Cost: the ledger layout change regenerates
   proveEpoch/claim keys once (same k).
+
+- **DD-18** (M3b) **Bond release schedule:** one tranche per **settled** epoch
+  (settled = proven under the registered terms, H3b), paid to the bond owner;
+  after k released epochs of E, the cumulative release is exactly ⌊B·k/E⌋ (B =
+  the posted bond, E = the committed `epochs_total`). Exact rather than "at most",
+  so the last epoch carries the remainder and the tranches sum to B with nothing
+  stranded in escrow. Uptime does not gate a tranche: the bond secures *honest
+  delivery* (I1–I5, I7 hold, or proveEpoch reverts); the uptime KPI goes to the
+  public record via `claim`. An epoch that is never settled is defaultable (the
+  whole remaining bond is slashed, DD-16). Cost: E becomes public at registration
+  (`contractEpochs`) — the tranche size reveals it at the first release anyway,
+  since the bond value is public (DD-16), and an engagement's duration is visible
+  from its settlements. Chosen over a time-based vesting (would release on time
+  passing, not on proofs) and over B/E per epoch with a final sweep (needs a
+  separate remainder rule).
 
 ## Open decisions (carry from spec)
 

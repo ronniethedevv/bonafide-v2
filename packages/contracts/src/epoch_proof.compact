@@ -806,6 +806,14 @@ export ledger escrowed: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
 export ledger bondOwner: Map<Bytes<32>, ZswapCoinPublicKey>;
 export ledger bondBeneficiary: Map<Bytes<32>, ZswapCoinPublicKey>;
 export ledger slashed: Map<Bytes<32>, Boolean>;
+// M3b (DD-18): the release schedule. contractEpochs is the committed epochs_total (E),
+// opened at registration; bondValue is the posted bond (B); releasedEpochs (k) and
+// releasedTotal track the tranches paid; epochReleased marks each epochKey paid once.
+export ledger contractEpochs: Map<Bytes<32>, Uint<64>>;
+export ledger bondValue: Map<Bytes<32>, Uint<128>>;
+export ledger releasedEpochs: Map<Bytes<32>, Uint<64>>;
+export ledger releasedTotal: Map<Bytes<32>, Uint<128>>;
+export ledger epochReleased: Set<Bytes<32>>;
 
 witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
 // H3b: the epochRecords path of the record being settled (public data: the record and
@@ -856,13 +864,18 @@ export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32
   // Commit the wallet vector over all 16 slots with a fresh salt. Unused slots
   // hold dummy addresses so the active wallet count never shows.
   const wc = persistentCommit<Vector<16, Uint<160>>>(committedWallets(), walletSalt());
-  const tc = persistentCommit<Terms>(terms(), termsSalt());
+  const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
+  // M3b (DD-18): the contract length is public from here on — it sets the bond's
+  // tranche size, which every release reveals anyway (bond value is public, M3).
+  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (M3b)");
 
   status.insert(disclose(id), Status.Registered);
   walletCommit.insert(disclose(id), disclose(wc));
   termsCommit.insert(disclose(id), disclose(tc));
   registeredAt.insert(disclose(id), ts);
   tier.insert(disclose(id), disclose(declaredTier));
+  contractEpochs.insert(disclose(id), disclose(t.epochs_total));
   return disclose(id);
 }
 
@@ -914,6 +927,9 @@ export circuit postBond(id: Bytes<32>, tierMin: Uint<128>, beneficiary: ZswapCoi
   escrowed.insertCoin(key, coin, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bondOwner.insert(key, ownPublicKey());
   bondBeneficiary.insert(key, disclose(beneficiary));
+  bondValue.insert(key, coin.value);
+  releasedEpochs.insert(key, 0);
+  releasedTotal.insert(key, 0);
 }
 
 // H3b: settle a proven epoch, recording settledAt (block-time-checked) as the anchor of
@@ -929,7 +945,7 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   assert(blockTimeGte(ts), "settledTs is in the future (H3b)");
   assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "settledTs too far in the past (H3b)");
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
-  assert(e >= 1, "epochs are 1-based");
+  assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
   assert(blockTimeLt(graceDeadline(key, e)), "settlement deadline passed (H3b)");
   const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
@@ -943,10 +959,13 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   settledAt.insert(ek, ts);
 }
 
-// Release the bond once a settled epoch's challenge window has passed (anchor: the
+// Release one settled epoch's tranche once its challenge window has passed (anchor: the
 // stored settledAt). No client veto (I8 gates acceptance upstream).
-// `amount` is this epoch's tranche (the tranche schedule is not yet specified, M3b); it
-// always goes to the bond's owner, never above what is escrowed.
+// M3b (DD-18): each settled epoch releases exactly one tranche, always to the bond's
+// owner. After k released epochs of E the cumulative release is exactly floor(B * k / E)
+// (B = the posted bond): `amount` must be that step — checked without division as
+// cum * E <= B * k < (cum + 1) * E — so the tranches sum to B and never exceed escrow.
+// The last tranche settles the engagement.
 export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): [] {
   const CHALLENGE: Uint<64> = 43200;   // 12h
   const key = disclose(id);
@@ -955,7 +974,23 @@ export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): 
   assert(blockTimeGte((settledAt.lookup(ek) + CHALLENGE) as Uint<64>), "challenge window open");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
   assert(escrowed.member(key), "no bond escrowed (M3)");
-  payOut(key, bondOwner.lookup(key), disclose(amount));
+  assert(!epochReleased.member(ek), "epoch tranche already released (M3b)");
+  const a = disclose(amount);
+  const k = (releasedEpochs.lookup(key) + 1) as Uint<64>;
+  const total = contractEpochs.lookup(key);
+  const earned = bondValue.lookup(key) * k;
+  const cum = releasedTotal.lookup(key) + a;
+  assert(cum * total <= earned, "release exceeds the earned tranche (M3b)");
+  assert((cum + 1) * total > earned, "release below the earned tranche (M3b)");
+  epochReleased.insert(ek);
+  releasedEpochs.insert(key, k);
+  releasedTotal.insert(key, cum as Uint<128>);
+  if (a > 0) {
+    payOut(key, bondOwner.lookup(key), a);
+  }
+  if (k == total) {
+    status.insert(key, Status.Settled);
+  }
 }
 
 // Anyone can void an unfunded engagement after the funding window (anchor: the stored
@@ -978,7 +1013,7 @@ export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
   const key = disclose(id);
   const e = disclose(epoch);
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
-  assert(e >= 1, "epochs are 1-based");
+  assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   assert(!settledAt.member(persistentHash<EpochRef>(EpochRef { id: key, epoch: e })), "epoch was settled");
   assert(blockTimeGte(graceDeadline(key, e)), "proving window open");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");

@@ -8,8 +8,9 @@
 // window can never open on an anchor that was not recorded.
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { nextTranche } from "@mmr/protocol";
 import {
-  BLOCK_TIME, HAVE_BUILD, Status, T, buildScenario, cloneWitness, epochEndOf, epochKey,
+  BLOCK_TIME, BOND_COIN, HAVE_BUILD, Status, T, buildScenario, cloneWitness, epochEndOf, epochKey,
   graceDeadlineOf, runLifecycle, runProveEpoch, runRegister, runningEngagement, settle,
   type BondRun, type Engagement,
 } from "./harness.js";
@@ -108,7 +109,7 @@ describe.skipIf(!HAVE_BUILD)("H3b: releaseEpoch reads the stored settledAt", () 
   let g: Engagement;
   beforeAll(async () => { g = await runningEngagement({ proven: 1 }); });
   const release = (state: BondRun["state"], blockTime: bigint) =>
-    runLifecycle("releaseEpoch", [g.id, 1n, 1n], { state, blockTime });
+    runLifecycle("releaseEpoch", [g.id, 1n, nextTranche(BOND_COIN.value, 3, 0)], { state, blockTime });
 
   it("an unsettled epoch never releases, however late", async () => {
     await expect(release(g.state, graceDeadlineOf(g, 1n) + 10n * T.EPOCH)).rejects.toThrow(/epoch not settled \(H3b\)/);

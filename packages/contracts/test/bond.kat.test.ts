@@ -7,9 +7,11 @@
 // change returned to escrow as a fresh contract-owned coin.
 //
 // The bond lives in the epoch_proof contract (DD-17), so every run starts from a
-// registered engagement; releases need a settled epoch (H3b).
+// registered engagement; releases need a settled epoch (H3b) and pay exactly the
+// earned tranche (M3b; schedule KAT in tranche.kat.test.ts).
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { nextTranche } from "@mmr/protocol";
 import {
   BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, CLIENT_PK, HAVE_BUILD, Status, T, TIER_MIN,
   buildScenario, epochEndOf, graceDeadlineOf, runLifecycle, runRegister, runningEngagement, settle,
@@ -27,20 +29,24 @@ const toContract = (r: BondRun) =>
 describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
   let reg: Registered;
   let g: Engagement;
-  /** Ledger with epoch 1 settled at its end; `releaseAt` is when its challenge window closes. */
+  /** Ledger with epoch 1 settled at its end, and with all 3 epochs settled at theirs. */
   let settled: BondRun["state"];
+  let allSettled: BondRun["state"];
+  /** When every settled epoch's challenge window has closed. */
   let releaseAt: bigint;
   beforeAll(async () => {
     reg = await runRegister(buildScenario().witness, new Uint8Array(32).fill(0x99));
-    g = await runningEngagement({ proven: 1 });
-    const end = epochEndOf(g, 1n);
-    settled = (await settle(g, g.state, 1n, end)).state;
-    releaseAt = end + T.CHALLENGE;
+    g = await runningEngagement({ proven: 3 });
+    settled = (await settle(g, g.state, 1n, epochEndOf(g, 1n))).state;
+    allSettled = settled;
+    for (const e of [2n, 3n]) allSettled = (await settle(g, allSettled, e, epochEndOf(g, e))).state;
+    releaseAt = epochEndOf(g, 3n) + T.CHALLENGE;
   });
   const post = (coin: CoinW = BOND_COIN, state = reg.state) =>
     runLifecycle("postBond", [reg.id, TIER_MIN, { bytes: CLIENT_PK }], { coin, state });
-  const release = (amount: bigint, state = settled) =>
-    runLifecycle("releaseEpoch", [g.id, 1n, amount], { state, blockTime: releaseAt });
+  /** Release epoch `e`'s tranche, the k-th one out (k = tranches already released). */
+  const release = (e: bigint, k: number, state = settled) =>
+    runLifecycle("releaseEpoch", [g.id, e, nextTranche(BOND_COIN.value, 3, k)], { state, blockTime: releaseAt });
 
   it("posting escrows the coin: received into the contract, held as a qualified coin", async () => {
     const r = await post();
@@ -58,22 +64,19 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
       { coin: BOND_COIN, state: reg.state })).rejects.toThrow(/engagement not open for a bond/);
   });
 
-  it("release returns value to the owner; change stays escrowed; draining empties escrow", async () => {
-    const r1 = await release(400n);
+  it("release returns each tranche to the owner; change stays escrowed; the last drains escrow", async () => {
+    const r1 = await release(1n, 0, allSettled);
     expect(r1.inputs.map((c) => c.value)).toEqual([1_000n]); // the escrowed coin is spent
-    expect(sentTo(r1, BOND_CALLER_PK)).toBe(400n);
-    expect(toContract(r1)).toBe(600n);
-    expect(r1.escrowed?.value).toBe(600n);
+    expect(sentTo(r1, BOND_CALLER_PK)).toBe(333n);
+    expect(toContract(r1)).toBe(667n);
+    expect(r1.escrowed?.value).toBe(667n);
 
-    const r2 = await release(600n, r1.state);
-    expect(sentTo(r2, BOND_CALLER_PK)).toBe(600n);
-    expect(r2.escrowed).toBeUndefined();
-  });
-
-  it("rejects a release of more than is escrowed", async () => {
-    await expect(release(1_001n)).rejects.toThrow(/release exceeds escrow \(M3\)/);
-    const r1 = await release(400n);
-    await expect(release(601n, r1.state)).rejects.toThrow(/release exceeds escrow \(M3\)/);
+    const r2 = await release(2n, 1, r1.state);
+    expect(sentTo(r2, BOND_CALLER_PK)).toBe(333n);
+    const r3 = await release(3n, 2, r2.state);
+    expect(sentTo(r3, BOND_CALLER_PK)).toBe(334n);
+    expect(r3.escrowed).toBeUndefined();
+    expect(r3.status).toBe(Status.Settled);
   });
 
   it("slash redirects the whole bond to the beneficiary; no later release", async () => {
@@ -88,9 +91,9 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
   });
 
   it("slash after a partial release takes only what is still escrowed", async () => {
-    const r1 = await release(300n);
+    const r1 = await release(1n, 0);
     const r2 = await runLifecycle("defaultEngagement", [g.id, 2n], { state: r1.state, blockTime: graceDeadlineOf(g, 2n) });
-    expect(sentTo(r2, CLIENT_PK)).toBe(700n);
+    expect(sentTo(r2, CLIENT_PK)).toBe(667n);
   });
 
   it("void returns the whole bond to the owner", async () => {
