@@ -25,6 +25,12 @@ export ledger slashed: Map<Bytes<32>, Boolean>;
 
 // Timing defaults (seconds) — Compact 0.31.x does not allow top-level const,
 // so they are declared locally inside each circuit that needs them.
+//
+// H3: "now" is the block time, never a caller argument. Compact exposes block time
+// only as comparisons (blockTimeGte(t) <=> block time >= t), evaluated on-chain
+// against the transaction's block, so each gate asserts blockTimeGte(anchor + WINDOW).
+// REMAINING (H3b): the anchors (settledAt, registeredAt, deadline) are still caller
+// arguments; they must come from ledger state (settlement / registration records).
 
 witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
 witness bondSalt(): Bytes<32>;
@@ -43,24 +49,24 @@ export circuit postBond(id: Bytes<32>, tierMin: Uint<128>): [] {
 
 // Release the bond automatically once an epoch's proof is accepted and its
 // challenge window has passed. No client veto (I8 gates acceptance upstream).
-export circuit releaseEpoch(id: Bytes<32>, nowTs: Uint<64>, settledAt: Uint<64>): [] {
+export circuit releaseEpoch(id: Bytes<32>, settledAt: Uint<64>): [] {
   const CHALLENGE: Uint<64> = 43200;   // 12h
-  assert(disclose(nowTs) >= disclose(settledAt) + CHALLENGE, "challenge window open");
+  assert(blockTimeGte((disclose(settledAt) + CHALLENGE) as Uint<64>), "challenge window open");
   assert(!slashed.member(disclose(id)) || !slashed.lookup(disclose(id)), "already slashed");
   // Partial release logic (per-epoch tranche) omitted in this skeleton.
 }
 
 // Anyone can void an unfunded engagement after the funding window — no penalty.
-export circuit voidUnfunded(id: Bytes<32>, nowTs: Uint<64>, registeredAt: Uint<64>): [] {
+export circuit voidUnfunded(id: Bytes<32>, registeredAt: Uint<64>): [] {
   const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
-  assert(disclose(nowTs) >= disclose(registeredAt) + FUNDING_WINDOW, "funding window open");
+  assert(blockTimeGte((disclose(registeredAt) + FUNDING_WINDOW) as Uint<64>), "funding window open");
   // transition handled jointly with registration.status; bond returned in full.
 }
 
 // Default once the proving window passes with no valid proof (grace handled by
 // the caller marking the epoch flagged, not defaulted). Slashes the bond.
-export circuit defaultEngagement(id: Bytes<32>, nowTs: Uint<64>, deadline: Uint<64>): [] {
+export circuit defaultEngagement(id: Bytes<32>, deadline: Uint<64>): [] {
   const PROVING: Uint<64> = 86400;   // 24h after challenge
-  assert(disclose(nowTs) >= disclose(deadline) + PROVING, "proving window open");
+  assert(blockTimeGte((disclose(deadline) + PROVING) as Uint<64>), "proving window open");
   slashed.insert(disclose(id), true);
 }

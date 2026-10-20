@@ -37,8 +37,10 @@ export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
   ? `${process.env.KAT_EPOCH_BUILD}/contract/index.js`
   : fileURLToPath(new URL("../build/epoch_proof/contract/index.js", import.meta.url));
 export const REG_BUILD_DIR = fileURLToPath(new URL("../build/registration/contract/index.js", import.meta.url));
+export const BOND_BUILD_DIR = fileURLToPath(new URL("../build/bond/contract/index.js", import.meta.url));
 export const HAVE_BUILD = existsSync(BUILD_DIR);
 export const HAVE_REG_BUILD = existsSync(REG_BUILD_DIR);
+export const HAVE_BOND_BUILD = existsSync(BOND_BUILD_DIR);
 
 export const SLOTS = 16;
 export const BUCKETS = 48;
@@ -364,11 +366,17 @@ interface CompiledContract {
   initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
 }
 
-function freshContext(contract: CompiledContract, state?: rt.ChargedState) {
+/** Default block time for circuits that read it (H3): 2023-11-14T22:13:20Z. */
+export const BLOCK_TIME = 1_700_000_000n;
+
+function freshContext(contract: CompiledContract, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
   const init = contract.initialState(rt.createConstructorContext({}, COIN_PK));
-  return rt.createCircuitContext(
+  const ctx = rt.createCircuitContext(
     rt.dummyContractAddress(), COIN_PK, state ?? init.currentContractState.data, init.currentPrivateState,
   );
+  // H3: the trusted "now" — what blockTimeLt/Gte compare against on-chain.
+  ctx.currentQueryContext.block = { ...ctx.currentQueryContext.block, secondsSinceEpoch: blockTime };
+  return ctx;
 }
 
 // --- registration.register ------------------------------------------------------
@@ -377,6 +385,8 @@ export interface Registered {
   id: Uint8Array;
   walletCommit: Uint8Array;
   termsCommit: Uint8Array;
+  /** H3: registeredAt[id], the block-time-checked registration timestamp. */
+  registeredAt: bigint;
 }
 
 /**
@@ -386,6 +396,9 @@ export interface Registered {
 export async function runRegister(
   w: Pick<EpochWitness, "committedWallets" | "walletSalt" | "terms" | "termsSalt">,
   engagementSecret: Uint8Array,
+  /** H3: the timestamp to record, checked in-circuit against `blockTime`. */
+  registeredTs: bigint = BLOCK_TIME,
+  blockTime: bigint = BLOCK_TIME,
 ): Promise<Registered> {
   const mod = await import(REG_BUILD_DIR);
   const witnesses = {
@@ -396,10 +409,13 @@ export async function runRegister(
     termsSalt: (c: { privateState: unknown }) => [c.privateState, w.termsSalt],
   };
   const contract = new mod.Contract(witnesses);
-  const res = contract.circuits.register(freshContext(contract), 1n, 1_700_000_000n);
+  const res = contract.circuits.register(freshContext(contract, undefined, blockTime), 1n, registeredTs);
   const id = res.result as Uint8Array;
   const led = mod.ledger(res.context.currentQueryContext.state);
-  return { id, walletCommit: led.walletCommit.lookup(id), termsCommit: led.termsCommit.lookup(id) };
+  return {
+    id, walletCommit: led.walletCommit.lookup(id), termsCommit: led.termsCommit.lookup(id),
+    registeredAt: led.registeredAt.lookup(id) as bigint,
+  };
 }
 
 /**
@@ -409,4 +425,19 @@ export async function runRegister(
 export function callerAccepts(reg: Registered, r: ProveResult): boolean {
   const eq = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
   return eq(reg.walletCommit, r.walletCommit) && eq(reg.termsCommit, r.termsCommit);
+}
+
+// --- bond (H3: window gates read block time) ----------------------------------
+
+export type BondGate = "releaseEpoch" | "voidUnfunded" | "defaultEngagement";
+
+/**
+ * Execute one of bond's time-gated circuits at `blockTime` (the trusted "now").
+ * `anchor` is the gate's reference time (settledAt / registeredAt / deadline).
+ */
+export async function runBondGate(gate: BondGate, id: Uint8Array, anchor: bigint, blockTime: bigint): Promise<void> {
+  const mod = await import(BOND_BUILD_DIR);
+  const unused = () => { throw new Error("bond witness not used by time gates"); };
+  const contract = new mod.Contract({ bondCoin: unused, bondSalt: unused });
+  contract.circuits[gate](freshContext(contract, undefined, blockTime), id, anchor);
 }

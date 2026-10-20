@@ -69,7 +69,15 @@ circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
 
 // --- Circuits ----------------------------------------------------------------
 
-export circuit register(declaredTier: Uint<8>, nowTs: Uint<64>): Bytes<32> {
+// H3: Compact exposes block time only through comparisons, never as a value, so the
+// timestamp to record is an argument that is CHECKED against the block's own time:
+// block time - REG_TS_TOLERANCE < registeredTs <= block time. A caller can no longer
+// backdate (or postdate) registeredAt beyond the tolerance.
+export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32> {
+  const REG_TS_TOLERANCE: Uint<64> = 600;   // 10 min: proof build -> block inclusion
+  const ts = disclose(registeredTs);
+  assert(blockTimeGte(ts), "registeredTs is in the future (H3)");
+  assert(blockTimeLt((ts + REG_TS_TOLERANCE) as Uint<64>), "registeredTs too far in the past (H3)");
   const secret = engagementSecret();
   const id = deriveEngagementId(secret);
   assert(!status.member(disclose(id)), "engagement id already registered");
@@ -82,7 +90,7 @@ export circuit register(declaredTier: Uint<8>, nowTs: Uint<64>): Bytes<32> {
   status.insert(disclose(id), Status.Registered);
   walletCommit.insert(disclose(id), disclose(wc));
   termsCommit.insert(disclose(id), disclose(tc));
-  registeredAt.insert(disclose(id), disclose(nowTs));
+  registeredAt.insert(disclose(id), ts);
   tier.insert(disclose(id), disclose(declaredTier));
   return disclose(id);
 }
