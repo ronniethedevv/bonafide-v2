@@ -45,6 +45,7 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **H4 (claim verifies epochs) + Terms schema** — atomic (DD-9): `minUptimeBuckets` + `epochsTotal` (Uint<64>, after `band_bps`) added to `EngagementTerms`/`commitTerms` (`MAX_EPOCHS = 90`, enforced by `assertTerms`), the `Terms` struct in `registration.compact` **and** `epoch_proof.compact`, harness `TermsW` (+ `termsToEngagement`, now used by the byte-identity KAT), every TS literal; oracle I6 defaults to `terms.minUptimeBuckets`. **Decision (DD-15): `claim` moved into `epoch_proof.compact` and reads records privately** — see DD-15. `proveEpoch` appends `EpochRecord { id, epoch, uptime, termsCommit }` to `HistoricMerkleTree<20>` `epochRecords` (constructor seeds a zero genesis record); `claim` checks `persistentHash(secret) == engagementId` (closes claiming someone else's public records), opens terms → `tc`, for all 90 slots unconditionally `checkRoot(merkleTreePathRoot(path))` (a witness-gated ledger op would leak epochs_total — the compiler rejected it), for presented slots `e < epochs_total` asserts the leaf is `{id, e+1, tc}`, counts `uptime >= min_uptime_buckets`, asserts claimed `epochsPassed`/`epochsTotal` == count / committed total. Also fixed: the old claim reverted on any first claim (`Counter.lookup` of an absent key) — now `insertDefault`. `claim.compact` deleted (scripts/docs updated). KAT (register → 3 chained proveEpochs with carry → claim): honest 2/3 == `deriveClaimFromRecords`, counters (1, 2, 3), repeat claim reverts (I10); inflated passed, wrong denominator, fabricated record, record in wrong slot, foreign id, loosened threshold all revert; epoch beyond `epochs_total` not credited; withholding only lowers the count | **done (+8 KAT)** |
 | 2026-10-20 | **M3 (real bond custody)** — API confirmed with the compiler: `receiveShielded(ShieldedCoinInfo)`, `sendShielded(QualifiedShieldedCoinInfo, Either<ZswapCoinPublicKey, ContractAddress>, Uint<128>)` → `{ change: Maybe<…>, sent }`, `Map.insertCoin(key, coin, right(kernel.self()))`, `ownPublicKey()`. `bond.compact`: `postBond(id, tierMin, beneficiary)` discloses the coin (declared disclosure), `receiveShielded`s it and stores it as a contract-owned qualified coin in `escrowed[id]`, recording `bondOwner = ownPublicKey()` and the slash `bondBeneficiary` (the client; DD-16); one bond per engagement. `payOut` asserts `amount <= escrowed value` ("release exceeds escrow (M3)"), `sendShielded`s to the recipient and re-escrows the change. `releaseEpoch(id, settledAt, amount)` pays the owner; `voidUnfunded` returns the whole bond to the owner; `defaultEngagement` marks slashed and sends the whole remaining bond to the beneficiary. Removed the old `escrow`/`bondOf` maps and `bondSalt` witness. KAT (`test/bond.kat.test.ts`, runtime-simulated Zswap): post creates an output to the contract and escrows the coin; release 400 → 400 to owner + 600 change re-escrowed, then 600 drains it; release > escrow (1 001, and 601 after a partial) reverts; slash sends 1 000 (or the 700 left) to the beneficiary and blocks later release; void returns 1 000 to the owner; below-tier / double post revert. H3 gate tests now run against a posted bond. Pre-M3 `postBond` (probe): 0 Zswap outputs — no custody. **Privacy note:** custody requires disclosing the coin, so the bond value is public in contract state (the old skeleton already disclosed it in `escrow`) | **done (+7 KAT)** |
 | 2026-10-20 | **Full zk keygen (after H1/M1/M2/H3/H4/M3)** — `compact compile` (no `--skip-zk`) under a 6 GB address-space cap (`ulimit -v`; host: 7 GB RAM + 2 GB swap, 4 cores). k/rows from `zkir mock-compile`. **bond**: postBond k=14 (13 333 rows), releaseEpoch k=15 (24 991); keys generated, 1.5 min, 312 MB peak. **registration**: register k=15 (24 019), activate k=10 (585); keys generated, 25 s, 310 MB peak. **epoch_proof**: claim k=19 (486 729 rows) — keys generated (153 MB prover key); **proveEpoch k=20 (599 529 rows) — keys generated** after a host upgrade to 14 GB RAM + 8 GB swap, under a 13 GiB `ulimit -v` cap: 305 MB prover key, 2.1 KB verifier key; epoch_proof full compile (claim + proveEpoch) 31 min wall, **9.46 GiB peak RSS** (`/usr/bin/time -v`: 9 916 012 KB, no swap) — proveEpoch alone ≈ 18 min. (First attempt under a 6 GB cap on the 7 GB host aborted: "memory allocation of 16777216 bytes failed", 5.96 GB peak.) contract-info: every circuit `proof: true` (proveEpoch, claim, register, activate, postBond, releaseEpoch, voidUnfunded, defaultEngagement); every circuit now keyed | **done** |
+| 2026-10-20 | **H3b (gate anchors from ledger state)** — compiler-confirmed: Compact 0.31.1 rejects cross-contract calls ("cross-contract calls are not yet supported"), so **registration + bond moved into `epoch_proof.compact` (DD-17)**; `registration.compact` / `bond.compact` deleted, `kat:build` builds one contract. New ledger fields are declared after every proveEpoch/claim field (both still compile, but their zkir changed with the ledger layout: proveEpoch k=20 / 599 532 rows (+3), claim k=19 / 486 726 (−3) — keys need one regen). Anchors are stored, block-time-bounded when written (`block − 600 s < ts ≤ block`, as H3's `registeredTs`), and read back by the gates; **no gate takes an anchor argument**: `voidUnfunded(id)` reads `registeredAt` (and needs status Registered — closes refunding a funded bond); `activate(id, root, activatedTs)` records `activatedAt` (epoch e ends at `activatedAt + e·24h`), only inside the funding window; new **`settleEpoch(id, epoch, settledTs)`** records `settledAt[epochKey]` for an epoch with a record in `epochRecords` (path witness, `checkRoot`) whose `termsCommit == termsCommit[id]` (the C2 terms check, now on-chain), after the epoch ends and before its grace deadline (`end + 6h attester + 12h challenge + 24h proving + 24h grace`), once; `releaseEpoch(id, epoch, amount)` reads `settledAt` (+12h); `defaultEngagement(id, epoch)` needs the epoch unsettled at its grace deadline, sets Defaulted. `postBond` needs a Registered/Funded engagement. KAT (`test/anchors.kat.test.ts`, +13): void opens at stored `registeredAt + 72h` exactly, a 599 s back-dated registration moves it ≤ 599 s, −600 s refused; activation bounded, closed after the funding window, blocks void; `settledAt` = recorded ts within 600 s of its block (−599 ok, −600 / +1 refused); settle before end / at grace deadline, unproven epoch, wrong epoch's record, double settle, **epoch proven under loosened terms** all revert; release on an unsettled epoch reverts however late; **back-dated settlement opens release ≤ 599 s early**; default exactly at the grace deadline, never on a settled epoch or an unactivated engagement. `bond.kat` (M3) rebuilt on register → post → activate → prove → settle (now also rejects a bond for an unregistered id); the 4 old H3 gate tests in `time.kat` are superseded. Mutation probe (drop the settledTs lower bound + the terms check): exactly the 3 covering tests fail | **done (+13 KAT, −4 superseded; 85 total)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -68,7 +69,7 @@ signing, the live Base `ChainProvider` event decoding, and the IPFS publisher.
 - [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (TS; IPFS via injectable publisher, in-mem impl)
 - [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
       benchmark itself needs the Midnight toolchain (not available here)
-- [x] 3. Compact contract — `registration.compact` + `bond.compact` compile under `compact compile --skip-zk` (0.31.1)
+- [x] 3. Compact contract — registration + bond (now in `epoch_proof.compact`, DD-17) compile under `compact compile --skip-zk` (0.31.1)
 - [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` (incl. `claim`, DD-15) compile under `compact compile --skip-zk` (0.31.1)
 - [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
       state machine, engagement reducer, mock committee, challenge watchdog);
@@ -87,7 +88,7 @@ that already exist and are tested against in-memory fakes.
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
-Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3 (H3b open), H4, M3 (M3b open).
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3, H3b, H4, M3 (M3b open).
 
 - [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
       `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
@@ -95,11 +96,11 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
       `FlowSeries` committed as `flow_root`, I7 cap enforced; KAT green.
 - [x] **H3** — "now" is block time (`blockTimeGte`), not a caller arg; `registeredAt` is
       block-time-checked (status log 2026-10-20).
-- [ ] **H3b** — the gate *anchors* (`settledAt`, `registeredAt`, `deadline`) are still
-      caller arguments to `bond`, so a caller can pass an old anchor and open a window
-      early. They must come from ledger state; Compact can't read another contract's
-      ledger, so `bond` needs its own records (e.g. written by `postBond` / a settle
-      step) or the gates move next to the ledgers that hold them. Design call needed.
+- [x] **H3b** — gate anchors (`registeredAt`, `activatedAt`, `settledAt`) are ledger
+      state, block-time-bounded when recorded; bond + registration moved into
+      `epoch_proof` (DD-17) (status log 2026-10-20). Open: on-chain attester-root
+      registry (I8) — until then a no-root epoch is defaultable, and `activate`'s
+      funding membership proof is still omitted.
 - [x] **H4 (circuit half + Terms commit)** — done (status log 2026-10-20, DD-15):
       `claim` inside `epoch_proof`, private record membership, Terms schema extended.
 - [x] **M2 (circuit half)** — done: (a) I5 sign fix; (b) carry-forward
@@ -111,8 +112,9 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
       specified; tie it to proven epochs with H3b's anchors.
 - [~] Proving benchmark / full keygen: sizes measured (status log 2026-10-20) —
       proveEpoch k=20 / 599 529 rows, claim k=19 / 486 729; **all circuits keyed**
-      (proveEpoch keygen peaks at 9.46 GiB RSS — needs a ≥ 12 GB host). Proving-time
-      benchmark still to do.
+      (proveEpoch keygen peaks at 9.46 GiB RSS — needs a ≥ 12 GB host). **Keys stale
+      since DD-17** (ledger layout changed proveEpoch/claim zkir; same k) — regen once
+      at the end of the H3b/M3b batch. Proving-time benchmark still to do.
 
 ## Immutable design decisions
 
@@ -225,6 +227,19 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   (`shieldedBurnAddress()`) or a protocol treasury are one-line alternatives.
   Custody makes the bond value public (a contract can only hold a coin it can
   see); the MM's treasury source stays shielded.
+
+- **DD-17** (H3b) **One contract.** Registration and the bond moved into
+  `epoch_proof.compact` (after DD-15 did the same for `claim`): Compact 0.31.1
+  rejects cross-contract calls, and a gate is only sound if it reads its anchor
+  from its own ledger. Chosen over keeping `bond` separate with its own anchors,
+  where a settle step could not check that the epoch was proven (an MM could
+  "settle" unproven epochs and release the bond), and over merging only
+  registration + bond (same flaw). Anchors are written once, bounded to the
+  recording block's time (600 s tolerance), and every gate reads them back.
+  Default deadlines use the latest possible root publication (epoch end +
+  attester timeout), since root publication is not on-chain yet — the most
+  lenient anchor for the MM. Cost: the ledger layout change regenerates
+  proveEpoch/claim keys once (same k).
 
 ## Open decisions (carry from spec)
 

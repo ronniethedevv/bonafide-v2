@@ -52,10 +52,10 @@ struct Terms {
 }
 
 // C2: proveEpoch's public output. The commitments let the caller bind this proof
-// to the registered engagement: it accepts only if walletCommit ==
-// registration.walletCommit[id] and termsCommit == registration.termsCommit[id]
-// (same "enforced by the caller" pattern as I8). Both values are already public
-// on the registration ledger under the same id, so disclosing them leaks nothing.
+// to the registered engagement: it accepts only if walletCommit == walletCommit[id]
+// and termsCommit == termsCommit[id] (same "enforced by the caller" pattern as I8;
+// settleEpoch also checks the terms half on-chain, H3b). Both values are already
+// public on the registration ledger under the same id, so disclosing them leaks nothing.
 struct EpochResult { uptime: Uint<8>, walletCommit: Bytes<32>, termsCommit: Bytes<32> }
 
 // Key for the per-epoch uptime record written to the public ledger.
@@ -760,4 +760,232 @@ export circuit claim(
   kpiTotal.lookup(pid).increment(disclose(epochsTotal) as Uint<16>);
   // `tier` is a public argument so sandbox (C) engagements show separately from the
   // headline record; the caller routes it to the right per-tier counter.
+}
+
+// --- Engagement lifecycle: registration + bond (H3b, DD-17) ----------------------
+//
+// Moved here from registration.compact and bond.compact. Compact 0.31.1 rejects
+// cross-contract calls ("cross-contract calls are not yet supported"), so a gate can
+// only read an anchor kept in its own contract's ledger. Every gate below reads its
+// anchor from this ledger; none takes one as an argument:
+//   - funding window:  registeredAt[id] (recorded by register)
+//   - epoch schedule:  activatedAt[id]  (recorded by activate; epoch e ends at
+//                      activatedAt + e * EPOCH)
+//   - challenge window: settledAt[epochKey(id, e)] (recorded by settleEpoch)
+// Compact exposes block time only through comparisons, so each anchor is a timestamp
+// argument CHECKED against the recording block's time when it is written:
+// block time - 600 s < ts <= block time (H3). A caller can shift an anchor by at most
+// that tolerance.
+//
+// Declared after every proveEpoch / claim ledger field so those circuits compile
+// unchanged (their ledger indices do not move).
+
+// Engagement lifecycle, keyed by the random engagement id.
+export enum Status { Registered, Funded, Active, Settled, Voided, Defaulted }
+
+export ledger status: Map<Bytes<32>, Status>;
+// Commitment over the 16-slot wallet vector (persistentCommit with a fresh salt).
+export ledger walletCommit: Map<Bytes<32>, Bytes<32>>;
+// Salted commitment persistentCommit<Terms>(terms, termsSalt) over the private
+// deal terms. Salted because terms are low-entropy (a bare hash could be
+// brute-forced). Opened only to the client off-chain.
+export ledger termsCommit: Map<Bytes<32>, Bytes<32>>;
+// Registration time: the funding-window anchor.
+export ledger registeredAt: Map<Bytes<32>, Uint<64>>;
+// Difficulty tier declared at registration (A/B/C). Public.
+export ledger tier: Map<Bytes<32>, Uint<8>>;
+// H3b: activation time: the epoch-schedule anchor (proving / default deadlines).
+export ledger activatedAt: Map<Bytes<32>, Uint<64>>;
+// H3b: epochKey(id, epoch) -> when that epoch was settled: the challenge-window anchor.
+export ledger settledAt: Map<Bytes<32>, Uint<64>>;
+
+// M3: engagement id -> the escrowed bond coin, held by this contract.
+export ledger escrowed: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+// Where a release / void returns value (the poster's coin key) and where a slash sends
+// it (the client, fixed at posting so the MM cannot redirect it; DD-16).
+export ledger bondOwner: Map<Bytes<32>, ZswapCoinPublicKey>;
+export ledger bondBeneficiary: Map<Bytes<32>, ZswapCoinPublicKey>;
+export ledger slashed: Map<Bytes<32>, Boolean>;
+
+witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
+// H3b: the epochRecords path of the record being settled (public data: the record and
+// its tree are on the ledger; the path only proves it is there).
+witness settleRecordPath(): MerkleTreePath<20, EpochRecord>;
+
+// I9: reject the Jubjub identity point as a key. In 0.31.x the standard
+// signature check does not do this, so we check explicitly.
+// The Jubjub identity (0,1) compresses to LE bytes [0x01, 0x00, ..., 0x00],
+// which as a big-endian Compact Bytes<32> equals 2^248 cast via Field.
+circuit assertNotIdentity(pk: ZswapCoinPublicKey): [] {
+  const identityBytes = (452312848583266388373324160190187140051835877600158453279131187530910662656 as Field) as Bytes<32>;
+  assert(pk.bytes != identityBytes, "identity-point key rejected (I9)");
+}
+
+// Derive the public engagement id deterministically from the secret, so the MM
+// can recompute it but observers cannot link it to the MM.
+circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+// H3b: end of epoch `epoch` (1-based) on the engagement's schedule, and the last moment
+// it can still be settled: + attester timeout (6h; the latest a root can be published —
+// root publication is not on this ledger, so the MM gets the most lenient anchor)
+// + challenge (12h) + proving (24h) + grace (24h). Timing from specs/architecture.md.
+circuit epochEnd(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
+  const EPOCH: Uint<64> = 86400;   // 24h
+  return (activatedAt.lookup(id) + epoch * EPOCH) as Uint<64>;
+}
+circuit graceDeadline(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
+  const AFTER_END: Uint<64> = 237600;   // 6h + 12h + 24h + 24h
+  return (epochEnd(id, epoch) + AFTER_END) as Uint<64>;
+}
+
+// H3: Compact exposes block time only through comparisons, never as a value, so the
+// timestamp to record is an argument that is CHECKED against the block's own time:
+// block time - REG_TS_TOLERANCE < registeredTs <= block time. A caller can no longer
+// backdate (or postdate) registeredAt beyond the tolerance.
+export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32> {
+  const REG_TS_TOLERANCE: Uint<64> = 600;   // 10 min: proof build -> block inclusion
+  const ts = disclose(registeredTs);
+  assert(blockTimeGte(ts), "registeredTs is in the future (H3)");
+  assert(blockTimeLt((ts + REG_TS_TOLERANCE) as Uint<64>), "registeredTs too far in the past (H3)");
+  const secret = engagementSecret();
+  const id = deriveEngagementId(secret);
+  assert(!status.member(disclose(id)), "engagement id already registered");
+
+  // Commit the wallet vector over all 16 slots with a fresh salt. Unused slots
+  // hold dummy addresses so the active wallet count never shows.
+  const wc = persistentCommit<Vector<16, Uint<160>>>(committedWallets(), walletSalt());
+  const tc = persistentCommit<Terms>(terms(), termsSalt());
+
+  status.insert(disclose(id), Status.Registered);
+  walletCommit.insert(disclose(id), disclose(wc));
+  termsCommit.insert(disclose(id), disclose(tc));
+  registeredAt.insert(disclose(id), ts);
+  tier.insert(disclose(id), disclose(declaredTier));
+  return disclose(id);
+}
+
+// Activation: prove the loan reached the committed wallets, checked against the
+// epoch root-of-roots so the pool stays hidden. The membership proof inputs are
+// private; only the status transition is disclosed.
+// H3b: records activatedAt (block-time-checked like registeredAt), the anchor of the
+// epoch schedule; only inside the funding window, so activate and voidUnfunded are
+// mutually exclusive.
+export circuit activate(id: Bytes<32>, rootOfRoots: Bytes<32>, activatedTs: Uint<64>): [] {
+  const TS_TOLERANCE: Uint<64> = 600;
+  const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
+  const key = disclose(id);
+  const ts = disclose(activatedTs);
+  assert(blockTimeGte(ts), "activatedTs is in the future (H3b)");
+  assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "activatedTs too far in the past (H3b)");
+  assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
+  assert(blockTimeLt((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window closed (H3b)");
+  // NOTE: funding membership proof verified here against rootOfRoots using the
+  // same leaf/path scheme as @mmr/merkle. Omitted in this skeleton; see
+  // proveEpoch for the opening pattern.
+  status.insert(key, Status.Funded);
+  activatedAt.insert(key, ts);
+}
+
+// Pay `amount` out of id's escrowed coin to `to`; the change (if any) stays escrowed.
+circuit payOut(id: Bytes<32>, to: ZswapCoinPublicKey, amount: Uint<128>): [] {
+  const coin = escrowed.lookup(id);
+  assert(amount <= coin.value, "release exceeds escrow (M3)");
+  const sent = sendShielded(coin, left<ZswapCoinPublicKey, ContractAddress>(to), amount);
+  if (sent.change.is_some) {
+    escrowed.insertCoin(id, sent.change.value, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  } else {
+    escrowed.remove(id);
+  }
+}
+
+// Post a shielded bond for a registered engagement: the coin moves into this contract's
+// custody. `beneficiary` (the client) receives the bond if the engagement defaults.
+export circuit postBond(id: Bytes<32>, tierMin: Uint<128>, beneficiary: ZswapCoinPublicKey): [] {
+  const key = disclose(id);
+  assert(status.member(key) && (status.lookup(key) == Status.Registered || status.lookup(key) == Status.Funded),
+         "engagement not open for a bond");
+  assert(!escrowed.member(key), "bond already posted");
+  // Declared disclosure: a contract can only take custody of a coin it can see.
+  const coin = disclose(bondCoin());
+  assert(coin.value >= tierMin, "bond below tier minimum");
+  receiveShielded(coin);
+  escrowed.insertCoin(key, coin, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bondOwner.insert(key, ownPublicKey());
+  bondBeneficiary.insert(key, disclose(beneficiary));
+}
+
+// H3b: settle a proven epoch, recording settledAt (block-time-checked) as the anchor of
+// its challenge window. Only an epoch with a record in epochRecords under the
+// engagement's REGISTERED terms (proveEpoch's termsCommit == termsCommit[id], the C2
+// check done on-chain), only after the epoch has ended, once, and no later than its
+// grace deadline (a later proof cannot settle; the epoch is defaultable instead).
+export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>): [] {
+  const TS_TOLERANCE: Uint<64> = 600;
+  const key = disclose(id);
+  const e = disclose(epoch);
+  const ts = disclose(settledTs);
+  assert(blockTimeGte(ts), "settledTs is in the future (H3b)");
+  assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "settledTs too far in the past (H3b)");
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(e >= 1, "epochs are 1-based");
+  assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
+  assert(blockTimeLt(graceDeadline(key, e)), "settlement deadline passed (H3b)");
+  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
+  assert(!settledAt.member(ek), "epoch already settled");
+  const path = settleRecordPath();
+  assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(path))),
+         "epoch record not on the ledger (H3b)");
+  const rec = disclose(path.leaf);
+  assert(rec.id == key && rec.epoch == e, "record is not this engagement's epoch (H3b)");
+  assert(rec.termsCommit == termsCommit.lookup(key), "epoch proven under unregistered terms (H3b)");
+  settledAt.insert(ek, ts);
+}
+
+// Release the bond once a settled epoch's challenge window has passed (anchor: the
+// stored settledAt). No client veto (I8 gates acceptance upstream).
+// `amount` is this epoch's tranche (the tranche schedule is not yet specified, M3b); it
+// always goes to the bond's owner, never above what is escrowed.
+export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): [] {
+  const CHALLENGE: Uint<64> = 43200;   // 12h
+  const key = disclose(id);
+  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: disclose(epoch) });
+  assert(settledAt.member(ek), "epoch not settled (H3b)");
+  assert(blockTimeGte((settledAt.lookup(ek) + CHALLENGE) as Uint<64>), "challenge window open");
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  assert(escrowed.member(key), "no bond escrowed (M3)");
+  payOut(key, bondOwner.lookup(key), disclose(amount));
+}
+
+// Anyone can void an unfunded engagement after the funding window (anchor: the stored
+// registeredAt) — no penalty; any posted bond is returned in full.
+export circuit voidUnfunded(id: Bytes<32>): [] {
+  const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
+  const key = disclose(id);
+  assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
+  assert(blockTimeGte((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window open");
+  status.insert(key, Status.Voided);
+  if (escrowed.member(key)) {
+    payOut(key, bondOwner.lookup(key), escrowed.lookup(key).value);
+  }
+}
+
+// Default an epoch that was not settled by its grace deadline (anchor: the stored
+// activatedAt; a late proof is flagged by settling it in grace, not defaulted).
+// Slashes the bond.
+export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
+  const key = disclose(id);
+  const e = disclose(epoch);
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(e >= 1, "epochs are 1-based");
+  assert(!settledAt.member(persistentHash<EpochRef>(EpochRef { id: key, epoch: e })), "epoch was settled");
+  assert(blockTimeGte(graceDeadline(key, e)), "proving window open");
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  slashed.insert(key, true);
+  status.insert(key, Status.Defaulted);
+  // M3: the whole escrowed bond goes to the beneficiary fixed at posting.
+  if (escrowed.member(key)) {
+    payOut(key, bondBeneficiary.lookup(key), escrowed.lookup(key).value);
+  }
 }

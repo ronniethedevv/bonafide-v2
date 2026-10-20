@@ -34,10 +34,15 @@ not generate a ZK proof (that needs a proof server).
 
 | File | Build-order item | Purpose |
 |------|------------------|---------|
-| `src/registration.compact` | #3 | Secret-based registration, identity-point check (I9), wallet-vector commitment, funding activation. |
-| `src/bond.compact` | #3 | Shielded USDM bond escrow + engagement state machine, void/default/terminate transitions. |
 | `src/epoch_proof.compact` | #4 | Epoch proof circuit enforcing I1–I8 against the root-of-roots. |
-| `src/epoch_proof.compact` `claim` | #4 | Nullifier claim circuit (I10): add a finished engagement to the public record exactly once, crediting only epochs proven on-ledger (H4). Lives in `epoch_proof` because it privately reads the `epochRecords` tree. |
+| `src/epoch_proof.compact` `register` / `activate` | #3 | Secret-based registration, identity-point check (I9), wallet-vector + terms commitments, funding activation. Recorded timestamps are checked against block time (H3, H3b). |
+| `src/epoch_proof.compact` `postBond` / `settleEpoch` / `releaseEpoch` / `voidUnfunded` / `defaultEngagement` | #3 | Shielded USDM bond escrow + engagement state machine. Every window gate reads its anchor (`registeredAt`, `activatedAt`, `settledAt`) from the ledger (H3b). |
+| `src/epoch_proof.compact` `claim` | #4 | Nullifier claim circuit (I10): add a finished engagement to the public record exactly once, crediting only epochs proven on-ledger (H4). |
+
+Everything is one contract (DD-15, DD-17): Compact 0.31.1 rejects cross-contract
+calls, so a circuit can only read the ledger of the contract it is in. `claim` reads
+`epochRecords` privately; the bond gates read the registration and settlement
+anchors.
 
 ## Invariant map
 

@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as rt from "@midnight-ntwrk/compact-runtime";
 import {
+  CompactHasher,
   type Digest,
   type Hasher,
   IndexedMerkleTree,
@@ -39,11 +40,7 @@ import {
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
   ? `${process.env.KAT_EPOCH_BUILD}/contract/index.js`
   : fileURLToPath(new URL("../build/epoch_proof/contract/index.js", import.meta.url));
-export const REG_BUILD_DIR = fileURLToPath(new URL("../build/registration/contract/index.js", import.meta.url));
-export const BOND_BUILD_DIR = fileURLToPath(new URL("../build/bond/contract/index.js", import.meta.url));
 export const HAVE_BUILD = existsSync(BUILD_DIR);
-export const HAVE_REG_BUILD = existsSync(REG_BUILD_DIR);
-export const HAVE_BOND_BUILD = existsSync(BOND_BUILD_DIR);
 
 export const SLOTS = 16;
 export const BUCKETS = 48;
@@ -345,6 +342,7 @@ export async function runProveEpoch(
 ): Promise<ProveResult> {
   const mod = await import(BUILD_DIR);
   const witnesses = {
+    ...stubWitnesses(),
     committedWallets: (c: { privateState: unknown }) => [c.privateState, w.committedWallets],
     activeCount: (c: { privateState: unknown }) => [c.privateState, w.activeCount],
     walletSalt: (c: { privateState: unknown }) => [c.privateState, w.walletSalt],
@@ -362,7 +360,6 @@ export async function runProveEpoch(
     carryPrev: (c: { privateState: unknown }) => [c.privateState, w.carryPrev],
     carryPrevSalt: (c: { privateState: unknown }) => [c.privateState, w.carryPrevSalt],
     carryNewSalt: (c: { privateState: unknown }) => [c.privateState, w.carryNewSalt],
-    ...CLAIM_ONLY_WITNESSES,
   };
   const contract = new mod.Contract(witnesses);
   const res = contract.circuits.proveEpoch(freshContext(contract, state), id, rootOfRoots, epoch);
@@ -378,10 +375,17 @@ export async function runProveEpoch(
   };
 }
 
-const unusedWitness = (name: string) => () => { throw new Error(`witness ${name} is claim-only`); };
-const CLAIM_ONLY_WITNESSES = Object.fromEntries(
-  ["engagementSecret", "profileSecret", "claimRecordPresent", "claimRecordPaths"].map((n) => [n, unusedWitness(n)]),
-);
+const unusedWitness = (name: string) => () => { throw new Error(`witness ${name} not supplied for this circuit`); };
+/** Every witness the contract declares, each throwing until a run supplies it. */
+const ALL_WITNESSES = [
+  "committedWallets", "activeCount", "walletSalt", "slotLeaves", "terms", "termsSalt", "bidMin", "askMin",
+  "depthPaths", "flowBuy", "flowSell", "slotPaths", "poolEntry", "poolPath", "carryPrev", "carryPrevSalt",
+  "carryNewSalt", "engagementSecret", "profileSecret", "claimRecordPresent", "claimRecordPaths",
+  "bondCoin", "settleRecordPath",
+] as const;
+const stubWitnesses = (): Record<string, unknown> =>
+  Object.fromEntries(ALL_WITNESSES.map((n) => [n, unusedWitness(n)]));
+const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
 
 interface CompiledContract {
   initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
@@ -400,7 +404,17 @@ function freshContext(contract: CompiledContract, state?: rt.ChargedState, block
   return ctx;
 }
 
-// --- registration.register ------------------------------------------------------
+// --- Engagement lifecycle: register / activate / bond / settle (H3, H3b, M3) -------
+//
+// Registration and the bond live in the epoch_proof contract (DD-17: Compact rejects
+// cross-contract calls, so every gate reads its anchor from this one ledger).
+
+/** epochKey(id, epoch): the epochUptime / settledAt key. */
+export const epochKey = (id: Uint8Array, epoch: bigint): Uint8Array =>
+  rt.persistentHash(EPOCH_REF, { id, epoch });
+
+/** Status enum order in the contract. */
+export const Status = { Registered: 0, Funded: 1, Active: 2, Settled: 3, Voided: 4, Defaulted: 5 } as const;
 
 export interface Registered {
   id: Uint8Array;
@@ -408,11 +422,12 @@ export interface Registered {
   termsCommit: Uint8Array;
   /** H3: registeredAt[id], the block-time-checked registration timestamp. */
   registeredAt: bigint;
+  state: rt.ChargedState;
 }
 
 /**
- * Execute the compiled registration.register with the engagement's wallets,
- * wallet salt, terms and terms salt, and read back what it stored on the ledger.
+ * Execute register with the engagement's wallets, wallet salt, terms and terms salt,
+ * and read back what it stored on the ledger.
  */
 export async function runRegister(
   w: Pick<EpochWitness, "committedWallets" | "walletSalt" | "terms" | "termsSalt">,
@@ -420,22 +435,21 @@ export async function runRegister(
   /** H3: the timestamp to record, checked in-circuit against `blockTime`. */
   registeredTs: bigint = BLOCK_TIME,
   blockTime: bigint = BLOCK_TIME,
+  state?: rt.ChargedState,
 ): Promise<Registered> {
-  const mod = await import(REG_BUILD_DIR);
-  const witnesses = {
-    engagementSecret: (c: { privateState: unknown }) => [c.privateState, engagementSecret],
-    walletVector: (c: { privateState: unknown }) => [c.privateState, w.committedWallets],
-    walletSalt: (c: { privateState: unknown }) => [c.privateState, w.walletSalt],
-    terms: (c: { privateState: unknown }) => [c.privateState, w.terms],
-    termsSalt: (c: { privateState: unknown }) => [c.privateState, w.termsSalt],
-  };
-  const contract = new mod.Contract(witnesses);
-  const res = contract.circuits.register(freshContext(contract, undefined, blockTime), 1n, registeredTs);
+  const mod = await import(BUILD_DIR);
+  const contract = new mod.Contract({
+    ...stubWitnesses(),
+    engagementSecret: wit(engagementSecret), committedWallets: wit(w.committedWallets),
+    walletSalt: wit(w.walletSalt), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
+  });
+  const res = contract.circuits.register(freshContext(contract, state, blockTime), 1n, registeredTs);
   const id = res.result as Uint8Array;
-  const led = mod.ledger(res.context.currentQueryContext.state);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const led = mod.ledger(after);
   return {
     id, walletCommit: led.walletCommit.lookup(id), termsCommit: led.termsCommit.lookup(id),
-    registeredAt: led.registeredAt.lookup(id) as bigint,
+    registeredAt: led.registeredAt.lookup(id) as bigint, state: after,
   };
 }
 
@@ -448,9 +462,8 @@ export function callerAccepts(reg: Registered, r: ProveResult): boolean {
   return eq(reg.walletCommit, r.walletCommit) && eq(reg.termsCommit, r.termsCommit);
 }
 
-// --- bond (H3: window gates read block time; M3: real shielded custody) ----------
-
-export type BondGate = "releaseEpoch" | "voidUnfunded" | "defaultEngagement";
+export type LifecycleCircuit =
+  | "activate" | "postBond" | "settleEpoch" | "releaseEpoch" | "voidUnfunded" | "defaultEngagement";
 
 export interface CoinW { nonce: Uint8Array; color: Uint8Array; value: bigint }
 export interface ZswapOutputW { coinInfo: CoinW; recipient: { is_left: boolean; left: { bytes: Uint8Array }; right: { bytes: Uint8Array } } }
@@ -463,27 +476,34 @@ export interface BondRun {
   inputs: CoinW[];
   escrowed: (CoinW & { mt_index: bigint }) | undefined;
   slashed: boolean;
+  status: number | undefined;
+  /** The contract ledger after the call (generated `ledger(state)` view). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ledger: any;
 }
 
-/** The caller's coin public key in every bond call (ownPublicKey() in-circuit). */
+/** The caller's coin public key in every call (ownPublicKey() in-circuit). */
 export const BOND_CALLER_PK = new Uint8Array(32);
 
 /**
- * Execute one bond circuit at `blockTime` (the trusted "now") against `state`.
- * `coin` is the bondCoin witness (postBond only).
+ * Execute one lifecycle circuit at `blockTime` (the trusted "now") against `state`.
+ * `coin` is the bondCoin witness (postBond); `record` is the epoch record whose
+ * epochRecords path settleEpoch receives (a record not on the ledger gets a forged path).
  */
-export async function runBond(
-  circuit: "postBond" | BondGate,
+export async function runLifecycle(
+  circuit: LifecycleCircuit,
   args: readonly unknown[],
-  opts: { state?: rt.ChargedState | undefined; blockTime?: bigint; coin?: CoinW } = {},
+  opts: { state?: rt.ChargedState | undefined; blockTime?: bigint; coin?: CoinW; record?: EpochRecordW } = {},
 ): Promise<BondRun> {
-  const mod = await import(BOND_BUILD_DIR);
-  const contract = new mod.Contract({
-    bondCoin: (c: { privateState: unknown }) => {
-      if (!opts.coin) throw new Error("bondCoin witness only for postBond");
-      return [c.privateState, opts.coin];
-    },
-  });
+  const mod = await import(BUILD_DIR);
+  const values: Record<string, unknown> = {};
+  if (opts.coin) values.bondCoin = wit(opts.coin);
+  if (opts.record && opts.state) {
+    const records = mod.ledger(opts.state).epochRecords;
+    const genesis = records.findPathForLeaf(GENESIS_RECORD);
+    values.settleRecordPath = wit(records.findPathForLeaf(opts.record) ?? { ...genesis, leaf: opts.record });
+  }
+  const contract = new mod.Contract({ ...stubWitnesses(), ...values });
   const res = contract.circuits[circuit](freshContext(contract, opts.state, opts.blockTime), ...args);
   const after = res.context.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
@@ -493,16 +513,70 @@ export async function runBond(
     state: after, outputs: z.outputs, inputs: z.inputs,
     escrowed: led.escrowed.member(id) ? led.escrowed.lookup(id) : undefined,
     slashed: led.slashed.member(id) && led.slashed.lookup(id),
+    status: led.status.member(id) ? Number(led.status.lookup(id)) : undefined,
+    ledger: led,
   };
 }
 
-/** Run a time gate with its anchor; release also takes a tranche amount. */
-export async function runBondGate(
-  gate: BondGate, id: Uint8Array, anchor: bigint, blockTime: bigint,
-  opts: { state?: rt.ChargedState | undefined; amount?: bigint } = {},
-): Promise<BondRun> {
-  const args = gate === "releaseEpoch" ? [id, anchor, opts.amount ?? 0n] : [id, anchor];
-  return runBond(gate, args, { state: opts.state, blockTime });
+/** Lifecycle timing (seconds), mirroring the circuit constants. */
+export const T = {
+  EPOCH: 86_400n,
+  CHALLENGE: 43_200n,
+  FUNDING: 259_200n,
+  /** epoch end -> grace deadline: attester 6h + challenge 12h + proving 24h + grace 24h. */
+  AFTER_END: 237_600n,
+  TOLERANCE: 600n,
+} as const;
+
+export interface Engagement {
+  id: Uint8Array;
+  reg: Registered;
+  /** activatedAt[id]: epoch e ends at activatedAt + e * EPOCH. */
+  activatedAt: bigint;
+  state: rt.ChargedState;
+  records: EpochRecordW[];
+  scenario: Scenario;
+}
+
+export const BOND_COIN: CoinW = { nonce: new Uint8Array(32).fill(7), color: new Uint8Array(32).fill(3), value: 1_000n };
+export const CLIENT_PK = new Uint8Array(32).fill(0xbe); // slash beneficiary
+export const TIER_MIN = 500n;
+
+/**
+ * register (at BLOCK_TIME) -> postBond -> activate (at BLOCK_TIME + 100) -> prove epochs
+ * 1..`proven` with the KAT scenario, all on one ledger. Nothing is settled yet.
+ */
+export async function runningEngagement(
+  opts: { proven?: number; coin?: CoinW | null; secret?: Uint8Array } = {},
+): Promise<Engagement> {
+  const scenario = buildScenario();
+  const reg = await runRegister(scenario.witness, opts.secret ?? new Uint8Array(32).fill(0x99));
+  let state = reg.state;
+  if (opts.coin !== null) {
+    state = (await runLifecycle("postBond", [reg.id, TIER_MIN, { bytes: CLIENT_PK }],
+      { state, coin: opts.coin ?? BOND_COIN })).state;
+  }
+  const activatedAt = BLOCK_TIME + 100n;
+  state = (await runLifecycle("activate", [reg.id, new Uint8Array(32), activatedAt],
+    { state, blockTime: activatedAt })).state;
+  const n = opts.proven ?? 3;
+  let records: EpochRecordW[] = [];
+  if (n > 0) {
+    const r = await proveEpochs(Array.from({ length: n }, () => scenario), reg.id, new CompactHasher(), state);
+    state = r.state; records = r.records;
+  }
+  return { id: reg.id, reg, activatedAt, state, records, scenario };
+}
+
+/** End of epoch `e` and its last settlement moment for an engagement. */
+export const epochEndOf = (g: Engagement, e: bigint): bigint => g.activatedAt + e * T.EPOCH;
+export const graceDeadlineOf = (g: Engagement, e: bigint): bigint => epochEndOf(g, e) + T.AFTER_END;
+
+/** settleEpoch(e) at `blockTime` recording `settledTs` (default: = blockTime). */
+export function settle(g: Engagement, state: rt.ChargedState, e: bigint, blockTime: bigint,
+                       settledTs: bigint = blockTime, record?: EpochRecordW): Promise<BondRun> {
+  return runLifecycle("settleEpoch", [g.id, e, settledTs],
+    { state, blockTime, record: record ?? g.records[Number(e) - 1]! });
 }
 
 // --- H4: a run of proven epochs, then claim ----------------------------------------
@@ -521,8 +595,10 @@ export async function proveEpochs(
   scenarios: readonly Scenario[],
   id: Uint8Array,
   hasher: Hasher,
+  /** Ledger to prove on (e.g. after register / activate); default a fresh contract. */
+  initial?: rt.ChargedState,
 ): Promise<{ state: rt.ChargedState; records: EpochRecordW[] }> {
-  let state: rt.ChargedState | undefined;
+  let state: rt.ChargedState | undefined = initial;
   let prev: CarryTotals = ZERO_CARRY;
   let prevSalt = fill32(0);
   let prevCommitment = genesisCarry(hasher, prevSalt);
@@ -589,9 +665,8 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     // a presented record not on the ledger gets a forged path (leaf swapped into a real one)
     paths.push(rec === undefined ? genesis : (led.epochRecords.findPathForLeaf(rec) ?? { ...genesis, leaf: rec }));
   }
-  const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
   const contract = new mod.Contract({
-    ...Object.fromEntries(Object.keys(EPOCH_ONLY).map((k) => [k, unusedWitness(k)])),
+    ...stubWitnesses(),
     terms: wit(a.terms), termsSalt: wit(a.termsSalt),
     engagementSecret: wit(a.engagementSecret), profileSecret: wit(a.profileSecret),
     claimRecordPresent: wit(presentFlags), claimRecordPaths: wit(paths),
@@ -607,9 +682,3 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     kpiTotal: l2.kpiTotal.lookup(pid).read() as bigint,
   };
 }
-
-/** proveEpoch-only witnesses (stubbed when running claim). */
-const EPOCH_ONLY = Object.fromEntries([
-  "committedWallets", "activeCount", "walletSalt", "slotLeaves", "bidMin", "askMin", "depthPaths",
-  "flowBuy", "flowSell", "slotPaths", "poolEntry", "poolPath", "carryPrev", "carryPrevSalt", "carryNewSalt",
-].map((n) => [n, true]));

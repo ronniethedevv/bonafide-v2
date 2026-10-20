@@ -1,6 +1,6 @@
 # Circuit invariants I1–I10
 
-The epoch circuit enforces I1–I8; the registration/bond contracts enforce I9; the
+The epoch circuit enforces I1–I8; the registration/bond circuits (same contract, DD-17) enforce I9; the
 claim circuit enforces I10. A proof that breaks any invariant cannot be generated.
 
 ## Notation

@@ -28,7 +28,7 @@ without a compiler and need a real grammar + semantics pass.
 - **No top-level `const`.** `const … = …;` at module scope is a parse error
   ("found keyword const looking for a program element"). Inline the literals, or
   bind `const` locally inside a circuit body where allowed. Affected: `SLOTS`,
-  `BUCKETS` in `epoch_proof.compact`; the timing constants in `bond.compact`.
+  `BUCKETS` and the bond timing constants in `epoch_proof.compact`.
 - **Numeric type is likely `Unsigned<N>`**, not `Uint<N>` — real contracts use
   `Unsigned<64>` and literals like `0u64`. Replace every `Uint<8|128|160|…>` with
   the correct `Unsigned<N>` form and use typed literals (`0u64`, etc.). **Verify
@@ -50,7 +50,7 @@ without a compiler and need a real grammar + semantics pass.
 
 1. `epoch_proof.compact` first — it exercises the most grammar (structs, loops,
    vectors, arithmetic, asserts). Getting it clean unblocks the patterns for the rest.
-2. `registration.compact`, then `bond.compact`, then `claim` (now inside `epoch_proof.compact`, H4).
+2. Registration, bond and `claim` — now all inside `epoch_proof.compact` (H4, H3b: no cross-contract calls).
 3. Once all four compile with `--skip-zk`, do a full build (drop the flag) to
    generate proving keys, then run the **proving benchmark**: measure proving time
    for the 16-slot epoch circuit and fix `BUCKETS` (currently 48/epoch placeholder).

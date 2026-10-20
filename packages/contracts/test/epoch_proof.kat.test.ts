@@ -49,7 +49,6 @@ import {
 } from "@mmr/indexer";
 import {
   HAVE_BUILD,
-  HAVE_REG_BUILD,
   callerAccepts,
   termsToEngagement,
   proveEpochs,
@@ -573,7 +572,7 @@ describe.skipIf(!HAVE_BUILD)("M2(b): I5 carry-forward commitment across epochs",
   });
 });
 
-describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", () => {
+describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", () => {
   const SECRET = new Uint8Array(32).fill(0x99);
   const PROFILE = new Uint8Array(32).fill(0x77);
   // Terms: min_uptime_buckets = 40, epochs_total = 3. Epoch uptimes 48, 43, 0 -> passed 2 of 3.
@@ -683,7 +682,7 @@ function katActivity(addr: bigint, depthBuckets: DepthBucketSample[]): AddressAc
   };
 }
 
-describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
+describe.skipIf(!HAVE_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
   const SECRET = new Uint8Array(32).fill(0x99);
 
   async function registered() {
