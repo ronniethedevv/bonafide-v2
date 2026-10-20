@@ -83,6 +83,12 @@ struct SlotLeafCore {
 // tree's Field root; encodePoolLeaf's image is poolAddr(20 LE) | poolRoot(32 LE).
 struct PoolEntry { poolAddr: Uint<160>, poolRoot: Field }
 
+// H1 — depth_root band leaf, hashed as transientHash<BandSeries>. One leaf per
+// configured band; bid/ask are DENSE per-bucket minimum depths (0 = no sample).
+// Byte image (@mmr/indexer commit.ts): band_bps(8 LE) | bid[0..48](16 LE each) |
+// ask[0..48](16 LE each) = 1544 B; PoseidonHasher decodes it back to this struct.
+struct BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>, ask: Vector<48, Uint<128>> }
+
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
@@ -94,9 +100,13 @@ witness walletSalt(): Bytes<32>;
 witness slotLeaves(): Vector<16, SlotLeaf>;
 witness terms(): Terms;
 witness termsSalt(): Bytes<32>;
-// Per-slot contracted-band minimum depths per bucket (opened from depth_root).
+// H1: per-slot contracted-band minimum depths per bucket (dense), plus the path that
+// opens BandSeries { t.band_bps, bidMin[j], askMin[j] } against leaves[j].depth_root.
+// Checked for member slots only; other slots' depth is masked out of I6 and unchecked.
+// depthPaths: depth-2 band tree (BAND_TREE_DEPTH in @mmr/indexer; ≤ 4 bands).
 witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
 witness askMin(): Vector<16, Vector<48, Uint<128>>>;
+witness depthPaths(): Vector<16, Vector<2, PathStep>>;
 
 // C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
 // slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
@@ -381,6 +391,16 @@ circuit verifyPoolPath(leafHash: Field, path: Vector<10, PathStep>, root: Bytes<
   assert((h10 as Bytes<32>) == root, "pool inclusion path mismatch (C1)");
 }
 
+// H1: verify a depth-2 band-tree path from bandLeafHash to a slot leaf's depth_root.
+// Mirrors verifyBandOpening in @mmr/indexer. Like the pool root, depth_root is the
+// Field root's LE image, so the byte comparison is exactly the Field comparison.
+// The opened leaf carries t.band_bps, so only the contracted band can open.
+circuit verifyBandPath(leafHash: Field, path: Vector<2, PathStep>, root: Bytes<32>): [] {
+  const h1 = stepUp(leafHash, path[0]);
+  const h2 = stepUp(h1, path[1]);
+  assert((h2 as Bytes<32>) == root, "depth_root opening mismatch (H1)");
+}
+
 // I1 + H2 (closes L1): active wallets fill slots [0, n), are non-zero and strictly
 // increasing; every padding slot [n, 16) is exactly 0. Mirrors the oracle's
 // sortedAppendOnly. Interior zeros ([a, 0, b]) are rejected.
@@ -431,6 +451,9 @@ export circuit proveEpoch(
   const pe = poolEntry();
   const pp = poolPath();
   const sp = slotPaths();
+  const bid = bidMin();
+  const ask = askMin();
+  const dp = depthPaths();
 
   // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
   verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
@@ -448,6 +471,10 @@ export circuit proveEpoch(
       if (L.present) {
         assert(L.addr == w[j], "membership slot mismatch (I2)");
         assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+        // H1: this member's depth witness is the contracted band committed in depth_root.
+        verifyBandPath(transientHash<BandSeries>(BandSeries {
+                         band_bps: t.band_bps, bid: bid[j], ask: ask[j] }),
+                       dp[j], L.depth_root);
       } else {
         assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
                "non-membership low-leaf does not bracket (I2)");
@@ -518,8 +545,7 @@ export circuit proveEpoch(
   assert(xferOut + fromTreasury <= xferIn + t.disposal_D, "outflow cap (I5)");
 
   // I6: uptime — count buckets with summed per-slot minimum depth >= target on both sides.
-  const bid = bidMin();
-  const ask = askMin();
+  // Member depth is bound to depth_root above (H1); non-member depth is masked by pf.
   const uptime = uptimeCount(bid, ask, t.depth_target, pf);
 
   // I7: round-trip cap — per window, min(buy, sell) is round-trip volume.

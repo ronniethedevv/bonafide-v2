@@ -13,7 +13,10 @@
 // mirrors it exactly: reconstruct the band leaf from the witness series
 // (`bandSeriesLeaf`), verify the opening to depth_root, then fold the series into
 // the per-bucket uptime sum. `uptimeFromOpenings` MUST equal the oracle's
-// `uptimeBuckets`; the KAT on the laptop reuses these openings as its witness.
+// `uptimeBuckets`. The circuit witness for slot j is `denseBandSeries(series)`
+// (bidMin[j], askMin[j]: Vector<48>) plus `opening.path` (depthPaths[j]); the
+// epoch_proof KAT feeds these openings through the compiled circuit. Hash with
+// PoseidonHasher: the circuit opens depth_root with transientHash.
 
 import {
   type AddressActivity,

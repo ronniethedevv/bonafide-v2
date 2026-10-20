@@ -5,22 +5,26 @@
 // band leaf commits to that band's per-bucket (minBid, minAsk) series.
 //
 // flow_root commits to per-window (buy, sell) totals for the round-trip check.
+//
+// Leaf preimages are the byte images of Compact structs (little-endian Uints),
+// so PoseidonHasher can decode them and hash exactly as the circuit's
+// transientHash does (H1):
+//   band leaf   BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>,
+//                            ask: Vector<48, Uint<128>> }          (1544 B)
+//   flow leaf   FlowWindow { window: Uint<32>, buy: Uint<128>, sell: Uint<128> } (36 B)
+// The band series is DENSE: a fixed 48-bucket vector (missing buckets are 0),
+// matching the circuit's depth witness. The band tree has a fixed depth of
+// BAND_TREE_DEPTH (padded with an empty band-0 leaf), so the circuit's path is a
+// fixed-length vector.
 
 import {
   type Digest,
   type Hasher,
   type PathStep,
-  encodeUint,
+  encodeUintLE,
   digestsEqual,
 } from "@mmr/merkle";
 import type { DepthBucketSample, FlowWindowSample } from "./provider.js";
-
-function u32(n: number): Uint8Array {
-  if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
-    throw new RangeError(`u32 out of range: ${n}`);
-  }
-  return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
-}
 
 function concat(parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((s, p) => s + p.length, 0);
@@ -33,17 +37,49 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Canonical per-band series: bandBps, then each bucket sorted ascending. */
-function encodeBandSeries(
-  bandBps: number,
-  series: ReadonlyArray<{ bucket: number; minBid: bigint; minAsk: bigint }>,
-): Uint8Array {
-  const sorted = [...series].sort((a, b) => a.bucket - b.bucket);
-  const parts: Uint8Array[] = [u32(bandBps), u32(sorted.length)];
-  for (const s of sorted) {
-    parts.push(u32(s.bucket), encodeUint(s.minBid, 128), encodeUint(s.minAsk, 128));
+/** Buckets in the circuit's dense depth witness (`Vector<48, Uint<128>>`). */
+export const BAND_SERIES_BUCKETS = 48;
+/** Fixed depth of the depth_root band tree (≤ 4 bands); the circuit's `Vector<2, PathStep>`. */
+export const BAND_TREE_DEPTH = 2;
+
+type BandSample = { bucket: number; minBid: bigint; minAsk: bigint };
+
+/**
+ * Dense form of a band's bucket series: (minBid, minAsk) per bucket 0..47, 0 where
+ * the wallet has no sample. This is exactly the circuit's per-slot depth witness
+ * (bidMin[j], askMin[j]). Sparse and dense forms with the same non-zero values
+ * yield the same leaf, and the same uptime.
+ */
+export function denseBandSeries(series: ReadonlyArray<BandSample>): { bid: bigint[]; ask: bigint[] } {
+  const bid = new Array<bigint>(BAND_SERIES_BUCKETS).fill(0n);
+  const ask = new Array<bigint>(BAND_SERIES_BUCKETS).fill(0n);
+  const seen = new Set<number>();
+  for (const s of series) {
+    if (!Number.isInteger(s.bucket) || s.bucket < 0 || s.bucket >= BAND_SERIES_BUCKETS) {
+      throw new RangeError(`bucket out of range [0, ${BAND_SERIES_BUCKETS}): ${s.bucket}`);
+    }
+    if (seen.has(s.bucket)) throw new Error(`duplicate bucket ${s.bucket} in band series`);
+    seen.add(s.bucket);
+    bid[s.bucket] = s.minBid;
+    ask[s.bucket] = s.minAsk;
   }
-  return concat(parts);
+  return { bid, ask };
+}
+
+/** Byte image of the circuit's BandSeries struct for one band. */
+function encodeBandSeries(bandBps: number, series: ReadonlyArray<BandSample>): Uint8Array {
+  if (!Number.isInteger(bandBps) || bandBps < 0) throw new RangeError(`bad bandBps: ${bandBps}`);
+  const { bid, ask } = denseBandSeries(series);
+  return concat([
+    encodeUintLE(BigInt(bandBps), 64),
+    ...bid.map((v) => encodeUintLE(v, 128)),
+    ...ask.map((v) => encodeUintLE(v, 128)),
+  ]);
+}
+
+/** Padding for unused band-tree positions: an empty band-0 series. */
+function emptyBandLeaf(hasher: Hasher): Digest {
+  return hasher.hashLeaf(encodeBandSeries(0, []));
 }
 
 function bandLeafDigests(
@@ -65,13 +101,20 @@ function bandLeafDigests(
   );
 }
 
-/** Build a balanced Merkle root + layers over leaf digests (power-of-two padded). */
-function balancedTree(hasher: Hasher, leaves: Digest[]): { root: Digest; layers: Digest[][] } {
-  const depth = Math.max(0, Math.ceil(Math.log2(Math.max(1, leaves.length))));
+/**
+ * Build a balanced Merkle root + layers over leaf digests, padded with `pad` to
+ * 2^depth leaves. `depth` defaults to the smallest that fits.
+ */
+function balancedTree(
+  hasher: Hasher,
+  leaves: Digest[],
+  pad: Digest,
+  depth = Math.max(0, Math.ceil(Math.log2(Math.max(1, leaves.length)))),
+): { root: Digest; layers: Digest[][] } {
   const width = 1 << depth;
-  const zero = hasher.hashLeaf(new Uint8Array(0));
+  if (leaves.length > width) throw new RangeError(`${leaves.length} leaves exceed depth ${depth}`);
   const base: Digest[] = [];
-  for (let i = 0; i < width; i++) base.push(i < leaves.length ? leaves[i]! : zero);
+  for (let i = 0; i < width; i++) base.push(i < leaves.length ? leaves[i]! : pad);
   const layers: Digest[][] = [base];
   for (let l = 0; l < depth; l++) {
     const cur = layers[l]!;
@@ -82,12 +125,16 @@ function balancedTree(hasher: Hasher, leaves: Digest[]): { root: Digest; layers:
   return { root: layers[depth]![0]!, layers };
 }
 
+function bandTree(hasher: Hasher, leaves: Digest[]): { root: Digest; layers: Digest[][] } {
+  return balancedTree(hasher, leaves, emptyBandLeaf(hasher), BAND_TREE_DEPTH);
+}
+
 export function commitDepth(
   hasher: Hasher,
   buckets: readonly DepthBucketSample[],
   bandsBps: readonly number[],
 ): Digest {
-  return balancedTree(hasher, bandLeafDigests(hasher, buckets, bandsBps)).root;
+  return bandTree(hasher, bandLeafDigests(hasher, buckets, bandsBps)).root;
 }
 
 export interface BandOpening {
@@ -107,7 +154,7 @@ export function openBand(
   const index = bandsBps.indexOf(bandBps);
   if (index < 0) throw new Error(`band ${bandBps} not configured`);
   const leaves = bandLeafDigests(hasher, buckets, bandsBps);
-  const { layers } = balancedTree(hasher, leaves);
+  const { layers } = bandTree(hasher, leaves);
   const path: PathStep[] = [];
   let idx = index;
   for (let l = 0; l < layers.length - 1; l++) {
@@ -151,9 +198,20 @@ export function bandSeriesLeaf(
 // One leaf per window, so the epoch circuit can open a single window from
 // flow_root to enforce the round-trip cap (I7) without revealing the whole series.
 function flowWindowLeaf(hasher: Hasher, w: FlowWindowSample): Digest {
+  if (!Number.isInteger(w.window) || w.window < 0 || w.window > 0xffffffff) {
+    throw new RangeError(`window out of range: ${w.window}`);
+  }
   return hasher.hashLeaf(
-    concat([u32(w.window), encodeUint(w.buy, 128), encodeUint(w.sell, 128)]),
+    concat([encodeUintLE(BigInt(w.window), 32), encodeUintLE(w.buy, 128), encodeUintLE(w.sell, 128)]),
   );
+}
+
+/** Padding for unused flow-tree positions: a zero-flow leaf (adds nothing to rt or gross). */
+const emptyFlowLeaf = (hasher: Hasher): Digest =>
+  flowWindowLeaf(hasher, { window: 0, buy: 0n, sell: 0n });
+
+function flowTree(hasher: Hasher, sorted: readonly FlowWindowSample[]) {
+  return balancedTree(hasher, sorted.map((w) => flowWindowLeaf(hasher, w)), emptyFlowLeaf(hasher));
 }
 
 function sortedFlowWindows(
@@ -167,7 +225,7 @@ export function commitFlow(
   windows: readonly FlowWindowSample[],
 ): Digest {
   const sorted = sortedFlowWindows(windows);
-  return balancedTree(hasher, sorted.map((w) => flowWindowLeaf(hasher, w))).root;
+  return flowTree(hasher, sorted).root;
 }
 
 export interface WindowOpening {
@@ -189,7 +247,7 @@ export function openWindow(
   const index = sorted.findIndex((w) => w.window === window);
   if (index < 0) throw new Error(`window ${window} not present`);
   const w = sorted[index]!;
-  const { layers } = balancedTree(hasher, sorted.map((s) => flowWindowLeaf(hasher, s)));
+  const { layers } = flowTree(hasher, sorted);
   const path: PathStep[] = [];
   let idx = index;
   for (let l = 0; l < layers.length - 1; l++) {

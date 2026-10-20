@@ -11,7 +11,8 @@ import {
   type PoolDescriptor,
   type PriceSample,
 } from "@mmr/indexer";
-import { Sha256Hasher, type Digest } from "@mmr/merkle";
+import type { Digest } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { createEngagement, type EngagementTerms } from "./engagement.js";
 import { evaluateEpoch } from "./oracle.js";
 import {
@@ -117,10 +118,17 @@ class TestProvider implements ChainProvider {
   }
 }
 
+/** A wrong but canonical (< field modulus) sibling: flip the LE low bit. */
+function flipLowBit(d: Digest): Digest {
+  const out = d.slice();
+  out[0] = out[0]! ^ 1;
+  return out;
+}
+
 async function buildFixture() {
-  // Sha256 for both tree and depth/flow commitments: depth openings are hashed
-  // with the commit hasher and are independent of the pool-tree hasher.
-  const hasher = new Sha256Hasher();
+  // PoseidonHasher (the circuit's transientHash) for the tree and the depth/flow
+  // commitments: the circuit opens depth_root with transientHash (H1).
+  const hasher = new PoseidonHasher();
   const epoch = await buildEpoch(
     { provider: new TestProvider(), publisher: new InMemoryPublisher(), hasher, commitHasher: hasher },
     DEFAULT_CONFIG,
@@ -193,7 +201,7 @@ describe("H1 depth openings", () => {
     const corrupted = openings.map((o, i) => {
       if (i !== 0 || o.opening.path.length === 0) return o;
       const path = o.opening.path.map((step, j) =>
-        j === 0 ? { ...step, sibling: new Uint8Array(step.sibling.length).fill(0xff) } : step,
+        j === 0 ? { ...step, sibling: flipLowBit(step.sibling) } : step,
       );
       return { ...o, opening: { ...o.opening, path } };
     });

@@ -38,12 +38,13 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **CI fix** — `@mmr/tearsheet` real-Chromium PDF test timed out in CI (same commit passed on the PR-event run; a flake). Root cause: Chromium hangs on the GitHub runner's tiny `/dev/shm`. Added `--disable-dev-shm-usage` to the launch and aligned the vitest timeout (60s→120s) with Chrome's own execFile timeout. Passes locally in ~0.5s | **done** |
 | 2026-10-20 | **H4 (TS half)** — decision A1+B1 (DD-12): uptime pass threshold is a committed term (bucket count, matching the oracle's `minUptimeBuckets`), and `epochsTotal` is the committed contract length. `@mmr/watcher/verdict-log`: `EpochRecord` (mirrors an `epochUptime` entry), `deriveClaimFromRecords` (passed = records meeting the threshold over epochs 1..epochsTotal; a missing/failed epoch counts to total, not passed), `verifyClaimAgainstRecords` (denominator must equal the committed total; passed must equal the derived count). Tests: honest verifies, inflated passed rejected, wrong denominator rejected, out-of-range records ignored, stricter threshold credits fewer, passed never exceeds total. Threshold/total are explicit params for now — committing them in `Terms` is **atomic with the circuit** (commitTerms + circuit `Terms` struct + registration + KAT), deferred to the laptop session (DD-12). **Circuit half (laptop):** read the two terms, iterate 1..epochsTotal over `epochUptime`, assert claimed counters == counts | **done (TS: +7 watcher tests, 13 green; Terms-commit + circuit edit pending)** |
 | 2026-10-20 | **M2(a) (circuit)** — `epoch_proof.compact` I5 sign fix (DD-11): `assert(xferOut + fromTreasury <= xferIn + t.disposal_D)` (was `xferOut <= xferIn + D + fromTreasury`, which granted the loan as outflow budget). Now agrees with the oracle. KAT harness `buildScenario` takes wallet-A metric overrides (tree rebuilt, so openings stay valid). New KAT: loan-rug (`xfer_out == from_treasury`, `xfer_in` = loan only) reverts, D+1 reverts, exactly-D passes, non-loan inflow still funds outflow. Verified against a draft build of the old formula: the rug and D+1 cases **passed** there (bug reproduced), so the tests bite | **done (+4 KAT tests; 36 KAT, 166 total)** |
+| 2026-10-20 | **H1 (circuit)** — `epoch_proof.compact` binds member depth to `depth_root`: new `struct BandSeries { band_bps: Uint<64>, bid/ask: Vector<48, Uint<128>> }` and `witness depthPaths(): Vector<16, Vector<2, PathStep>>`; per member slot, `verifyBandPath(transientHash<BandSeries>({t.band_bps, bidMin[j], askMin[j]}), depthPaths[j], L.depth_root)` ("depth_root opening mismatch (H1)"), then the existing masked I6 fold. **Decision (DD-13): dense 48-bucket series, fixed depth-2 band tree, Poseidon** (see DD-13). TS: `@mmr/indexer` `encodeBandSeries` is now the dense LE `BandSeries` image (+ `denseBandSeries`, `BAND_SERIES_BUCKETS`, `BAND_TREE_DEPTH`); flow leaf is the LE `FlowWindow` image; tree padding is a hashable empty leaf (was `hashLeaf(empty)`, which Poseidon cannot hash); `PoseidonHasher` gains the band (1544 B) + flow (36 B) layouts; `buildEpoch` `commitHasher` defaults to `PoseidonHasher`; depth/flow-openings tests + `runDemoEpoch` use it. KAT: harness commits real member `depth_root`s (`memberDepth`); 3 H2 depth tests now commit their member depth instead of mutating it post-hoc (same masking property); new H1 block: inflated minBid, tampered minAsk, band-path sibling, flipped direction, other band with its own valid path, Sha256Hasher `depth_root` — all revert; the prover's `assembleDepthOpenings` output is the circuit witness and circuit uptime == `uptimeFromOpenings` == oracle `uptimeBuckets` (43). Verified against a draft of the pre-H1 circuit: all 6 tamper cases **passed** there | **done (+7 KAT, +5 indexer tests)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 166 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
+Total: 178 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -81,22 +82,10 @@ that already exist and are tested against in-memory fakes.
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
 Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved).
-H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remains.
+H1 done (TS + circuit, 2026-10-20).
 
-- [ ] **H1 (circuit half)** — bind `bidMin`/`askMin` to each leaf's `depth_root`
-      and select the contracted band (I6). The TS reference is
-      `@mmr/prover/depth-openings` (+ `bandSeriesLeaf` in `@mmr/indexer/commit`):
-      reconstruct the band leaf from the per-slot depth witness, `verifyBandOpening`
-      against `leaves[j].depth_root`, fold the series into the I6 sum. Open
-      decisions to settle **with the compiler in the loop**:
-      (a) witness the band series as a **dense fixed 48-bucket** vector (maps
-      straight to `Vector<48>`, easiest in Compact) vs the sparse `encodeBandSeries`
-      the TS currently commits — if dense, change `encodeBandSeries`/`bandSeriesLeaf`
-      to match and the prover tests will flag any divergence;
-      (b) the band tree is **shallow** (one leaf per band), so its hash can stay
-      `commitHasher` = `Sha256Hasher` (persistentHash) — no Poseidon needed, unlike
-      the depth-16 slot tree. Keep `uptimeFromOpenings == oracle.uptimeBuckets` as
-      the KAT.
+- [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
+      `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
 - [ ] **M1 (circuit half)** — I7 round-trip cap. **TS half done** (status log
       2026-10-20): `@mmr/prover/flow-openings` assembles/verifies per-window
       `flow_root` openings and reproduces the oracle's round-trip/gross. Circuit
@@ -187,6 +176,21 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
   Adding these two terms is **atomic with the circuit** (commitTerms, the circuit
   `Terms` struct, registration, and the KAT move together, per DD-9), so the TS
   half takes them as explicit parameters until that change lands.
+
+- **DD-13** (H1) The depth_root band leaf is a **dense** fixed 48-bucket
+  `BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>, ask: Vector<48,
+  Uint<128>> }` (missing bucket = 0), hashed with **`transientHash`**
+  (`PoseidonHasher`), in a band tree of **fixed depth 2** (≤ 4 bands, padded with
+  an empty band-0 leaf). Chosen over the sparse `encodeBandSeries` because
+  `PoseidonHasher` can only hash fixed Compact struct layouts and dense maps
+  straight onto the `bidMin`/`askMin` `Vector<48>` witness; sparse and dense
+  forms of the same values give the same leaf and the same uptime. Supersedes
+  the earlier note that the band tree could stay `Sha256Hasher`: everything the
+  circuit verifies is Poseidon. The opened leaf carries `t.band_bps`, so only
+  the contracted band opens; its index is not checked. Proving requires
+  `bucketsPerEpoch == 48` and ≤ 4 bands (`DEFAULT_CONFIG`). The flow leaf
+  (`FlowWindow`, 36 B LE) and its zero-flow padding are set here only so
+  `flow_root` is Poseidon-hashable; M1 finalizes the flow tree shape.
 
 ## Open decisions (carry from spec)
 

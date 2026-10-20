@@ -27,6 +27,7 @@ import {
   zeroMetrics,
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField } from "@mmr/merkle/poseidon";
+import { DEFAULT_CONFIG, type DepthBucketSample, commitDepth, openBand } from "@mmr/indexer";
 
 // KAT_EPOCH_BUILD overrides the compiled-contract dir (e.g. to test a draft circuit).
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
@@ -69,6 +70,7 @@ export interface EpochWitness {
   termsSalt: Uint8Array;
   bidMin: bigint[][];
   askMin: bigint[][];
+  depthPaths: PathStepW[][];
   slotPaths: PathStepW[][];
   poolEntry: { poolAddr: bigint; poolRoot: bigint };
   poolPath: PathStepW[];
@@ -109,6 +111,32 @@ const fill32 = (b: number): Digest => new Uint8Array(32).fill(b);
 const zeroGrid = (): bigint[][] =>
   Array.from({ length: SLOTS }, () => new Array<bigint>(BUCKETS).fill(0n));
 
+// --- Depth (H1) -----------------------------------------------------------------
+
+/** The indexer's configured bands; the contracted band is BANDS[0] (terms.band_bps). */
+export const BANDS = DEFAULT_CONFIG.bandsBps;
+export const BAND = BANDS[0]!;
+/** Depth-2 band-tree path for slots whose depth the circuit does not check. */
+const ZERO_BAND_PATH: PathStepW[] = [0, 1].map(() => ({ sibling: 0n, weAreRight: false }));
+
+/** Dense contracted-band series for one member wallet. */
+export interface MemberDepth { bid: bigint[]; ask: bigint[] }
+export const flatDepth = (v: bigint): MemberDepth =>
+  ({ bid: new Array<bigint>(BUCKETS).fill(v), ask: new Array<bigint>(BUCKETS).fill(v) });
+
+/**
+ * Indexer depth samples for a member: the contracted band carries `d`; every other
+ * band carries 2·d + 1, so opening the wrong band never matches by accident.
+ */
+export function depthSamples(d: MemberDepth): DepthBucketSample[] {
+  return Array.from({ length: BUCKETS }, (_, bucket) => ({
+    bucket,
+    perBand: BANDS.map((bandBps) => bandBps === BAND
+      ? { bandBps, minBid: d.bid[bucket]!, minAsk: d.ask[bucket]! }
+      : { bandBps, minBid: 2n * d.bid[bucket]! + 1n, minAsk: 2n * d.ask[bucket]! + 1n }),
+  }));
+}
+
 // --- Scenario -----------------------------------------------------------------
 
 export const POOL = 0x00000000000000000000000000000000000000b2n;
@@ -140,19 +168,29 @@ export function buildScenario(
   extraMembers = 0,
   /** Overrides for wallet A's metrics; the tree is built from them, so openings stay valid. */
   walletA: Partial<Leaf["metrics"]> = {},
+  /**
+   * Contracted-band depth per MEMBER slot (0 = A, 2.. = extras), committed in that
+   * wallet's depth_root (H1). Default: A carries the full target (10) in every
+   * bucket; other members carry 0.
+   */
+  memberDepth: Partial<Record<number, MemberDepth>> = { 0: flatDepth(10n) },
+  /** Hasher for depth_root (H1). Only PoseidonHasher matches the circuit's transientHash. */
+  depthHasher: Hasher = hasher,
 ): Scenario {
-  const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number): Leaf => ({
+  const depthOf = (slot: number): MemberDepth => memberDepth[slot] ?? flatDepth(0n);
+  const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number, depth?: MemberDepth): Leaf => ({
     addr, nextAddr: 0n, isProtocol: false,
     metrics: { ...zeroMetrics(), ...over },
-    depthRoot: fill32(tag), flowRoot: fill32(tag + 1),
+    depthRoot: depth ? commitDepth(depthHasher, depthSamples(depth), BANDS) : fill32(tag),
+    flowRoot: fill32(tag + 1),
   });
   const tree = IndexedMerkleTree.build(hasher, [
     leaf(WALLET_A, { baseStart: 900n, baseEnd: 1_000n, quoteEnd: 5n, lpBase: 7n, lpQuote: 3n,
                      xferIn: 4n, xferOut: 2n, swapBaseIn: 50n, swapBaseOut: 60n,
-                     swapQuoteIn: 120n, swapQuoteOut: 100n, ...walletA }, 0xa0),
+                     swapQuoteIn: 120n, swapQuoteOut: 100n, ...walletA }, 0xa0, depthOf(0)),
     leaf(OTHER_C, { baseEnd: 77n }, 0xc0),
     leaf(OTHER_D, { baseEnd: 88n, xferOut: 9n }, 0xd0),
-    ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0)),
+    ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0, depthOf(k + 2))),
   ]);
   const ror = RootOfRoots.build(hasher, 7, [
     { poolAddr: 0xa1n, poolRoot: fill32(0x11) },
@@ -181,11 +219,17 @@ export function buildScenario(
     else { slotLeaves.push(toSlotLeaf(emptyLeaf(), false)); slotPaths.push(toPath(zeroPath)); }
   }
 
-  // Depth: slot 0 carries the full target on both sides in every bucket.
+  // Depth (H1): each member slot's dense series + its band opening against depth_root.
   const bidMin = zeroGrid();
   const askMin = zeroGrid();
-  bidMin[0]!.fill(10n);
-  askMin[0]!.fill(10n);
+  const depthPaths = Array.from({ length: SLOTS }, () => ZERO_BAND_PATH);
+  for (let j = 0; j < active.length; j++) {
+    if (j === 1) continue; // B is not in the pool: no depth_root to open
+    const d = depthOf(j);
+    bidMin[j] = [...d.bid];
+    askMin[j] = [...d.ask];
+    depthPaths[j] = toPath(openBand(depthHasher, depthSamples(d), BANDS, BAND).path);
+  }
 
   return {
     hasher, tree, ror, rootOfRoots: ror.root,
@@ -197,10 +241,10 @@ export function buildScenario(
       terms: {
         floor_price_P: 2n, loan_L0: 1_000n, quote_start_Q0: 5n,
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
-        roundtrip_share_ppm: 500_000n, band_bps: 50n,
+        roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
       },
       termsSalt: fill32(0x7e),
-      bidMin, askMin, slotPaths,
+      bidMin, askMin, depthPaths, slotPaths,
       poolEntry: { poolAddr: pool.poolAddr, poolRoot: toField(pool.poolRoot) },
       poolPath: toPath(pool.path),
     },
@@ -241,6 +285,7 @@ export async function runProveEpoch(
     termsSalt: (c: { privateState: unknown }) => [c.privateState, w.termsSalt],
     bidMin: (c: { privateState: unknown }) => [c.privateState, w.bidMin],
     askMin: (c: { privateState: unknown }) => [c.privateState, w.askMin],
+    depthPaths: (c: { privateState: unknown }) => [c.privateState, w.depthPaths],
     slotPaths: (c: { privateState: unknown }) => [c.privateState, w.slotPaths],
     poolEntry: (c: { privateState: unknown }) => [c.privateState, w.poolEntry],
     poolPath: (c: { privateState: unknown }) => [c.privateState, w.poolPath],

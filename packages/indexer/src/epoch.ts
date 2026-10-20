@@ -13,7 +13,6 @@ import {
   type Hasher,
   IndexedMerkleTree,
   RootOfRoots,
-  Sha256Hasher,
   digestToHex,
   formatAddr,
   type PoolEntry,
@@ -37,8 +36,8 @@ export interface EpochDeps {
   /** Pool trees + root-of-roots. Default PoseidonHasher: the circuit's transientHash. */
   hasher?: Hasher;
   /**
-   * Depth / flow commitments inside each leaf. Not yet opened in-circuit (H1 / I7
-   * pick their hash when they are), so the default stays Sha256Hasher.
+   * Depth / flow commitments inside each leaf. Default PoseidonHasher: the circuit
+   * opens depth_root (H1) and flow_root (M1) with transientHash.
    */
   commitHasher?: Hasher;
 }
@@ -95,7 +94,7 @@ export async function buildEpoch(
 ): Promise<EpochResult> {
   assertConfig(config);
   const hasher = deps.hasher ?? new PoseidonHasher();
-  const commitHasher = deps.commitHasher ?? new Sha256Hasher();
+  const commitHasher = deps.commitHasher ?? new PoseidonHasher();
 
   const discovered = await deps.provider.poolsAboveFloor(
     config.liquidityFloor,

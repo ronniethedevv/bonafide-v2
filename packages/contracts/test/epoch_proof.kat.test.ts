@@ -17,7 +17,25 @@ import {
   encodePoolLeaf,
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField, fieldToDigest } from "@mmr/merkle/poseidon";
-import { buildWalletVector, commitTerms, commitWallets } from "@mmr/prover";
+import {
+  assembleDepthOpenings,
+  buildWalletVector,
+  commitTerms,
+  commitWallets,
+  createEngagement,
+  evaluateEpoch,
+  uptimeFromOpenings,
+  verifyDepthOpenings,
+} from "@mmr/prover";
+import {
+  DEFAULT_CONFIG,
+  bucketsPerEpoch,
+  denseBandSeries,
+  openBand,
+  type AddressActivity,
+  type DepthBucketSample,
+  type EpochRange,
+} from "@mmr/indexer";
 import {
   HAVE_BUILD,
   HAVE_REG_BUILD,
@@ -25,6 +43,13 @@ import {
   runRegister,
   buildScenario,
   cloneWitness,
+  flatDepth,
+  depthSamples,
+  toPath,
+  BAND,
+  BANDS,
+  POOL,
+  type MemberDepth,
   runProveEpoch,
 } from "./harness.js";
 
@@ -49,7 +74,7 @@ describe("PoseidonHasher matches compact-runtime transientHash", () => {
   it("rejects non-canonical digests (>= field modulus) and non-leaf preimages", () => {
     const big = new Uint8Array(32).fill(0xff);
     expect(() => h.hashNode(big, new Uint8Array(32))).toThrow(/exceeds maximum value/);
-    expect(() => h.hashLeaf(new Uint8Array(64))).toThrow(/only encodeLeaf/);
+    expect(() => h.hashLeaf(new Uint8Array(64))).toThrow(/hashes only slot/);
   });
 
   it("a pool leaf hashes like a node (no alignment tag): safety rests on fixed path depth", () => {
@@ -185,28 +210,25 @@ describe.skipIf(!HAVE_BUILD)("H2: active bitmap / padding slots", () => {
   });
 
   it("padding-slot depth does not count toward uptime (I6)", async () => {
-    const { rootOfRoots, witness } = buildScenario();
+    const { rootOfRoots, witness } = buildScenario(undefined, 0, {}, { 0: flatDepth(0n) });
     const w = cloneWitness(witness);
-    w.bidMin[0]!.fill(0n); w.askMin[0]!.fill(0n);
     w.bidMin[5]!.fill(10n); w.askMin[5]!.fill(10n);
     await expect(run(w, rootOfRoots)).resolves.toMatchObject({ uptime: 0n });
   });
 
   it("non-membership-slot depth does not count toward uptime (I6)", async () => {
-    const { rootOfRoots, witness } = buildScenario();
+    const { rootOfRoots, witness } = buildScenario(undefined, 0, {}, { 0: flatDepth(0n) });
     const w = cloneWitness(witness);
-    w.bidMin[0]!.fill(0n); w.askMin[0]!.fill(0n);
     w.bidMin[1]!.fill(10n); w.askMin[1]!.fill(10n);
     await expect(run(w, rootOfRoots)).resolves.toMatchObject({ uptime: 0n });
   });
 
   it("member depth still sums across slots (I6)", async () => {
-    const { rootOfRoots, witness } = buildScenario(undefined, 1); // slot 2 is a member
-    const w = cloneWitness(witness);
-    w.bidMin[0]!.fill(4n); w.askMin[0]!.fill(4n);
-    w.bidMin[2]!.fill(6n); w.askMin[2]!.fill(6n);
-    w.bidMin[2]![0] = 5n; // bucket 0: 4 + 5 < 10 on bid
-    await expect(run(w, rootOfRoots)).resolves.toMatchObject({ uptime: 47n });
+    const c = flatDepth(6n);
+    c.bid[0] = 5n; // bucket 0: 4 + 5 < 10 on bid
+    // slot 2 is a member; both members' depth is committed in their depth_root (H1)
+    const { rootOfRoots, witness } = buildScenario(undefined, 1, {}, { 0: flatDepth(4n), 2: c });
+    await expect(run(witness, rootOfRoots)).resolves.toMatchObject({ uptime: 47n });
   });
 
   it("L1: rejects an interior zero [a, 0, b] (activeCount 3)", async () => {
@@ -276,6 +298,117 @@ describe.skipIf(!HAVE_BUILD)("M2(a): I5 excludes the treasury loan (DD-11)", () 
     await expect(prove({ xferIn: 1_500n, xferOut: 601n, fromTreasury: 1_000n })).rejects.toThrow(I5);
   });
 });
+
+describe.skipIf(!HAVE_BUILD)("H1: depth witness bound to depth_root (I6)", () => {
+  const H1 = /depth_root opening mismatch \(H1\)/;
+  const run = (w: ReturnType<typeof buildScenario>["witness"], root: Uint8Array) =>
+    runProveEpoch(w, ID, root, EPOCH);
+
+  it("rejects an inflated bucket minBid on a member slot", async () => {
+    const { rootOfRoots, witness } = buildScenario(undefined, 0, {}, { 0: flatDepth(0n) });
+    const w = cloneWitness(witness);
+    w.bidMin[0]![17] = 10n; // forge one passing bucket on the bid side
+    await expect(run(w, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("rejects a tampered bucket minAsk on a member slot", async () => {
+    const { rootOfRoots, witness } = buildScenario();
+    const w = cloneWitness(witness);
+    w.askMin[0]![47] = 9n; // deflating also changes the leaf: values are bound, not bounded
+    await expect(run(w, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("rejects a tampered band-path sibling", async () => {
+    const { rootOfRoots, witness } = buildScenario();
+    const w = cloneWitness(witness);
+    w.depthPaths[0]![1]!.sibling += 1n;
+    await expect(run(w, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("rejects a flipped band-path direction", async () => {
+    const { rootOfRoots, witness } = buildScenario();
+    const w = cloneWitness(witness);
+    w.depthPaths[0]![0]!.weAreRight = !w.depthPaths[0]![0]!.weAreRight;
+    await expect(run(w, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("rejects another band's (deeper) series opened with its own valid path", async () => {
+    // Band BANDS[1] carries 2·d+1 per bucket and its path is genuine, but the leaf the
+    // circuit rebuilds carries t.band_bps, so only the contracted band can open.
+    const { rootOfRoots, witness } = buildScenario();
+    const other = BANDS[1]!;
+    const samples = depthSamples(flatDepth(10n));
+    const w = cloneWitness(witness);
+    w.bidMin[0] = samples.map((b) => b.perBand.find((p) => p.bandBps === other)!.minBid);
+    w.askMin[0] = samples.map((b) => b.perBand.find((p) => p.bandBps === other)!.minAsk);
+    w.depthPaths[0] = toPath(openBand(new PoseidonHasher(), samples, BANDS, other).path);
+    await expect(run(w, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("rejects a depth_root committed with Sha256Hasher (only PoseidonHasher matches)", async () => {
+    const { rootOfRoots, witness } = buildScenario(undefined, 0, {}, undefined, new Sha256Hasher());
+    await expect(run(witness, rootOfRoots)).rejects.toThrow(H1);
+  });
+
+  it("circuit uptime == uptimeFromOpenings == oracle uptimeBuckets (prover openings as witness)", async () => {
+    // A: 3 in buckets 0..9, else 10. Extra member (slot 2): 7 in buckets 0..4, else 0.
+    //   buckets 0..4: 10 pass · 5..9: 3 fail · 10..47: 10 pass  ->  43
+    const a = flatDepth(10n);
+    for (let b = 0; b < 10; b++) { a.bid[b] = 3n; a.ask[b] = 3n; }
+    const c = flatDepth(0n);
+    for (let b = 0; b < 5; b++) { c.bid[b] = 7n; c.ask[b] = 7n; }
+    const s = buildScenario(undefined, 1, {}, { 0: a, 2: c });
+    const n = Number(s.witness.activeCount);
+    const wallets = s.witness.committedWallets.slice(0, n);
+
+    // Prover side: B is absent from the pool, so it has no activity (non-member).
+    const activities = new Map<bigint, AddressActivity>(
+      [[wallets[0]!, a], [wallets[2]!, c]].map(([addr, d]) =>
+        [addr as bigint, katActivity(addr as bigint, depthSamples(d as MemberDepth))]),
+    );
+    const engagement = createEngagement({
+      id: "h1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
+      terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
+               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND },
+    });
+    const hasher = new PoseidonHasher();
+    const openings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, KAT_RANGE);
+    const depthRootByAddr = new Map(s.tree.leaves.map((l) => [l.addr, l.depthRoot] as const));
+    expect(openings.map((o) => o.slot)).toEqual([0, 2]);
+    expect(verifyDepthOpenings(hasher, depthRootByAddr, openings, BAND)).toBe(true);
+
+    // Circuit witness = the prover's openings, densified.
+    const w = cloneWitness(s.witness);
+    for (const o of openings) {
+      const d = denseBandSeries(o.series);
+      w.bidMin[o.slot] = d.bid;
+      w.askMin[o.slot] = d.ask;
+      w.depthPaths[o.slot] = toPath(o.opening.path);
+    }
+    const r = await run(w, s.rootOfRoots);
+    const verdict = evaluateEpoch(engagement, activities, DEFAULT_CONFIG, KAT_RANGE, { settled: true });
+    const fromOpenings = uptimeFromOpenings(openings, bucketsPerEpoch(DEFAULT_CONFIG), 10n);
+    expect(fromOpenings).toBe(verdict.uptimeBuckets);
+    expect(r.uptime).toBe(BigInt(fromOpenings));
+    expect(r.uptime).toBe(43n);
+  });
+});
+
+const KAT_RANGE: EpochRange = {
+  epoch: 7, startBlock: 900_000, endBlock: 1_000_000, endBlockHash: "0xkat",
+  startTs: 1_000_000, endTs: 1_086_400,
+};
+
+function katActivity(addr: bigint, depthBuckets: DepthBucketSample[]): AddressActivity {
+  return {
+    addr, isProtocol: false,
+    baseStart: 0n, baseEnd: 0n, quoteEnd: 0n, lpBase: 0n, lpQuote: 0n,
+    xferIn: 0n, xferOut: 0n, fromTreasury: 0n,
+    swapBaseIn: 0n, swapBaseOut: 0n, swapQuoteIn: 0n, swapQuoteOut: 0n,
+    depthBuckets, flowWindows: [],
+    lpFirstActiveBlock: KAT_RANGE.endBlock - 1_000_000, // old enough: not JIT
+  };
+}
 
 describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
   const SECRET = new Uint8Array(32).fill(0x99);

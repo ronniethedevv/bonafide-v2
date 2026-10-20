@@ -17,7 +17,7 @@ import {
   type PoolDescriptor,
   type PriceSample,
 } from "@mmr/indexer";
-import { Sha256Hasher } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { createEngagement, type Engagement, type EngagementTerms } from "./engagement.js";
 import { assembleWitness, verifyWitness } from "./openings.js";
 import {
@@ -120,11 +120,12 @@ export interface DemoResult {
 }
 
 export async function runDemoEpoch(): Promise<DemoResult> {
-  const hasher = new Sha256Hasher();
+  // The circuit's transientHash for the pool trees and the depth/flow commitments.
+  const hasher = new PoseidonHasher();
   const publisher = new InMemoryPublisher();
 
   const epoch = await buildEpoch(
-    { provider: new DemoProvider(), publisher, hasher },
+    { provider: new DemoProvider(), publisher, hasher, commitHasher: hasher },
     DEFAULT_CONFIG,
     RANGE,
   );
@@ -149,7 +150,7 @@ export async function runDemoEpoch(): Promise<DemoResult> {
   });
 
   // H1: open each wallet's contracted-band depth against its committed depth_root
-  // (the demo's commit hasher defaults to Sha256Hasher, same as `hasher`), and
+  // (hashed with `hasher`, as the circuit does), and
   // confirm the bound depth reproduces the oracle's uptime.
   const depthOpenings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, RANGE);
   const depthRootByAddr = new Map(

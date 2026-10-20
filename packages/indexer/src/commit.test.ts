@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Sha256Hasher, digestToHex } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import {
+  BAND_SERIES_BUCKETS,
+  BAND_TREE_DEPTH,
+  bandSeriesLeaf,
+  denseBandSeries,
   commitDepth,
   commitFlow,
   openBand,
@@ -121,5 +126,48 @@ describe("flow window openings (I7)", () => {
 
   it("throws for a missing window", () => {
     expect(() => openWindow(hasher, windows, 99)).toThrow(/not present/);
+  });
+});
+
+describe("dense band series + fixed-depth band tree (H1 circuit layout)", () => {
+  const poseidon = new PoseidonHasher();
+
+  it("band paths are always BAND_TREE_DEPTH long, even with fewer bands", () => {
+    for (const bands of [[100], [50, 100], BANDS]) {
+      const root = commitDepth(hasher, buckets.map((b) => ({ ...b, perBand: b.perBand.filter((p) => bands.includes(p.bandBps)) })), bands);
+      const o = openBand(hasher, buckets, bands, 100);
+      expect(o.path.length).toBe(BAND_TREE_DEPTH);
+      expect(verifyBandOpening(hasher, root, o)).toBe(true);
+    }
+  });
+
+  it("rejects more bands than the fixed tree holds", () => {
+    expect(() => commitDepth(hasher, [], [1, 2, 3, 4, 5])).toThrow(/exceed depth/);
+  });
+
+  it("dense encoding: an explicit zero bucket and a missing bucket give the same leaf", () => {
+    const sparse = [{ bucket: 3, minBid: 5n, minAsk: 6n }];
+    const withZero = [...sparse, { bucket: 9, minBid: 0n, minAsk: 0n }];
+    expect(digestToHex(bandSeriesLeaf(hasher, 100, sparse))).toBe(digestToHex(bandSeriesLeaf(hasher, 100, withZero)));
+    const d = denseBandSeries(sparse);
+    expect(d.bid.length).toBe(BAND_SERIES_BUCKETS);
+    expect([d.bid[3], d.ask[3], d.bid[0]]).toEqual([5n, 6n, 0n]);
+  });
+
+  it("rejects out-of-range and duplicate buckets", () => {
+    expect(() => denseBandSeries([{ bucket: BAND_SERIES_BUCKETS, minBid: 1n, minAsk: 1n }])).toThrow(RangeError);
+    expect(() => denseBandSeries([
+      { bucket: 1, minBid: 1n, minAsk: 1n }, { bucket: 1, minBid: 2n, minAsk: 2n },
+    ])).toThrow(/duplicate/);
+  });
+
+  it("PoseidonHasher commits and opens depth and flow (padding leaves are hashable)", () => {
+    const root = commitDepth(poseidon, buckets, [50, 100, 200]); // one padded position
+    expect(verifyBandOpening(poseidon, root, openBand(poseidon, buckets, [50, 100, 200], 200))).toBe(true);
+    const w: FlowWindowSample[] = [
+      { window: 0, buy: 5n, sell: 7n }, { window: 1, buy: 9n, sell: 2n }, { window: 4, buy: 1n, sell: 1n },
+    ];
+    const flowRoot = commitFlow(poseidon, w);
+    expect(verifyWindowOpening(poseidon, flowRoot, openWindow(poseidon, w, 4))).toBe(true);
   });
 });

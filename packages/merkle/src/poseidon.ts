@@ -12,12 +12,14 @@
 // witness sibling / poolRoot (a Field) is `convertBytesToField` of the digest.
 // Digests >= the field modulus are rejected (no non-canonical encodings).
 //
-// Hasher contract: `hashLeaf` takes only the two leaf images the circuit hashes,
+// Hasher contract: `hashLeaf` takes only the leaf images the circuit hashes,
 // told apart by length, and decodes each back to its Compact struct:
-//   encodeLeaf      (297 B) -> SlotLeafCore -> transientHash<SlotLeafCore>
-//   encodePoolLeaf  ( 52 B) -> PoolEntry    -> transientHash<PoolEntry>
-// Any other preimage throws: depth/flow commitments and wallet/terms
-// commitments are not tree leaves and keep their own hasher (DD-8).
+//   encodeLeaf      ( 297 B) -> SlotLeafCore -> transientHash<SlotLeafCore>
+//   encodePoolLeaf  (  52 B) -> PoolEntry    -> transientHash<PoolEntry>
+//   band leaf       (1544 B) -> BandSeries   -> transientHash<BandSeries>  (depth_root, H1)
+//   flow leaf       (  36 B) -> FlowWindow   -> transientHash<FlowWindow>  (flow_root, M1)
+// (band/flow images are built by @mmr/indexer commit.ts.) Any other preimage
+// throws: wallet/terms commitments are persistentCommit, not tree leaves (DD-8).
 //
 // Lives at "@mmr/merkle/poseidon" (not the package root) so the core tree code
 // does not load the runtime's WASM.
@@ -29,6 +31,8 @@ import { BITS } from "./uint.js";
 /** A CompactType built from parts, the way the compiler emits struct descriptors. */
 type Desc = rt.CompactType<unknown>;
 
+const U32 = new rt.CompactTypeUnsignedInteger((1n << 32n) - 1n, 4);
+const U64 = new rt.CompactTypeUnsignedInteger((1n << 64n) - 1n, 8);
 const U160 = new rt.CompactTypeUnsignedInteger((1n << 160n) - 1n, BITS.ADDR / 8);
 const U128 = new rt.CompactTypeUnsignedInteger((1n << 128n) - 1n, BITS.U128 / 8);
 const B32 = new rt.CompactTypeBytes(DIGEST_BYTES);
@@ -64,11 +68,21 @@ const SLOT_LEAF_CORE: readonly Part[] = [
 ];
 // PoolEntry in epoch_proof.compact: { poolAddr: Uint<160>, poolRoot: Field }.
 const POOL_ENTRY: readonly Part[] = [uint(U160, 20), field];
+// BandSeries in epoch_proof.compact: { band_bps: Uint<64>, bid: Vector<48, Uint<128>>,
+// ask: Vector<48, Uint<128>> }. A vector hashes as its elements in order.
+const BAND_SERIES: readonly Part[] = [
+  uint(U64, 8),
+  ...Array.from({ length: 2 * 48 }, () => uint(U128, 16)),
+];
+// FlowWindow (I7 / M1): { window: Uint<32>, buy: Uint<128>, sell: Uint<128> }.
+const FLOW_WINDOW: readonly Part[] = [uint(U32, 4), uint(U128, 16), uint(U128, 16)];
 
 const imageLen = (parts: readonly Part[]) => parts.reduce((s, p) => s + p.n, 0);
 const LAYOUTS = new Map<number, readonly Part[]>([
   [imageLen(SLOT_LEAF_CORE), SLOT_LEAF_CORE], // 297
   [imageLen(POOL_ENTRY), POOL_ENTRY],         // 52
+  [imageLen(BAND_SERIES), BAND_SERIES],       // 1544
+  [imageLen(FLOW_WINDOW), FLOW_WINDOW],       // 36
 ]);
 
 /** Decode a leaf image into a struct value and hash it as the circuit does. */
@@ -105,7 +119,7 @@ export class PoseidonHasher implements Hasher {
     const layout = LAYOUTS.get(preimage.length);
     if (!layout) {
       throw new RangeError(
-        `PoseidonHasher hashes only encodeLeaf (297 B) / encodePoolLeaf (52 B) images, got ${preimage.length} B`,
+        `PoseidonHasher hashes only slot (297 B) / pool (52 B) / band (1544 B) / flow (36 B) leaf images, got ${preimage.length} B`,
       );
     }
     return fieldToDigest(hashStruct(layout, preimage));

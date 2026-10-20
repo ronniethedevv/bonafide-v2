@@ -10,7 +10,8 @@ import {
   type PoolDescriptor,
   type PriceSample,
 } from "@mmr/indexer";
-import { Sha256Hasher, type Digest } from "@mmr/merkle";
+import type { Digest } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { createEngagement, type EngagementTerms } from "./engagement.js";
 import { evaluateEpoch } from "./oracle.js";
 import {
@@ -99,8 +100,15 @@ class TestProvider implements ChainProvider {
   }
 }
 
+/** A wrong but canonical (< field modulus) sibling: flip the LE low bit. */
+function flipLowBit(d: Digest): Digest {
+  const out = d.slice();
+  out[0] = out[0]! ^ 1;
+  return out;
+}
+
 async function buildFixture() {
-  const hasher = new Sha256Hasher();
+  const hasher = new PoseidonHasher();
   const epoch = await buildEpoch(
     { provider: new TestProvider(), publisher: new InMemoryPublisher(), hasher, commitHasher: hasher },
     DEFAULT_CONFIG,
@@ -167,7 +175,7 @@ describe("M1 flow openings (I7)", () => {
       const windows = o.windows.map((w, j) => {
         if (j !== 0 || w.path.length === 0) return w;
         const path = w.path.map((step, k) =>
-          k === 0 ? { ...step, sibling: new Uint8Array(step.sibling.length).fill(0xff) } : step,
+          k === 0 ? { ...step, sibling: flipLowBit(step.sibling) } : step,
         );
         return { ...w, path };
       });
