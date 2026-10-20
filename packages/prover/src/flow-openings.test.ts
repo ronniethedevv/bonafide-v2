@@ -48,6 +48,8 @@ const TERMS: EngagementTerms = {
   depthTarget: 0n,
   roundtripSharePpm: 400_000n, // 130*1e6 <= 400000*330 (132,000,000) -> holds
   bandBps: 100,
+  minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
+  epochsTotal: 30,
 };
 
 function activity(addr: bigint, flowWindows: FlowWindowSample[]): AddressActivity {

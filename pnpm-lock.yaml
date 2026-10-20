@@ -79,6 +79,9 @@ importers:
       '@mmr/prover':
         specifier: workspace:*
         version: link:../prover
+      '@mmr/watcher':
+        specifier: workspace:*
+        version: link:../watcher
     devDependencies:
       '@midnight-ntwrk/compact-runtime':
         specifier: 0.16.0

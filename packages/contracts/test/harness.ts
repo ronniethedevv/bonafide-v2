@@ -28,6 +28,9 @@ import {
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField } from "@mmr/merkle/poseidon";
 import {
+  type EngagementTerms, MAX_EPOCHS, ZERO_CARRY, carryStep, genesisCarry, type CarryTotals,
+} from "@mmr/prover";
+import {
   DEFAULT_CONFIG, type DepthBucketSample, type FlowWindowSample,
   commitDepth, commitFlow, openBand, openFlow,
 } from "@mmr/indexer";
@@ -62,6 +65,17 @@ export interface TermsW {
   floor_price_P: bigint; loan_L0: bigint; quote_start_Q0: bigint;
   disposal_D: bigint; net_sell_S: bigint; depth_target: bigint;
   roundtrip_share_ppm: bigint; band_bps: bigint;
+  min_uptime_buckets: bigint; epochs_total: bigint;
+}
+
+/** The harness terms as @mmr/prover EngagementTerms (for commitTerms / the oracle). */
+export function termsToEngagement(t: TermsW): EngagementTerms {
+  return {
+    floorPriceP: t.floor_price_P, loanL0: t.loan_L0, quoteStartQ0: t.quote_start_Q0,
+    disposalD: t.disposal_D, netSellS: t.net_sell_S, depthTarget: t.depth_target,
+    roundtripSharePpm: t.roundtrip_share_ppm, bandBps: Number(t.band_bps),
+    minUptimeBuckets: Number(t.min_uptime_buckets), epochsTotal: Number(t.epochs_total),
+  };
 }
 
 export interface PathStepW { sibling: bigint; weAreRight: boolean }
@@ -269,6 +283,7 @@ export function buildScenario(
         floor_price_P: 2n, loan_L0: 1_000n, quote_start_Q0: 5n,
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
+        min_uptime_buckets: 40n, epochs_total: 3n,
       },
       termsSalt: fill32(0x7e),
       carryPrev: { ...ZERO_CARRY_W }, carryPrevSalt: fill32(0), carryNewSalt: fill32(0xc1), // genesis
@@ -347,6 +362,7 @@ export async function runProveEpoch(
     carryPrev: (c: { privateState: unknown }) => [c.privateState, w.carryPrev],
     carryPrevSalt: (c: { privateState: unknown }) => [c.privateState, w.carryPrevSalt],
     carryNewSalt: (c: { privateState: unknown }) => [c.privateState, w.carryNewSalt],
+    ...CLAIM_ONLY_WITNESSES,
   };
   const contract = new mod.Contract(witnesses);
   const res = contract.circuits.proveEpoch(freshContext(contract, state), id, rootOfRoots, epoch);
@@ -361,6 +377,11 @@ export async function runProveEpoch(
     state: after,
   };
 }
+
+const unusedWitness = (name: string) => () => { throw new Error(`witness ${name} is claim-only`); };
+const CLAIM_ONLY_WITNESSES = Object.fromEntries(
+  ["engagementSecret", "profileSecret", "claimRecordPresent", "claimRecordPaths"].map((n) => [n, unusedWitness(n)]),
+);
 
 interface CompiledContract {
   initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
@@ -441,3 +462,112 @@ export async function runBondGate(gate: BondGate, id: Uint8Array, anchor: bigint
   const contract = new mod.Contract({ bondCoin: unused, bondSalt: unused });
   contract.circuits[gate](freshContext(contract, undefined, blockTime), id, anchor);
 }
+
+// --- H4: a run of proven epochs, then claim ----------------------------------------
+
+/** epoch_proof EpochRecord (the epochRecords tree leaf). */
+export interface EpochRecordW { id: Uint8Array; epoch: bigint; uptime: bigint; termsCommit: Uint8Array }
+export const GENESIS_RECORD: EpochRecordW =
+  { id: new Uint8Array(32), epoch: 0n, uptime: 0n, termsCommit: new Uint8Array(32) };
+
+/**
+ * Prove epochs 1..n for one engagement on one ledger, threading the M2(b) carry
+ * commitment (carryStep with CompactHasher, as the KAT for M2(b) checks). Each
+ * scenario supplies that epoch's witness + root; the terms/salts must be shared.
+ */
+export async function proveEpochs(
+  scenarios: readonly Scenario[],
+  id: Uint8Array,
+  hasher: Hasher,
+): Promise<{ state: rt.ChargedState; records: EpochRecordW[] }> {
+  let state: rt.ChargedState | undefined;
+  let prev: CarryTotals = ZERO_CARRY;
+  let prevSalt = fill32(0);
+  let prevCommitment = genesisCarry(hasher, prevSalt);
+  const records: EpochRecordW[] = [];
+  for (let k = 0; k < scenarios.length; k++) {
+    const { witness, rootOfRoots } = scenarios[k]!;
+    const epoch = BigInt(k + 1);
+    const sums = memberTransferSums(witness);
+    const newSalt = fill32(0xd0 + k);
+    const step = carryStep(hasher, { prevCommitment, prevTotals: prev, prevSalt, epochSums: sums, newSalt,
+                                     disposalD: witness.terms.disposal_D });
+    const w = cloneWitness(witness);
+    w.carryPrev = { xfer_in: prev.xferIn, xfer_out: prev.xferOut, from_treasury: prev.fromTreasury };
+    w.carryPrevSalt = prevSalt;
+    w.carryNewSalt = newSalt;
+    const r = await runProveEpoch(w, id, rootOfRoots, epoch, state);
+    records.push({ id, epoch, uptime: r.uptime, termsCommit: r.termsCommit });
+    state = r.state; prev = step.newTotals; prevSalt = newSalt; prevCommitment = step.newCommitment;
+  }
+  return { state: state!, records };
+}
+
+/** Σ over member (present) slots of xfer_in / xfer_out / from_treasury — the circuit's I5 sums. */
+function memberTransferSums(w: EpochWitness): CarryTotals {
+  const m = w.slotLeaves.filter((l) => l.present);
+  const sum = (f: (l: SlotLeafW) => bigint) => m.reduce((a, l) => a + f(l), 0n);
+  return { xferIn: sum((l) => l.xfer_in), xferOut: sum((l) => l.xfer_out), fromTreasury: sum((l) => l.from_treasury) };
+}
+
+export interface ClaimArgs {
+  engagementId: Uint8Array;
+  engagementSecret: Uint8Array;
+  profileSecret: Uint8Array;
+  terms: TermsW;
+  termsSalt: Uint8Array;
+  /** Records the MM presents, by epoch (1-based); absent epochs get a genesis path. */
+  present: ReadonlyMap<number, EpochRecordW>;
+  epochsPassed: bigint;
+  epochsTotal: bigint;
+}
+
+export interface ClaimResult {
+  state: rt.ChargedState;
+  completed: bigint;
+  kpiHits: bigint;
+  kpiTotal: bigint;
+}
+
+/** Execute epoch_proof.claim against `state`, building every path from the ledger itself. */
+export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<ClaimResult> {
+  const mod = await import(BUILD_DIR);
+  const led = mod.ledger(state);
+  const pathFor = (rec: EpochRecordW) => {
+    const p = led.epochRecords.findPathForLeaf(rec);
+    if (p === undefined) throw new Error(`record for epoch ${rec.epoch} is not on the ledger`);
+    return p;
+  };
+  const genesis = pathFor(GENESIS_RECORD);
+  const presentFlags: boolean[] = [];
+  const paths: unknown[] = [];
+  for (let e = 0; e < MAX_EPOCHS; e++) {
+    const rec = a.present.get(e + 1);
+    presentFlags.push(rec !== undefined);
+    // a presented record not on the ledger gets a forged path (leaf swapped into a real one)
+    paths.push(rec === undefined ? genesis : (led.epochRecords.findPathForLeaf(rec) ?? { ...genesis, leaf: rec }));
+  }
+  const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
+  const contract = new mod.Contract({
+    ...Object.fromEntries(Object.keys(EPOCH_ONLY).map((k) => [k, unusedWitness(k)])),
+    terms: wit(a.terms), termsSalt: wit(a.termsSalt),
+    engagementSecret: wit(a.engagementSecret), profileSecret: wit(a.profileSecret),
+    claimRecordPresent: wit(presentFlags), claimRecordPaths: wit(paths),
+  });
+  const res = contract.circuits.claim(freshContext(contract, state), a.engagementId, 1n, a.epochsPassed, a.epochsTotal);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const l2 = mod.ledger(after);
+  const pid = rt.persistentHash(new rt.CompactTypeBytes(32), a.profileSecret);
+  return {
+    state: after,
+    completed: l2.completedCount.lookup(pid).read() as bigint,
+    kpiHits: l2.kpiHits.lookup(pid).read() as bigint,
+    kpiTotal: l2.kpiTotal.lookup(pid).read() as bigint,
+  };
+}
+
+/** proveEpoch-only witnesses (stubbed when running claim). */
+const EPOCH_ONLY = Object.fromEntries([
+  "committedWallets", "activeCount", "walletSalt", "slotLeaves", "bidMin", "askMin", "depthPaths",
+  "flowBuy", "flowSell", "slotPaths", "poolEntry", "poolPath", "carryPrev", "carryPrevSalt", "carryNewSalt",
+].map((n) => [n, true]));

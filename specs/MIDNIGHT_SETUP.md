@@ -131,7 +131,6 @@ cd packages/contracts
 compact compile src/registration.compact build/registration   # [verify exact out-arg form]
 compact compile src/bond.compact         build/bond
 compact compile src/epoch_proof.compact  build/epoch_proof
-compact compile src/claim.compact        build/claim
 ```
 
 Expect errors the first time — these are **unverified skeletons**; the compiler

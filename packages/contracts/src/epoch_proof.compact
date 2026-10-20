@@ -46,7 +46,9 @@ struct SlotLeaf {
 struct Terms {
   floor_price_P: Uint<64>, loan_L0: Uint<128>, quote_start_Q0: Uint<128>,
   disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
-  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
+  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>,
+  // H4 (DD-12): I6 pass threshold (bucket count) and committed contract length in epochs.
+  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
 }
 
 // C2: proveEpoch's public output. The commitments let the caller bind this proof
@@ -101,10 +103,34 @@ struct FlowSeries { buy: Vector<48, Uint<128>>, sell: Vector<48, Uint<128>> }
 // byte-identical: SHA-256(salt ‖ 3 × 24 B LE)). Uint<192>: 2^64 epochs of Uint<128> headroom.
 struct CarryTotals { xfer_in: Uint<192>, xfer_out: Uint<192>, from_treasury: Uint<192> }
 
+// H4 — one proven epoch, appended by proveEpoch to the epochRecords tree. Every field is
+// already public (epochUptime key/value, the disclosed termsCommit); the tree lets claim
+// prove a record PRIVATELY (Merkle path to a historic root), so a claim never reveals
+// which engagement it credits. termsCommit ties the record to the accepted terms, so the
+// claim's threshold and contract length are the committed ones.
+struct EpochRecord { id: Bytes<32>, epoch: Uint<64>, uptime: Uint<32>, termsCommit: Bytes<32> }
+
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 // M2(b): engagement id -> salted commitment to its cumulative CarryTotals. Absent = genesis
 // (zero totals). The salt keeps the low-entropy totals hidden on the public ledger.
 export ledger carryCommitment: Map<Bytes<32>, Bytes<32>>;
+// H4: append-only record of every proven epoch (2^20 records), read by claim privately.
+export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
+
+// Seed epochRecords with an all-zero genesis record so a valid path always exists for
+// claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
+constructor() {
+  epochRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
+                                    termsCommit: default<Bytes<32>> });
+}
+
+// I10 (moved from claim.compact, which could not read epochRecords: Compact contracts
+// cannot read another contract's ledger). Public, append-only profile counters, keyed
+// by the MM's public profile id.
+export ledger profileNullifiers: Set<Bytes<32>>;
+export ledger completedCount: Map<Bytes<32>, Counter>;
+export ledger kpiHits: Map<Bytes<32>, Counter>;
+export ledger kpiTotal: Map<Bytes<32>, Counter>;
 
 witness committedWallets(): Vector<16, Uint<160>>;
 // H2: number of active wallets; they occupy slots [0, activeCount). Never disclosed.
@@ -131,6 +157,13 @@ witness flowSell(): Vector<16, Vector<48, Uint<128>>>;
 witness carryPrev(): CarryTotals;
 witness carryPrevSalt(): Bytes<32>;
 witness carryNewSalt(): Bytes<32>;
+
+// claim (H4 / I10) witnesses. Slot e (0..89) is epoch e + 1: whether the MM presents its
+// record, and the record's path in epochRecords. Never disclosed.
+witness engagementSecret(): Bytes<32>;
+witness profileSecret(): Bytes<32>;
+witness claimRecordPresent(): Vector<90, Boolean>;
+witness claimRecordPaths(): Vector<90, MerkleTreePath<20, EpochRecord>>;
 
 // C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
 // slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
@@ -637,7 +670,94 @@ export circuit proveEpoch(
 
   const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
   epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
+  epochRecords.insert(disclose(EpochRecord {
+    id: id, epoch: epoch, uptime: uptime as Uint<32>, termsCommit: tc }));
 
   // uptime bucket count + C2 commitments; verdict (all-pass) implied by no revert
   return disclose(EpochResult { uptime: uptime, walletCommit: wc, termsCommit: tc });
+}
+
+// --- claim (I10 + H4) ---------------------------------------------------------
+//
+// A finished engagement is added to the MM's public profile exactly once. The claim
+// discloses only the counter updates, the nullifier and a historic epochRecords root —
+// never which engagement it came from. Mirrors @mmr/watcher deriveClaimFromRecords
+// (DD-12): over epochs 1..epochs_total, an epoch passes when the MM presents its
+// on-ledger record and the recorded uptime >= min_uptime_buckets; a missing epoch counts
+// toward the total, never toward passed. The MM may withhold a record (only lowering
+// its own score) but cannot present one that is not on the ledger.
+
+// ν = H(engagement_secret ‖ engagement_id). Each finished engagement yields one.
+circuit nullifier(secret: Bytes<32>, id: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([secret, id]);
+}
+
+// Public profile id is derived from the profile secret so the MM controls it but
+// observers can't link it to any engagement.
+circuit profileId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+export circuit claim(
+  engagementId: Bytes<32>,
+  tier: Uint<8>,
+  epochsPassed: Uint<32>,
+  epochsTotal: Uint<32>
+): [] {
+  // H4: only the engagement's owner can claim it (registration derives the id the same
+  // way). Records are public, so without this anyone could claim another MM's epochs.
+  const secret = engagementSecret();
+  assert(persistentHash<Bytes<32>>(secret) == engagementId, "secret does not derive engagementId (H4)");
+
+  const nv = nullifier(secret, engagementId);
+  // I10: at most once — reject a repeat nullifier.
+  assert(!profileNullifiers.member(disclose(nv)), "engagement already claimed (I10)");
+  profileNullifiers.insert(disclose(nv));
+
+  // H4: the committed terms (opened privately; the commitment is in each record).
+  const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
+  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (H4)");
+
+  // Every slot's path must reach a historic epochRecords root, unconditionally: the ledger
+  // check is in the public transcript, so doing it only for presented epochs would leak
+  // which epochs exist and epochs_total. An unpresented slot carries any on-ledger path
+  // (the genesis record always exists). A PRESENTED slot's record must be this
+  // engagement's, for epoch e + 1, under these committed terms.
+  const present = claimRecordPresent();
+  const paths = claimRecordPaths();
+  for (const e of 0..90) {
+    assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(paths[e]))),
+           "epoch record not on the ledger (H4)");
+    if (e < t.epochs_total && present[e]) {
+      const rec = paths[e].leaf;
+      assert(rec.id == engagementId && rec.epoch == e + 1 && rec.termsCommit == tc,
+             "record is not this engagement's epoch (H4)");
+    }
+  }
+  const epochIdx: Vector<90, Uint<7>> = [
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+    36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+    72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89];
+  const hits = map((e: Uint<7>, pr: Boolean, p: MerkleTreePath<20, EpochRecord>): Uint<1> =>
+                     (e < t.epochs_total && pr && p.leaf.uptime >= t.min_uptime_buckets) ? 1 : 0,
+                   epochIdx, present, paths);
+  const passed = fold((acc: Uint<7>, h: Uint<1>): Uint<7> => (acc + h) as Uint<7>, 0 as Uint<7>, hits);
+  assert(epochsPassed == passed, "epochsPassed does not match the epoch records (H4)");
+  assert(epochsTotal == t.epochs_total, "epochsTotal is not the committed contract length (H4)");
+
+  const pid = disclose(profileId(profileSecret()));
+  if (!completedCount.member(pid)) {
+    completedCount.insertDefault(pid);
+    kpiHits.insertDefault(pid);
+    kpiTotal.insertDefault(pid);
+  }
+  // I10: counters only grow. Counter is monotonic by construction.
+  completedCount.lookup(pid).increment(1 as Uint<16>);
+  kpiHits.lookup(pid).increment(disclose(epochsPassed) as Uint<16>);
+  kpiTotal.lookup(pid).increment(disclose(epochsTotal) as Uint<16>);
+  // `tier` is a public argument so sandbox (C) engagements show separately from the
+  // headline record; the caller routes it to the right per-tier counter.
 }

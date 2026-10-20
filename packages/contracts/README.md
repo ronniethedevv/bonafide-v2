@@ -37,7 +37,7 @@ not generate a ZK proof (that needs a proof server).
 | `src/registration.compact` | #3 | Secret-based registration, identity-point check (I9), wallet-vector commitment, funding activation. |
 | `src/bond.compact` | #3 | Shielded USDM bond escrow + engagement state machine, void/default/terminate transitions. |
 | `src/epoch_proof.compact` | #4 | Epoch proof circuit enforcing I1–I8 against the root-of-roots. |
-| `src/claim.compact` | #4 | Nullifier claim circuit (I10): add a finished engagement to the public record exactly once. |
+| `src/epoch_proof.compact` `claim` | #4 | Nullifier claim circuit (I10): add a finished engagement to the public record exactly once, crediting only epochs proven on-ledger (H4). Lives in `epoch_proof` because it privately reads the `epochRecords` tree. |
 
 ## Invariant map
 

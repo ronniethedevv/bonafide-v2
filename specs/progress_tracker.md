@@ -42,12 +42,13 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **M1 (circuit)** — I7 now enforced in `epoch_proof.compact`. **Decision (DD-14): `flow_root` = `transientHash<FlowSeries { buy, sell: Vector<48, Uint<128>> }>` over the wallet's WHOLE dense series, no per-window tree** — per-window openings let the prover choose which windows to open, i.e. omit round-trip-heavy ones (completeness hole), and per-id cross-slot aggregation is costly in-circuit. New witnesses `flowBuy`/`flowSell: Vector<16, Vector<48, Uint<128>>>`; per member slot `assert(transientHash<FlowSeries>(…) as Bytes<32> == L.flow_root, "flow_root opening mismatch (M1)")`; then per window over members `rt_w = min(Σbuy, Σsell)`, `gross_w = Σbuy + Σsell` (`map`/`fold` over a window-index vector, reusing the masked `bidSum`), `assert(roundTrip·1e6 <= ppm·gross, "round-trip cap (I7)")`. TS: `@mmr/indexer` `commitFlow` = hash of the dense `FlowSeries` image (`FLOW_WINDOWS`, `denseFlowSeries`, `openFlow`, `verifyFlowOpening` replace `openWindow`/`verifyWindowOpening`); `PoseidonHasher` flow layout is now `FlowSeries` (1536 B); `@mmr/prover/flow-openings` carries the dense series (`assembleFlowOpenings(engagement, activities)` — no hasher needed); its "corrupted path" test (no path any more) became "omitted window rejected" + "series swapped between wallets rejected". Oracle unchanged. KAT: prover openings as witness, rt/gross == oracle sums (130/330), cap enforced at the exact boundary (ppm 393 940 holds, 393 939 reverts, as `roundTripCapHolds`); deflated sell, omitted window, swapped series, Sha256 `flow_root` all revert; non-member/padding flow masked. Verified against a draft of the pre-M1 circuit: all 5 reject cases **passed** there | **done (+6 KAT, +1 prover tests)** |
 | 2026-10-20 | **M2(b) (circuit)** — I5 carry-forward across epochs in `epoch_proof.compact`: `struct CarryTotals { xfer_in, xfer_out, from_treasury: Uint<192> }`, `ledger carryCommitment: Map<Bytes<32>, Bytes<32>>` (engagement id → salted commitment), witnesses `carryPrev`/`carryPrevSalt`/`carryNewSalt`. Mirrors `carryStep`: if an entry exists, `persistentCommit<CarryTotals>(prev, prevSalt)` must equal it ("carry-forward chain broken (M2)"); **genesis = no entry, and prev must then be zero** ("carry-forward genesis not zero (M2)" — else a first epoch could claim phantom prior inflow as budget); add this epoch's member sums; `assert(cum.xfer_out + cum.from_treasury <= cum.xfer_in + D, "cumulative outflow cap (I5, M2)")`; insert the new commitment under a fresh salt. Per-epoch I5 unchanged. TS spec unchanged: `carryCommit` with `CompactHasher` byte-matches the ledger value (`genesisCarry` ≡ the circuit's absent-entry branch). Harness: carry witnesses (genesis default) and optional ledger `state` in/out of `runProveEpoch` to chain epochs; `ledgerUptime` now reads this epoch's own `EpochRef` key. KAT: 3 epochs × 40 out with D = 100 — epochs 1–2 prove with ledger == `carryStep` commitment, epoch 3 reverts on the cumulative cap while the same activity proves alone; understated prevTotals, wrong salt, non-zero genesis revert. On the pre-M2(b) circuit the genesis case is accepted and the chained cases fail (no carry ledger) | **done (+4 KAT)** |
 | 2026-10-20 | **H3 (trusted time)** — compiler-confirmed: Compact 0.31.1 exposes block time **only as comparisons** (`blockTimeLt/Lte/Gt/Gte(t: Uint<64>): Boolean`, checked on-chain against the tx block; `blockTime`/`blockTimeGreaterThan` are unbound). `bond.compact`: `nowTs` removed from `releaseEpoch`/`voidUnfunded`/`defaultEngagement`; each gate is `assert(blockTimeGte(anchor + WINDOW))`. `registration.register`: no block-time *value* exists to store in `registeredAt`, so the arg stays (renamed `registeredTs`) but is **verified**: `blockTimeGte(ts)` and `blockTimeLt(ts + 600)` — recorded time is within 10 min of the block. KAT (`test/time.kat.test.ts`, harness sets `QueryContext.block.secondsSinceEpoch`): every bond gate reverts at window end − 1 s and passes at window end; release 60 s after settlement reverts; register accepts ts = block time and block − 599 s, rejects block − 600 s and block + 1 s. Pre-H3 `bond` (ad-hoc probe): release 60 s after settlement **accepted** with a forged `nowTs`. `kat:build` now also builds `bond`. No TS circuit callers besides the harness (`@mmr/protocol` statemachine is an off-chain model with explicit times) | **done (+8 KAT); H3b open** |
+| 2026-10-20 | **H4 (claim verifies epochs) + Terms schema** — atomic (DD-9): `minUptimeBuckets` + `epochsTotal` (Uint<64>, after `band_bps`) added to `EngagementTerms`/`commitTerms` (`MAX_EPOCHS = 90`, enforced by `assertTerms`), the `Terms` struct in `registration.compact` **and** `epoch_proof.compact`, harness `TermsW` (+ `termsToEngagement`, now used by the byte-identity KAT), every TS literal; oracle I6 defaults to `terms.minUptimeBuckets`. **Decision (DD-15): `claim` moved into `epoch_proof.compact` and reads records privately** — see DD-15. `proveEpoch` appends `EpochRecord { id, epoch, uptime, termsCommit }` to `HistoricMerkleTree<20>` `epochRecords` (constructor seeds a zero genesis record); `claim` checks `persistentHash(secret) == engagementId` (closes claiming someone else's public records), opens terms → `tc`, for all 90 slots unconditionally `checkRoot(merkleTreePathRoot(path))` (a witness-gated ledger op would leak epochs_total — the compiler rejected it), for presented slots `e < epochs_total` asserts the leaf is `{id, e+1, tc}`, counts `uptime >= min_uptime_buckets`, asserts claimed `epochsPassed`/`epochsTotal` == count / committed total. Also fixed: the old claim reverted on any first claim (`Counter.lookup` of an absent key) — now `insertDefault`. `claim.compact` deleted (scripts/docs updated). KAT (register → 3 chained proveEpochs with carry → claim): honest 2/3 == `deriveClaimFromRecords`, counters (1, 2, 3), repeat claim reverts (I10); inflated passed, wrong denominator, fabricated record, record in wrong slot, foreign id, loosened threshold all revert; epoch beyond `epochs_total` not credited; withholding only lowers the count | **done (+8 KAT)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 197 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
+Total: 205 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -66,7 +67,7 @@ signing, the live Base `ChainProvider` event decoding, and the IPFS publisher.
 - [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
       benchmark itself needs the Midnight toolchain (not available here)
 - [x] 3. Compact contract — `registration.compact` + `bond.compact` compile under `compact compile --skip-zk` (0.31.1)
-- [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` + `claim.compact` compile under `compact compile --skip-zk` (0.31.1)
+- [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` (incl. `claim`, DD-15) compile under `compact compile --skip-zk` (0.31.1)
 - [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
       state machine, engagement reducer, mock committee, challenge watchdog);
       Jubjub signing + on-chain flow need Midnight integration
@@ -84,7 +85,7 @@ that already exist and are tested against in-memory fakes.
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
-Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3 (H3b open).
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M1, H3 (H3b open), H4.
 
 - [x] **H1 (circuit half)** — done (status log 2026-10-20, DD-13): dense
       `BandSeries` leaf, depth-2 band tree, `transientHash`; KAT green.
@@ -97,15 +98,8 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
       early. They must come from ledger state; Compact can't read another contract's
       ledger, so `bond` needs its own records (e.g. written by `postBond` / a settle
       step) or the gates move next to the ledgers that hold them. Design call needed.
-- [ ] **H4 (circuit half + Terms commit)** — `claim` must verify the epochs it
-      credits. **TS half done** (status log 2026-10-20, DD-12):
-      `@mmr/watcher/verdict-log` `deriveClaimFromRecords` / `verifyClaimAgainstRecords`
-      are the known-answer spec. Remaining, as ONE atomic change (TS + circuit +
-      KAT together, per DD-9 coupling): add `minUptimeBuckets` + `epochsTotal` to
-      `EngagementTerms`, `commitTerms`, the circuit `Terms` struct, `registration`,
-      and the harness/KAT; then `claim.compact` iterates 1..`epochsTotal` over
-      `epochUptime`, counts epochs meeting `minUptimeBuckets`, and asserts the
-      claimed `epochsPassed`/`epochsTotal` equal the counts and the committed total.
+- [x] **H4 (circuit half + Terms commit)** — done (status log 2026-10-20, DD-15):
+      `claim` inside `epoch_proof`, private record membership, Terms schema extended.
 - [x] **M2 (circuit half)** — done: (a) I5 sign fix; (b) carry-forward
       commitment ledger (status log 2026-10-20). KAT green.
 - [ ] **M3** — `bond.postBond` takes real custody (`receiveShielded`).
@@ -200,6 +194,21 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   ones, and aggregating arbitrary window ids across 16 slots in-circuit is
   costly. Windows outside [0, 48) cannot be committed (the indexer throws); the
   oracle, which aggregates any window id, agrees on every committable input.
+
+- **DD-15** (H4) `claim` lives in `epoch_proof.compact` (Compact contracts cannot
+  read another contract's ledger) and verifies epochs by **private Merkle
+  membership**, not by looking up `epochUptime[H(id, e)]` — that lookup would
+  disclose the engagement id and link the MM's profile to the engagement,
+  defeating I10's unlinkability. `proveEpoch` appends `EpochRecord { id, epoch,
+  uptime, termsCommit }` to `HistoricMerkleTree<20>` `epochRecords` (all fields
+  already public); `claim` proves each presented record against a historic root,
+  doing the ledger check for all `MAX_EPOCHS = 90` slots unconditionally (absent
+  slots reuse the constructor's genesis-record path) so nothing about which
+  epochs exist leaks. `termsCommit` in the record binds the threshold and contract
+  length to the accepted terms. An MM may withhold a record (only lowering its own
+  count) but cannot add one. Claim requires `persistentHash(secret) ==
+  engagementId`. Tree depth 20 (~1M records) and 90 slots are the claim circuit's
+  size drivers.
 
 ## Open decisions (carry from spec)
 

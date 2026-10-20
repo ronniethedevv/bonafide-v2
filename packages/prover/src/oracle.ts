@@ -55,7 +55,7 @@ export interface EpochVerdict {
 export interface EvaluateOptions {
   /** I8: >= 2/3 attesters signed the root and the challenge window passed. */
   settled: boolean;
-  /** Minimum buckets that must pass for uptime to count as met (default: all). */
+  /** Override the committed I6 threshold (default: terms.minUptimeBuckets). */
   minUptimeBuckets?: number;
 }
 
@@ -141,7 +141,7 @@ export function evaluateEpoch(
   for (let b = 0; b < totalBuckets; b++) {
     if (bid[b]! >= t.depthTarget && ask[b]! >= t.depthTarget) uptimeBuckets++;
   }
-  const minUptime = opts.minUptimeBuckets ?? totalBuckets;
+  const minUptime = opts.minUptimeBuckets ?? t.minUptimeBuckets;
   const i6 = uptimeBuckets >= minUptime;
 
   // I7: round-trip cap. Per window, min(buys, sells) is round-trip volume.

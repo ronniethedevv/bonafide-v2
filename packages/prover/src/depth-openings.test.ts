@@ -50,6 +50,8 @@ const TERMS: EngagementTerms = {
   depthTarget: 100n,
   roundtripSharePpm: 1_000_000n,
   bandBps: BAND,
+  minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
+  epochsTotal: 30,
 };
 
 function depthAt(

@@ -50,6 +50,8 @@ const terms: EngagementTerms = {
   depthTarget: 0n,
   roundtripSharePpm: 0n,
   bandBps: 100,
+  minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
+  epochsTotal: 30,
 };
 
 const salt = new Uint8Array(32).fill(9);

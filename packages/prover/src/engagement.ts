@@ -14,6 +14,8 @@ import {
 } from "@mmr/merkle";
 
 export const SLOTS = 16;
+/** Longest contract the claim circuit can verify (its epoch loop is unrolled to this). */
+export const MAX_EPOCHS = 90;
 
 export interface EngagementTerms {
   /** Floor price P (option strike for loans, agreed floor for retainers). Uint128. */
@@ -32,6 +34,13 @@ export interface EngagementTerms {
   roundtripSharePpm: bigint;
   /** Contracted depth band in bps (must be one of the indexer's configured bands). */
   bandBps: number;
+  /**
+   * I6 pass threshold: an epoch's uptime passes when at least this many buckets
+   * met the depth target (a bucket count, DD-12 A1). Uint64.
+   */
+  minUptimeBuckets: number;
+  /** Committed contract length in epochs, 1..MAX_EPOCHS: the claim's denominator (DD-12 B1). Uint64. */
+  epochsTotal: number;
 }
 
 export interface WalletVector {
@@ -92,11 +101,17 @@ export function createEngagement(args: {
 
 export function assertTerms(t: EngagementTerms): void {
   for (const [k, v] of Object.entries(t)) {
-    if (k === "bandBps") continue;
+    if (k === "bandBps" || k === "minUptimeBuckets" || k === "epochsTotal") continue;
     assertUint(v as bigint, BITS.U128);
   }
   if (!Number.isInteger(t.bandBps) || t.bandBps <= 0) {
     throw new Error("bandBps must be a positive integer");
+  }
+  if (!Number.isInteger(t.minUptimeBuckets) || t.minUptimeBuckets < 0) {
+    throw new Error("minUptimeBuckets must be a non-negative integer");
+  }
+  if (!Number.isInteger(t.epochsTotal) || t.epochsTotal < 1 || t.epochsTotal > MAX_EPOCHS) {
+    throw new Error(`epochsTotal must be an integer in [1, ${MAX_EPOCHS}]`);
   }
 }
 
@@ -135,7 +150,8 @@ export function commitWallets(
 /**
  * Commitment over the deal terms: registration's termsCommit,
  * persistentCommit<Terms>(terms, termsSalt). Field order and widths are the
- * circuit `Terms` struct: P, ppm and band are Uint<64>; the rest Uint<128>.
+ * circuit `Terms` struct: P, ppm, band, minUptimeBuckets and epochsTotal are
+ * Uint<64>; the rest Uint<128>.
  */
 export function commitTerms(
   hasher: Hasher,
@@ -151,6 +167,8 @@ export function commitTerms(
     encodeUintLE(t.depthTarget, BITS.U128),
     encodeUintLE(t.roundtripSharePpm, 64),
     encodeUintLE(BigInt(t.bandBps), 64),
+    encodeUintLE(BigInt(t.minUptimeBuckets), 64),
+    encodeUintLE(BigInt(t.epochsTotal), 64),
   ]);
   return commit(hasher, image, termsSalt);
 }

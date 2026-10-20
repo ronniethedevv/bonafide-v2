@@ -47,6 +47,8 @@ const TERMS: EngagementTerms = {
   depthTarget: 100n,
   roundtripSharePpm: 600_000n,
   bandBps: 100,
+  minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
+  epochsTotal: 30,
 };
 
 function fullDepth(minBid: bigint, minAsk: bigint): DepthBucketSample[] {

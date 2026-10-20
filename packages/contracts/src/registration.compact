@@ -7,7 +7,7 @@
 // Privacy: the wallet vector, salt, and deal terms are PRIVATE witnesses and
 // never disclosed. Only the engagement commitment and a random engagement id
 // reach the ledger. An engagement runs under a random id and is linked to the
-// MM's profile only later, via claim.compact (I10).
+// MM's profile only later, via epoch_proof.claim (I10, H4).
 
 pragma language_version 0.23.0;
 
@@ -20,7 +20,9 @@ import CompactStandardLibrary;
 struct Terms {
   floor_price_P: Uint<64>, loan_L0: Uint<128>, quote_start_Q0: Uint<128>,
   disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
-  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>
+  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>,
+  // H4 (DD-12): I6 pass threshold (bucket count) and committed contract length in epochs.
+  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
 }
 
 // --- Public ledger state -----------------------------------------------------

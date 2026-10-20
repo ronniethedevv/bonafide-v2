@@ -129,14 +129,14 @@ export interface EpochRecord {
  * "Passed" = a record exists for the epoch AND its uptime meets the contracted
  * threshold. The denominator is the committed contract length (`epochsTotal`), so
  * a failed or unproven epoch (no qualifying record) counts toward the total but
- * not toward passed; passed can never exceed total. Both `minUptimeBuckets` and
- * `epochsTotal` are the committed terms the claim circuit reads (A1 / B1); here
- * they are explicit parameters until the Terms-schema change lands with the
- * circuit (see specs/progress_tracker.md DD-12).
+ * not toward passed; passed can never exceed total. `minUptimeBuckets` and
+ * `epochsTotal` are the committed terms (EngagementTerms, A1 / B1; DD-12).
  *
- * This is the known-answer spec the claim circuit (H4 circuit half) mirrors:
- * iterate epochs 1..epochsTotal, look up each in epochUptime, count those meeting
- * the threshold, and assert the claimed counters equal the counts.
+ * This is the known-answer spec epoch_proof.claim mirrors (H4, DD-15): for epochs
+ * 1..epochsTotal it privately proves each presented record is in the epochRecords
+ * tree, counts those meeting the threshold, and asserts the claimed counters equal
+ * the count and the committed total. (On-chain, an MM may withhold a record, which
+ * only lowers its own count.)
  */
 export function deriveClaimFromRecords(
   engagementId: string,

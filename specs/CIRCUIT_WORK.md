@@ -50,7 +50,7 @@ without a compiler and need a real grammar + semantics pass.
 
 1. `epoch_proof.compact` first — it exercises the most grammar (structs, loops,
    vectors, arithmetic, asserts). Getting it clean unblocks the patterns for the rest.
-2. `registration.compact`, then `bond.compact`, then `claim.compact`.
+2. `registration.compact`, then `bond.compact`, then `claim` (now inside `epoch_proof.compact`, H4).
 3. Once all four compile with `--skip-zk`, do a full build (drop the flag) to
    generate proving keys, then run the **proving benchmark**: measure proving time
    for the 16-slot epoch circuit and fix `BUCKETS` (currently 48/epoch placeholder).

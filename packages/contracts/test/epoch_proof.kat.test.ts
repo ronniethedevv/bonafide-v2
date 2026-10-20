@@ -36,6 +36,7 @@ import {
   ZERO_CARRY,
   type CarryTotals,
 } from "@mmr/prover";
+import { deriveClaimFromRecords, verifyClaimAgainstRecords } from "@mmr/watcher";
 import {
   DEFAULT_CONFIG,
   bucketsPerEpoch,
@@ -50,6 +51,10 @@ import {
   HAVE_BUILD,
   HAVE_REG_BUILD,
   callerAccepts,
+  termsToEngagement,
+  proveEpochs,
+  runClaim,
+  type ClaimArgs,
   runRegister,
   buildScenario,
   cloneWitness,
@@ -380,7 +385,7 @@ describe.skipIf(!HAVE_BUILD)("H1: depth witness bound to depth_root (I6)", () =>
     const engagement = createEngagement({
       id: "h1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND },
+               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
     });
     const hasher = new PoseidonHasher();
     const openings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, KAT_RANGE);
@@ -433,7 +438,7 @@ describe.skipIf(!HAVE_BUILD)("M1: flow witness bound to flow_root; round-trip ca
     const engagement = createEngagement({
       id: "m1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND },
+               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
     });
     const openings = assembleFlowOpenings(engagement, activities);
     const hasher = new PoseidonHasher();
@@ -568,6 +573,100 @@ describe.skipIf(!HAVE_BUILD)("M2(b): I5 carry-forward commitment across epochs",
   });
 });
 
+describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", () => {
+  const SECRET = new Uint8Array(32).fill(0x99);
+  const PROFILE = new Uint8Array(32).fill(0x77);
+  // Terms: min_uptime_buckets = 40, epochs_total = 3. Epoch uptimes 48, 43, 0 -> passed 2 of 3.
+  const a43 = flatDepth(10n);
+  for (let b = 0; b < 5; b++) { a43.bid[b] = 3n; a43.ask[b] = 3n; }
+  const epochScenarios = () => [
+    buildScenario(),                                       // 48
+    buildScenario(undefined, 0, {}, { 0: a43 }),           // 43
+    buildScenario(undefined, 0, {}, { 0: flatDepth(0n) }), // 0
+  ];
+
+  /** Register, prove `n` epochs on one ledger, and return what a claim needs. */
+  async function setup(scenarios = epochScenarios()) {
+    const reg = await runRegister(scenarios[0]!.witness, SECRET);
+    const { state, records } = await proveEpochs(scenarios, reg.id, new CompactHasher());
+    const { terms, termsSalt } = scenarios[0]!.witness;
+    const present = new Map(records.map((r) => [Number(r.epoch), r]));
+    const base: ClaimArgs = {
+      engagementId: reg.id, engagementSecret: SECRET, profileSecret: PROFILE, terms, termsSalt,
+      present, epochsPassed: 2n, epochsTotal: 3n,
+    };
+    return { reg, state, records, base };
+  }
+
+  it("honest claim == deriveClaimFromRecords; counters credited once", async () => {
+    const { reg, state, records, base } = await setup();
+    expect(records.map((r) => r.uptime)).toEqual([48n, 43n, 0n]);
+    expect(records.every((r) => r.termsCommit.every((x, i) => x === reg.termsCommit[i]))).toBe(true);
+    const t = termsToEngagement(base.terms);
+    const derived = deriveClaimFromRecords("h4", 1,
+      records.map((r) => ({ epoch: Number(r.epoch), uptime: Number(r.uptime) })), t.minUptimeBuckets, t.epochsTotal);
+    expect(derived).toMatchObject({ epochsPassed: 2, epochsTotal: 3 });
+    expect(verifyClaimAgainstRecords(derived,
+      records.map((r) => ({ epoch: Number(r.epoch), uptime: Number(r.uptime) })), t.minUptimeBuckets, t.epochsTotal)).toBe(true);
+
+    const r = await runClaim(base, state);
+    expect([r.completed, r.kpiHits, r.kpiTotal]).toEqual([1n, 2n, 3n]);
+    // I10: the same engagement cannot be claimed twice
+    await expect(runClaim(base, r.state)).rejects.toThrow(/engagement already claimed \(I10\)/);
+  });
+
+  it("rejects an inflated epochsPassed", async () => {
+    const { state, base } = await setup();
+    await expect(runClaim({ ...base, epochsPassed: 3n }, state))
+      .rejects.toThrow(/epochsPassed does not match the epoch records \(H4\)/);
+  });
+
+  it("rejects a wrong denominator (epochsTotal != committed contract length)", async () => {
+    const { state, base } = await setup();
+    await expect(runClaim({ ...base, epochsTotal: 2n }, state))
+      .rejects.toThrow(/epochsTotal is not the committed contract length \(H4\)/);
+  });
+
+  it("rejects a fabricated record (not on the ledger)", async () => {
+    const { state, base, records } = await setup();
+    const present = new Map(base.present);
+    present.set(3, { ...records[2]!, uptime: 48n }); // epoch 3 really recorded 0
+    await expect(runClaim({ ...base, present, epochsPassed: 3n }, state))
+      .rejects.toThrow(/epoch record not on the ledger \(H4\)/);
+  });
+
+  it("rejects a real record presented in the wrong epoch slot", async () => {
+    const { state, base, records } = await setup();
+    const present = new Map(base.present);
+    present.set(3, records[0]!); // epoch 1's 48 re-used as epoch 3
+    await expect(runClaim({ ...base, present, epochsPassed: 3n }, state))
+      .rejects.toThrow(/record is not this engagement's epoch \(H4\)/);
+  });
+
+  it("rejects claiming another engagement's id with one's own secret", async () => {
+    const { state, base } = await setup();
+    await expect(runClaim({ ...base, engagementSecret: new Uint8Array(32).fill(0x55) }, state))
+      .rejects.toThrow(/secret does not derive engagementId \(H4\)/);
+  });
+
+  it("rejects loosened terms (a lower threshold does not match the records' termsCommit)", async () => {
+    const { state, base } = await setup();
+    const terms = { ...base.terms, min_uptime_buckets: 0n };
+    await expect(runClaim({ ...base, terms, epochsPassed: 3n }, state))
+      .rejects.toThrow(/record is not this engagement's epoch \(H4\)/);
+  });
+
+  it("an epoch beyond the contract length is not credited; withholding only lowers the score", async () => {
+    const scen = [...epochScenarios(), buildScenario()]; // epoch 4 (48) is outside epochs_total = 3
+    const { state, base } = await setup(scen);
+    await expect(runClaim({ ...base, epochsPassed: 3n }, state))
+      .rejects.toThrow(/epochsPassed does not match/);
+    const present = new Map(base.present);
+    present.delete(2); // withhold epoch 2 (43 >= 40)
+    await expect(runClaim({ ...base, present, epochsPassed: 1n }, state)).resolves.toMatchObject({ kpiHits: 1n });
+  });
+});
+
 const KAT_RANGE: EpochRange = {
   epoch: 7, startBlock: 900_000, endBlock: 1_000_000, endBlockHash: "0xkat",
   startTs: 1_000_000, endTs: 1_086_400,
@@ -607,11 +706,7 @@ describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("C2: wallets + terms bound to th
     const active = witness.committedWallets.slice(0, Number(witness.activeCount));
     expect(commitWallets(h, buildWalletVector(active), witness.walletSalt)).toEqual(reg.walletCommit);
     const t = witness.terms;
-    expect(commitTerms(h, {
-      floorPriceP: t.floor_price_P, loanL0: t.loan_L0, quoteStartQ0: t.quote_start_Q0,
-      disposalD: t.disposal_D, netSellS: t.net_sell_S, depthTarget: t.depth_target,
-      roundtripSharePpm: t.roundtrip_share_ppm, bandBps: Number(t.band_bps),
-    }, witness.termsSalt)).toEqual(reg.termsCommit);
+    expect(commitTerms(h, termsToEngagement(t), witness.termsSalt)).toEqual(reg.termsCommit);
   });
 
   it("loosened terms still prove, but the caller rejects them", async () => {
