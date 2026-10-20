@@ -36,6 +36,7 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **M2 (TS half) + I5 sign-bug fix** — found + fixed a soundness bug: oracle I5 was `xfer_out <= xfer_in + D + from_treasury`, which **grants outflow budget equal to the loan** (an MM receiving a 1000 loan could transfer 1000 out and pass). Per INVARIANTS.md I5 and the code's own comment the loan is excluded: now `xfer_out + from_treasury <= xfer_in + D` (from_treasury ⊆ xfer_in, DD-11). Fixtures moved to the subset model; new tests: rug attempt rejected, internal-vs-external netting. New `@mmr/prover/carry-forward`: salted commitment over cumulative `(xfer_in, xfer_out, from_treasury)` (same `hashLeaf(salt‖LE)` scheme as wallet/terms), `carryStep` opens the prior commitment, adds the epoch, checks the cumulative cap, re-commits — the circuit mirror. Tests: commit round-trip/tamper, 3-epoch overrun that every per-epoch check passes but cumulative catches, broken-chain rejection, oracle-sums integration. **Circuit half (laptop):** apply the same I5 sign fix at `epoch_proof.compact:517` and wire the carry-forward commitment (open prev / add / check / re-commit); this module is the known-answer spec | **done (TS: +6 prover tests, 27 green; circuit edit pending)** |
 | 2026-10-20 | **M1 (TS half)** — `@mmr/prover/flow-openings`: `assembleFlowOpenings` opens every window a member wallet recorded against its `flow_root` (via `openWindow`); `verifyFlowOpenings` checks each against the committed `flow_root` (`verifyWindowOpening` reconstructs the window leaf, so flow can't be fabricated); `roundTripFromOpenings` recomputes I7 (`rt_w = min(Σbuy, Σsell)`, gross) from the bound values and equals the oracle's `sums.roundTripVolume`/`grossVolume`; `roundTripCapHolds` matches `invariants.I7`. Tests: openings verify, oracle-equivalence (rt=130, gross=330), tamper (deflated sell), corrupted path. **Circuit half (laptop):** open each window from `leaves[j].flow_root`, aggregate per window, enforce `rt·1e6 ≤ ppm·gross`; this module is the known-answer spec | **done (TS: +4 prover tests, 31 green; circuit edit pending)** |
 | 2026-10-20 | **CI fix** — `@mmr/tearsheet` real-Chromium PDF test timed out in CI (same commit passed on the PR-event run; a flake). Root cause: Chromium hangs on the GitHub runner's tiny `/dev/shm`. Added `--disable-dev-shm-usage` to the launch and aligned the vitest timeout (60s→120s) with Chrome's own execFile timeout. Passes locally in ~0.5s | **done** |
+| 2026-10-20 | **H4 (TS half)** — decision A1+B1 (DD-12): uptime pass threshold is a committed term (bucket count, matching the oracle's `minUptimeBuckets`), and `epochsTotal` is the committed contract length. `@mmr/watcher/verdict-log`: `EpochRecord` (mirrors an `epochUptime` entry), `deriveClaimFromRecords` (passed = records meeting the threshold over epochs 1..epochsTotal; a missing/failed epoch counts to total, not passed), `verifyClaimAgainstRecords` (denominator must equal the committed total; passed must equal the derived count). Tests: honest verifies, inflated passed rejected, wrong denominator rejected, out-of-range records ignored, stricter threshold credits fewer, passed never exceeds total. Threshold/total are explicit params for now — committing them in `Terms` is **atomic with the circuit** (commitTerms + circuit `Terms` struct + registration + KAT), deferred to the laptop session (DD-12). **Circuit half (laptop):** read the two terms, iterate 1..epochsTotal over `epochUptime`, assert claimed counters == counts | **done (TS: +7 watcher tests, 13 green; Terms-commit + circuit edit pending)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -102,7 +103,15 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
       window across slots, enforce `rt·1e6 ≤ ppm·gross`. `flow-openings.ts` is the
       known-answer spec; keep the KAT in the loop.
 - [ ] **H3** — timestamps from a trusted source.
-- [ ] **H4** — `claim` must verify the epochs it credits (claim-input builder exists).
+- [ ] **H4 (circuit half + Terms commit)** — `claim` must verify the epochs it
+      credits. **TS half done** (status log 2026-10-20, DD-12):
+      `@mmr/watcher/verdict-log` `deriveClaimFromRecords` / `verifyClaimAgainstRecords`
+      are the known-answer spec. Remaining, as ONE atomic change (TS + circuit +
+      KAT together, per DD-9 coupling): add `minUptimeBuckets` + `epochsTotal` to
+      `EngagementTerms`, `commitTerms`, the circuit `Terms` struct, `registration`,
+      and the harness/KAT; then `claim.compact` iterates 1..`epochsTotal` over
+      `epochUptime`, counts epochs meeting `minUptimeBuckets`, and asserts the
+      claimed `epochsPassed`/`epochsTotal` equal the counts and the committed total.
 - [ ] **M2 (circuit half)** — I5 **TS half done** (status log 2026-10-20): oracle
       sign fixed, internal netting shown emergent, `@mmr/prover/carry-forward`
       commitment + `carryStep` built and tested. Circuit edit remaining: (a) fix
@@ -164,6 +173,20 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
   MUST populate `xfer_in` to include treasury inflows for this to hold; fixtures
   updated to match. D is a **lifetime** budget enforced cumulatively by the
   carry-forward commitment, not per-epoch.
+
+- **DD-12** (H4) The claim verifies what it credits against the on-chain
+  `epochUptime` record. **A1:** an epoch "passed" uptime when its recorded
+  bucket count ≥ a committed **`minUptimeBuckets`** term (a bucket count, not a
+  percentage — the record is a bucket count and the oracle already models this as
+  `minUptimeBuckets`; no in-circuit division). **B1:** `epochsPassed` is counted
+  over epochs `1..epochsTotal` where **`epochsTotal`** is the committed contract
+  length, so a failed or unproven epoch (no qualifying record) counts toward the
+  total but never toward passed, and passed can never exceed total. Chosen over a
+  separate on-chain "settled epochs" counter (B2), which would need to record
+  failed-but-settled epochs that `proveEpoch` can't (it reverts on failure).
+  Adding these two terms is **atomic with the circuit** (commitTerms, the circuit
+  `Terms` struct, registration, and the KAT move together, per DD-9), so the TS
+  half takes them as explicit parameters until that change lands.
 
 ## Open decisions (carry from spec)
 
