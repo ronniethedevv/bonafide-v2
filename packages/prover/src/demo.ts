@@ -69,7 +69,9 @@ function compliantActivity(addr: bigint): AddressActivity {
     quoteEnd: 0n,
     lpBase: 300n,
     lpQuote: 0n,
-    xferIn: 0n,
+    // from_treasury (the loan) is part of xfer_in and excluded from spendable
+    // budget by I5; the only inflow here is the 1000 loan, so xfer_in == 1000.
+    xferIn: 1000n,
     xferOut: 0n,
     fromTreasury: 1000n,
     swapBaseIn: 50n,

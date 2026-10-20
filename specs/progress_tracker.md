@@ -33,6 +33,7 @@ leaf schema, root-of-roots).
 | 2026-10-19 | **C2** — `proveEpoch` now returns `disclose(EpochResult { uptime, walletCommit, termsCommit })`: `wc = persistentCommit<Vector<16,Uint<160>>>(w, walletSalt)` (same scheme as registration) and `tc = persistentCommit<Terms>(terms, termsSalt)`. `registration.compact` now commits the structured `Terms` (identical struct) with a salt instead of `persistentHash(termsPreimage)` (DD-9). Caller accepts only if both equal `walletCommit[id]` / `termsCommit[id]` (I8-style "enforced by the caller"). `@mmr/prover` `commitWallets` fixed to persistentCommit's layout (`SHA-256(salt ‖ LE image)`; was BE image ‖ salt) + new `commitTerms`. KAT executes compiled `register` then `proveEpoch`: honest commitments match the ledger and the TS helpers; loosened terms, a dropped wallet, or a changed salt still prove but fail the caller check | **done (+5 KAT tests)** |
 | 2026-10-20 | **Poseidon migration** — `epoch_proof.compact` Merkle hashing moved from `persistentHash` (SHA-256) to `transientHash` (Poseidon): slot leaves `transientHash<SlotLeafCore>`, pool leaves `transientHash<PoolEntry>`, nodes `transientHash<Vector<2, Field>>`; `PathStep.sibling` and `PoolEntry.poolRoot` are `Field`; public `rootOfRoots` stays `Bytes<32>` (DD-10). `@mmr/merkle/poseidon` `PoseidonHasher` calls compact-runtime's own `transientHash` (no re-implementation); digest = Field's 32-byte LE image (`Field as Bytes<32>`). Indexer trees + root-of-roots default to it (`commitHasher` split off for depth/flow commitments). KAT: honest witness passes; all tamper cases revert, plus new: pre-migration `CompactHasher` roots rejected, non-canonical digest rejected, pool-leaf/node hash equivalence pinned (safe by fixed path depth) | **done (32 KAT tests; 140 total)** |
 | 2026-10-20 | **H1 (TS half)** — `@mmr/prover/depth-openings`: `assembleDepthOpenings` builds, per active member slot, the contracted-band (`terms.bandBps`) `(minBid,minAsk)` series + its Merkle opening against the wallet's `depth_root` (via `openBand`); `verifyDepthOpenings` checks the band leaf is the exact reconstruction of the witness series (`bandSeriesLeaf`, new export in `@mmr/indexer/commit`) **and** opens to `depth_root`; `uptimeFromOpenings` recomputes I6 from the bound values and equals the oracle's `uptimeBuckets`. Demo + CLI now assert `depthBound`. Tests: openings verify, oracle-equivalence, tamper (inflated bucket), wrong band, corrupted path. Also fixed: `pnpm install` was missing `@midnight-ntwrk/compact-runtime` in this container (declared by `@mmr/merkle`), which had left `epoch.test.ts` red here. **Circuit half (laptop):** add per-slot depth witness (band series + path), reconstruct `bandSeriesLeaf` in Compact, `verifyBandOpening` against `leaves[j].depth_root`, fold series into I6 — this TS module is its known-answer spec | **done (TS: +5 prover tests, 69 green in merkle+indexer+prover; circuit edit pending)** |
+| 2026-10-20 | **M2 (TS half) + I5 sign-bug fix** — found + fixed a soundness bug: oracle I5 was `xfer_out <= xfer_in + D + from_treasury`, which **grants outflow budget equal to the loan** (an MM receiving a 1000 loan could transfer 1000 out and pass). Per INVARIANTS.md I5 and the code's own comment the loan is excluded: now `xfer_out + from_treasury <= xfer_in + D` (from_treasury ⊆ xfer_in, DD-11). Fixtures moved to the subset model; new tests: rug attempt rejected, internal-vs-external netting. New `@mmr/prover/carry-forward`: salted commitment over cumulative `(xfer_in, xfer_out, from_treasury)` (same `hashLeaf(salt‖LE)` scheme as wallet/terms), `carryStep` opens the prior commitment, adds the epoch, checks the cumulative cap, re-commits — the circuit mirror. Tests: commit round-trip/tamper, 3-epoch overrun that every per-epoch check passes but cumulative catches, broken-chain rejection, oracle-sums integration. **Circuit half (laptop):** apply the same I5 sign fix at `epoch_proof.compact:517` and wire the carry-forward commitment (open prev / add / check / re-commit); this module is the known-answer spec | **done (TS: +6 prover tests, 27 green; circuit edit pending)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
@@ -96,7 +97,13 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
       (TS openings already exist).
 - [ ] **H3** — timestamps from a trusted source.
 - [ ] **H4** — `claim` must verify the epochs it credits (claim-input builder exists).
-- [ ] **M2** — I5 internal-transfer netting + cross-epoch disposal accounting.
+- [ ] **M2 (circuit half)** — I5 **TS half done** (status log 2026-10-20): oracle
+      sign fixed, internal netting shown emergent, `@mmr/prover/carry-forward`
+      commitment + `carryStep` built and tested. Circuit edit remaining: (a) fix
+      the same sign bug at `epoch_proof.compact:517` (`xferOut + fromTreasury <=
+      xferIn + disposal_D`); (b) wire the carry-forward commitment (open the prior
+      cumulative commitment, add this epoch, check `cumulativeI5Holds`, re-commit)
+      — `carry-forward.ts` is the known-answer spec. Keep the KAT in the loop.
 - [ ] **M3** — `bond.postBond` takes real custody (`receiveShielded`).
 - [ ] Proving benchmark / full keygen for `proveEpoch` (k, rows): see below.
 
@@ -142,6 +149,15 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
   second proof that the struct matches the preimage for no benefit. Salted (not
   a bare `persistentHash<Terms>`) because terms are low-entropy and a bare hash
   could be brute-forced from the public ledger.
+
+- **DD-11** (M2) `from_treasury` is a **subset of `xfer_in`** (the loan is one of
+  the transfers in), so I5 excludes it: `xfer_out + from_treasury ≤ xfer_in + D`
+  (underflow-safe form of `xfer_out ≤ xfer_in − from_treasury + D`, INVARIANTS.md
+  I5). Corrects the prior `+ from_treasury`, which granted outflow budget equal to
+  the loan (a rug of the loaned assets passed I5). The indexer's real Base reader
+  MUST populate `xfer_in` to include treasury inflows for this to hold; fixtures
+  updated to match. D is a **lifetime** budget enforced cumulatively by the
+  carry-forward commitment, not per-epoch.
 
 ## Open decisions (carry from spec)
 

@@ -115,8 +115,14 @@ export function evaluateEpoch(
   const i3 = heldBase + heldQuoteAtP + t.disposalD >= t.loanL0 + t.quoteStartQ0 * P;
   // I4: net selling cap.
   const i4 = swapBaseOut <= swapBaseIn + t.netSellS;
-  // I5: outflow cap (loan inflow excluded via from_treasury).
-  const i5 = xferOut <= xferIn + t.disposalD + fromTreasury;
+  // I5: outflow cap. The loan arrives as part of xfer_in but is NOT spendable
+  // budget, so it is excluded: xfer_out <= xfer_in - from_treasury + D (per
+  // INVARIANTS.md I5; from_treasury is a subset of xfer_in). Written
+  // underflow-safe. Transfers between committed wallets appear in both Σxfer_out
+  // and Σxfer_in and so cancel (internal netting is emergent from the sums).
+  // NOTE: this is the PER-EPOCH check; D is a lifetime budget enforced across
+  // epochs by the carry-forward commitment (see carry-forward.ts, M2).
+  const i5 = xferOut + fromTreasury <= xferIn + t.disposalD;
 
   // I6: uptime — summed per-wallet minimum depth per bucket at the contracted band.
   const totalBuckets = bucketsPerEpoch(config);

@@ -35,7 +35,8 @@ function compliant(addr: bigint, endBlock: number): AddressActivity {
     quoteEnd: 0n,
     lpBase: 300n,
     lpQuote: 0n,
-    xferIn: 0n,
+    // from_treasury (the loan) is part of xfer_in and excluded by I5 (DD-11).
+    xferIn: 1000n,
     xferOut: 0n,
     fromTreasury: 1000n,
     swapBaseIn: 50n,

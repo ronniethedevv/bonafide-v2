@@ -40,7 +40,9 @@ function goodActivity(addr: bigint, over: Partial<AddressActivity> = {}): Addres
     quoteEnd: 0n,
     lpBase: 300n,
     lpQuote: 0n,
-    xferIn: 0n,
+    // from_treasury (the loan) is a subset of xfer_in, so a compliant MM whose
+    // only inflow is the 1000 loan has xfer_in == from_treasury (I5).
+    xferIn: 1000n,
     xferOut: 0n,
     fromTreasury: 1000n,
     swapBaseIn: 50n,
@@ -101,6 +103,40 @@ describe("evaluateEpoch — reference oracle", () => {
     const acts = new Map([[0x10n, goodActivity(0x10n, { xferOut: 50n, xferIn: 0n, fromTreasury: 0n })]]);
     const v = evaluateEpoch(engWith([0x10n]), acts, config, range, { settled: true });
     expect(v.invariants.I5_outflowCap).toBe(false);
+  });
+
+  it("I5: rejects transferring the loan out of the set (custody)", () => {
+    // The MM receives the 1000 loan (part of xfer_in) and tries to send it out.
+    // The loan is excluded from spendable inflow, so this must fail.
+    const acts = new Map([
+      [0x10n, goodActivity(0x10n, { xferIn: 1000n, fromTreasury: 1000n, xferOut: 1000n })],
+    ]);
+    const v = evaluateEpoch(engWith([0x10n]), acts, config, range, { settled: true });
+    expect(v.invariants.I5_outflowCap).toBe(false);
+  });
+
+  it("I5: internal wallet-to-wallet moves net out, external moves do not", () => {
+    // A sends 500 to B, both committed: A.xfer_out=500, B.xfer_in=1000(loan)+500.
+    // The 500 appears in both Σxfer_out and Σxfer_in, so it cancels -> passes.
+    const internal = new Map([
+      [0x10n, goodActivity(0x10n, { xferIn: 1000n, fromTreasury: 1000n, xferOut: 500n })],
+      [0x20n, goodActivity(0x20n, { xferIn: 1500n, fromTreasury: 1000n, xferOut: 0n })],
+    ]);
+    expect(
+      evaluateEpoch(engWith([0x10n, 0x20n]), internal, config, range, { settled: true })
+        .invariants.I5_outflowCap,
+    ).toBe(true);
+
+    // Same 500 sent OUTSIDE the set: no member records the receipt, so it is a
+    // real outflow and must fail (D = 0).
+    const external = new Map([
+      [0x10n, goodActivity(0x10n, { xferIn: 1000n, fromTreasury: 1000n, xferOut: 500n })],
+      [0x20n, goodActivity(0x20n, { xferIn: 1000n, fromTreasury: 1000n, xferOut: 0n })],
+    ]);
+    expect(
+      evaluateEpoch(engWith([0x10n, 0x20n]), external, config, range, { settled: true })
+        .invariants.I5_outflowCap,
+    ).toBe(false);
   });
 
   it("I6: fails when depth misses the target in some buckets", () => {
