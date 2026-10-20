@@ -7,10 +7,13 @@
 // Which pool and which wallets belong to the engagement are never disclosed.
 //
 // The leaf schema, indexed-tree opening, pool inclusion proof, and band opening
-// mirror @mmr/merkle / @mmr/indexer. All hashing is persistentHash (SHA-256 over
-// Compact's byte serialization: Uints little-endian, Bytes raw); @mmr/merkle's
-// CompactHasher + encodeLeaf/encodePoolLeaf reproduce it byte-for-byte, checked
-// by the KAT in packages/contracts/test (DD-8).
+// mirror @mmr/merkle / @mmr/indexer. Merkle hashing (slot leaves, pool leaves,
+// internal nodes) is transientHash: Poseidon over the BLS12-381 scalar field, so every
+// tree digest is a Field. @mmr/merkle's PoseidonHasher reproduces it exactly by
+// calling compact-runtime's own transientHash over the same types (KAT in
+// packages/contracts/test). The public rootOfRoots stays Bytes<32>: the computed
+// Field root is cast to Bytes<32> (little-endian, canonical) once, at the boundary.
+// Commitments (persistentCommit, C2) stay SHA-256: they are ledger state (DD-8).
 //
 // Compact 0.31.x constraints applied in this file:
 //   - No top-level const (SLOTS=16, BUCKETS=48 are inlined as literals).
@@ -56,14 +59,16 @@ struct EpochResult { uptime: Uint<8>, walletCommit: Bytes<32>, termsCommit: Byte
 // Key for the per-epoch uptime record written to the public ledger.
 struct EpochRef { id: Bytes<32>, epoch: Uint<64> }
 
-// C1 — Merkle path step: sibling digest + left/right flag (mirrors PathStep in @mmr/merkle).
-struct PathStep { sibling: Bytes<32>, weAreRight: Boolean }
+// C1 — Merkle path step: sibling digest + left/right flag (mirrors PathStep in @mmr/merkle;
+// the TS 32-byte digest is the little-endian image of this Field).
+struct PathStep { sibling: Field, weAreRight: Boolean }
 
 // C1 — Hashable leaf core (all SlotLeaf fields except the circuit-only `present` flag).
 //
-// persistentHash<SlotLeafCore>(core) = SHA-256 of the 297-byte serialization
-//   addr(20 LE) | next_addr(20 LE) | is_protocol(1) | 12×metric(16 LE) | depth_root(32) | flow_root(32)
-// which is exactly @mmr/merkle encodeLeaf. Field order is protocol.
+// The leaf digest is transientHash<SlotLeafCore>(core). @mmr/merkle encodeLeaf is this
+// struct's byte image (addr(20 LE) | next_addr(20 LE) | is_protocol(1) | 12×metric(16 LE) |
+// depth_root(32) | flow_root(32)); PoseidonHasher decodes it back to the struct and
+// hashes it with the runtime's transientHash. Field order is protocol.
 struct SlotLeafCore {
   addr: Uint<160>, next_addr: Uint<160>, is_protocol: Boolean,
   base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
@@ -74,9 +79,9 @@ struct SlotLeafCore {
   depth_root: Bytes<32>, flow_root: Bytes<32>
 }
 
-// C1 — Pool-inclusion leaf. persistentHash<PoolEntry>(pe) = SHA-256 of
-//   poolAddr(20 LE) | poolRoot(32)  — exactly @mmr/merkle encodePoolLeaf.
-struct PoolEntry { poolAddr: Uint<160>, poolRoot: Bytes<32> }
+// C1 — Pool-inclusion leaf, hashed as transientHash<PoolEntry>(pe). poolRoot is the pool
+// tree's Field root; encodePoolLeaf's image is poolAddr(20 LE) | poolRoot(32 LE).
+struct PoolEntry { poolAddr: Uint<160>, poolRoot: Field }
 
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 
@@ -322,21 +327,23 @@ circuit slotLeafCore(L: SlotLeaf): SlotLeafCore {
   };
 }
 
-// C1: internal Merkle node hash H(left, right) = persistentHash<Vector<2, Bytes<32>>>
-// = SHA-256(left || right), matching CompactHasher.hashNode. No domain tag: node
-// preimages (64 bytes) and leaf preimages (297 / 52 bytes) differ in length.
-circuit hashNode(left: Bytes<32>, right: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<2, Bytes<32>>>([left, right]);
+// C1: internal Merkle node hash H(left, right) = transientHash<Vector<2, Field>>,
+// matching PoseidonHasher.hashNode. No domain tag. A slot leaf (17 fields) cannot
+// collide with a node (2). A pool leaf (Uint<160>, Field) hashes like a node, but
+// every path has a fixed length (16 / 10), so a node at level k >= 1 opened as a
+// leaf would need a path of the wrong length (KAT-checked).
+circuit hashNode(left: Field, right: Field): Field {
+  return transientHash<Vector<2, Field>>([left, right]);
 }
 
 // C1: apply one Merkle path step.
-circuit stepUp(h: Bytes<32>, step: PathStep): Bytes<32> {
+circuit stepUp(h: Field, step: PathStep): Field {
   return step.weAreRight ? hashNode(step.sibling, h) : hashNode(h, step.sibling);
 }
 
 // C1: verify a depth-16 indexed-Merkle path from leafHash to root.
 // Mirrors IndexedMerkleTree.verifyPath (depth 16) in @mmr/merkle.
-circuit verifyPath16(leafHash: Bytes<32>, path: Vector<16, PathStep>, root: Bytes<32>): [] {
+circuit verifyPath16(leafHash: Field, path: Vector<16, PathStep>, root: Field): [] {
   const h1  = stepUp(leafHash, path[0]);
   const h2  = stepUp(h1,  path[1]);
   const h3  = stepUp(h2,  path[2]);
@@ -358,7 +365,9 @@ circuit verifyPath16(leafHash: Bytes<32>, path: Vector<16, PathStep>, root: Byte
 
 // C1: verify a depth-10 pool-tree path from poolLeafHash to rootOfRoots.
 // Mirrors RootOfRoots.verifyPoolProof with POOL_TREE_DEPTH=10 in @mmr/merkle.
-circuit verifyPoolPath(leafHash: Bytes<32>, path: Vector<10, PathStep>, root: Bytes<32>): [] {
+// root is the public Bytes<32>; the Field result is cast once (LE; Field -> Bytes is
+// injective, so the byte comparison is exactly the Field comparison).
+circuit verifyPoolPath(leafHash: Field, path: Vector<10, PathStep>, root: Bytes<32>): [] {
   const h1  = stepUp(leafHash, path[0]);
   const h2  = stepUp(h1,  path[1]);
   const h3  = stepUp(h2,  path[2]);
@@ -369,7 +378,7 @@ circuit verifyPoolPath(leafHash: Bytes<32>, path: Vector<10, PathStep>, root: By
   const h8  = stepUp(h7,  path[7]);
   const h9  = stepUp(h8,  path[8]);
   const h10 = stepUp(h9,  path[9]);
-  assert(h10 == root, "pool inclusion path mismatch (C1)");
+  assert((h10 as Bytes<32>) == root, "pool inclusion path mismatch (C1)");
 }
 
 // I1 + H2 (closes L1): active wallets fill slots [0, n), are non-zero and strictly
@@ -424,18 +433,18 @@ export circuit proveEpoch(
   const sp = slotPaths();
 
   // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
-  verifyPoolPath(persistentHash<PoolEntry>(pe), pp, rootOfRoots);
+  verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
 
   // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
   // (C1), and it accounts for that wallet exactly once (I2). Padding slots (H2)
   // need no opening: they are forced empty (present = false, and w[j] = 0 by
   // assertWalletLayout), so they contribute to no sum below.
   // Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
-  // slotLeafCore strips `present` before hashing (297-byte image == encodeLeaf).
+  // slotLeafCore strips `present` before hashing (its byte image == encodeLeaf).
   for (const j of 0..16) {
     const L = leaves[j];
     if (act[j]) {
-      verifyPath16(persistentHash<SlotLeafCore>(slotLeafCore(L)), sp[j], pe.poolRoot);
+      verifyPath16(transientHash<SlotLeafCore>(slotLeafCore(L)), sp[j], pe.poolRoot);
       if (L.present) {
         assert(L.addr == w[j], "membership slot mismatch (I2)");
         assert(!L.is_protocol, "wallet is a protocol contract (I2)");

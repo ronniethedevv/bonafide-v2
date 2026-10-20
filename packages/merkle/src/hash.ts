@@ -1,13 +1,16 @@
 // Hash abstraction.
 //
 // The tree and root-of-roots call hashing only through this interface, so the
-// production build can swap in Midnight's native circuit-friendly primitive
-// (Poseidon-family over the Jubjub scalar field) without touching any call site.
+// hash primitive is swapped without touching any call site.
 //
-// IMPORTANT: `Sha256Hasher` below is for off-circuit development and tests only.
-// Its domain tags make its roots differ from the circuit's, so it MUST NOT be
-// used to produce roots that any Compact circuit verifies; use `CompactHasher`.
-// See specs/progress_tracker.md DD-8.
+// Which hasher for what (specs/progress_tracker.md DD-8):
+//   - Pool trees + root-of-roots that the epoch circuit verifies:
+//     `PoseidonHasher` from "@mmr/merkle/poseidon" (Compact transientHash).
+//   - Commitments that are ledger state (wallet / terms persistentCommit):
+//     `CompactHasher` below (Compact persistentHash, SHA-256).
+//   - `Sha256Hasher` is for off-circuit development and tests only. Its domain
+//     tags make its roots differ from the circuit's, so it MUST NOT produce
+//     roots that any Compact circuit verifies.
 
 import { createHash } from "node:crypto";
 
@@ -53,7 +56,10 @@ export class Sha256Hasher implements Hasher {
 }
 
 /**
- * Compact-compatible hasher: byte-exact with the epoch circuit's hashing.
+ * Compact `persistentHash` hasher (SHA-256): byte-exact with Compact's
+ * persistentHash / persistentCommit. Used for commitments that are ledger state
+ * (C2 wallet / terms commitments). Merkle trees the epoch circuit verifies use
+ * `PoseidonHasher` ("@mmr/merkle/poseidon") instead.
  *
  * Compact's `persistentHash<T>(v)` (compact-runtime 0.16.0, compiler 0.31.1) is
  * SHA-256 over the byte serialization of `v`, with no domain tag:
@@ -63,21 +69,12 @@ export class Sha256Hasher implements Hasher {
  *   Bytes<K>   →  K raw bytes
  *   struct / Vector  →  fields / elements concatenated in declaration order
  *
- * (Verified empirically against `@midnight-ntwrk/compact-runtime`; the KAT in
- * packages/contracts/test runs the compiled proveEpoch over roots built here.)
+ * (Verified empirically against `@midnight-ntwrk/compact-runtime`; the C2 KAT in
+ * packages/contracts/test checks commitWallets / commitTerms built on this
+ * against the compiled registration circuit.)
  *
- * So, with the little-endian images from `encodeLeaf` / `encodePoolLeaf`:
- *   persistentHash<SlotLeafCore>(L)          = sha256(encodeLeaf(L))      (297 bytes)
- *   persistentHash<PoolEntry>(e)             = sha256(encodePoolLeaf(e))  (52 bytes)
- *   persistentHash<Vector<2,Bytes<32>>>(l,r) = sha256(l || r)             (64 bytes)
- *
- * DD-8 note: persistentHash is SHA-256 by definition, so this class is not a
- * placeholder for it. Moving the circuit to the cheaper Poseidon-based
- * `transientHash` (returns a Field, not Bytes<32>) would be a circuit change,
- * and this class would change with it.
- *
- * Domain separation: leaf and node preimages differ in length (297 / 52 vs 64
- * bytes), so a leaf digest cannot be confused with an internal node digest.
+ * So `hashLeaf(salt || image)` = persistentCommit<T>(v, salt) for T's LE image,
+ * and `hashNode(l, r)` = persistentHash<Vector<2, Bytes<32>>>([l, r]).
  */
 export class CompactHasher implements Hasher {
   readonly id = "compact-persistent-hash-v1";

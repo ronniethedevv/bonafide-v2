@@ -18,6 +18,7 @@ import {
   formatAddr,
   type PoolEntry,
 } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { type IndexerConfig, assertConfig } from "./config.js";
 import {
   type AttesterCommittee,
@@ -33,7 +34,13 @@ export interface EpochDeps {
   provider: ChainProvider;
   publisher: TreePublisher;
   attesters?: AttesterCommittee;
+  /** Pool trees + root-of-roots. Default PoseidonHasher: the circuit's transientHash. */
   hasher?: Hasher;
+  /**
+   * Depth / flow commitments inside each leaf. Not yet opened in-circuit (H1 / I7
+   * pick their hash when they are), so the default stays Sha256Hasher.
+   */
+  commitHasher?: Hasher;
 }
 
 export interface PoolManifestEntry {
@@ -87,7 +94,8 @@ export async function buildEpoch(
   range: EpochRange,
 ): Promise<EpochResult> {
   assertConfig(config);
-  const hasher = deps.hasher ?? new Sha256Hasher();
+  const hasher = deps.hasher ?? new PoseidonHasher();
+  const commitHasher = deps.commitHasher ?? new Sha256Hasher();
 
   const discovered = await deps.provider.poolsAboveFloor(
     config.liquidityFloor,
@@ -103,7 +111,7 @@ export async function buildEpoch(
 
   for (const pool of pools) {
     const activity = await deps.provider.poolActivity(pool, range);
-    const leaves = activity.map((a) => activityToLeaf(hasher, a, config, range));
+    const leaves = activity.map((a) => activityToLeaf(commitHasher, a, config, range));
     const tree = IndexedMerkleTree.build(hasher, leaves);
     trees.set(pool.poolAddr, tree);
 

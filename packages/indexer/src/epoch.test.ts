@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RootOfRoots, Sha256Hasher, digestToHex, parseAddr } from "@mmr/merkle";
+import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { DEFAULT_CONFIG, type IndexerConfig } from "./config.js";
 import { buildEpoch, InMemoryPublisher } from "./epoch.js";
 import { activityToLeaf } from "./leaves.js";
@@ -120,6 +121,18 @@ describe("buildEpoch", () => {
       return r.manifest.rootOfRootsHex;
     };
     expect(await run()).toBe(await run());
+  });
+
+  it("defaults to the circuit's PoseidonHasher for trees + root-of-roots", async () => {
+    const res = await buildEpoch(
+      { provider: new FakeProvider(), publisher: new InMemoryPublisher() },
+      DEFAULT_CONFIG,
+      range,
+    );
+    expect(res.manifest.hasherId).toBe(new PoseidonHasher().id);
+    const proof = res.rootOfRoots.poolProof(POOL_A);
+    expect(RootOfRoots.verifyPoolProof(new PoseidonHasher(), res.rootOfRoots.root, proof)).toBe(true);
+    expect(RootOfRoots.verifyPoolProof(hasher, res.rootOfRoots.root, proof)).toBe(false);
   });
 });
 

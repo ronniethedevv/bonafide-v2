@@ -1,8 +1,10 @@
-// KAT: @mmr/merkle (CompactHasher) roots == in-circuit roots for proveEpoch.
+// KAT: @mmr/merkle (PoseidonHasher) roots == in-circuit roots for proveEpoch.
 //
-// PASS case proves the TS leaf / pool-leaf / node encodings are byte-identical
-// to Compact's persistentHash. The tamper cases prove the C1 binding bites:
-// change any opened byte and the circuit's Merkle assert fires.
+// PASS case proves the TS leaf / pool-leaf / node hashing and the Field <->
+// Bytes<32> encoding agree with the circuit's transientHash. The tamper cases
+// prove the C1 binding bites: change any opened value and the circuit's Merkle
+// assert fires. CompactHasher (persistentHash) is still checked: it backs the
+// C2 commitments.
 
 import { describe, expect, it } from "vitest";
 import * as rt from "@midnight-ntwrk/compact-runtime";
@@ -14,6 +16,7 @@ import {
   encodeLeaf,
   encodePoolLeaf,
 } from "@mmr/merkle";
+import { PoseidonHasher, digestToField, fieldToDigest } from "@mmr/merkle/poseidon";
 import { buildWalletVector, commitTerms, commitWallets } from "@mmr/prover";
 import {
   HAVE_BUILD,
@@ -30,7 +33,35 @@ const EPOCH = 7n;
 const SLOT_PATH = /slot Merkle path mismatch \(C1\)/;
 const POOL_PATH = /pool inclusion path mismatch \(C1\)/;
 
-describe("CompactHasher matches compact-runtime persistentHash", () => {
+describe("PoseidonHasher matches compact-runtime transientHash", () => {
+  const h = new PoseidonHasher();
+  const F = rt.CompactTypeField;
+
+  it("hashNode == transientHash<Vector<2, Field>>, digest == `Field as Bytes<32>` (LE)", () => {
+    const l = 123456789n, r = rt.MAX_FIELD - 7n;
+    const f = rt.transientHash(new rt.CompactTypeVector(2, F), [l, r]);
+    const d = h.hashNode(fieldToDigest(l), fieldToDigest(r));
+    expect(d).toEqual(rt.convertFieldToBytes(32, f, "kat"));
+    expect(d[0]).toBe(Number(f & 0xffn)); // little-endian
+    expect(digestToField(d)).toBe(f);
+  });
+
+  it("rejects non-canonical digests (>= field modulus) and non-leaf preimages", () => {
+    const big = new Uint8Array(32).fill(0xff);
+    expect(() => h.hashNode(big, new Uint8Array(32))).toThrow(/exceeds maximum value/);
+    expect(() => h.hashLeaf(new Uint8Array(64))).toThrow(/only encodeLeaf/);
+  });
+
+  it("a pool leaf hashes like a node (no alignment tag): safety rests on fixed path depth", () => {
+    // transientHash<PoolEntry>(a, r) == transientHash<Vector<2, Field>>([a, r]). Opening a
+    // level-k node as a pool leaf would need a 10-k step path; the circuit takes exactly 10.
+    const root = fieldToDigest(99n);
+    expect(h.hashLeaf(encodePoolLeaf({ poolAddr: 5n, poolRoot: root })))
+      .toEqual(h.hashNode(fieldToDigest(5n), root));
+  });
+});
+
+describe("CompactHasher matches compact-runtime persistentHash (C2 commitments)", () => {
   const h = new CompactHasher();
 
   it("hashNode == persistentHash<Vector<2, Bytes<32>>>", () => {
@@ -41,12 +72,12 @@ describe("CompactHasher matches compact-runtime persistentHash", () => {
   });
 
   it("leaf / pool-leaf images use Compact's little-endian Uint layout", () => {
-    const { tree, witness } = buildScenario();
+    const { tree, ror, witness } = buildScenario();
     const leaf = tree.membershipProof(witness.committedWallets[0]!).leaf;
     expect(encodeLeaf(leaf).length).toBe(297);
     // addr is the first 20 bytes, little-endian.
     expect(encodeLeaf(leaf)[0]).toBe(Number(leaf.addr & 0xffn));
-    expect(encodePoolLeaf(witness.poolEntry).length).toBe(52);
+    expect(encodePoolLeaf(ror.poolProof(witness.poolEntry.poolAddr)).length).toBe(52);
   });
 
   it("TS-side openings verify against the TS roots", () => {
@@ -106,7 +137,7 @@ describe.skipIf(!HAVE_BUILD)("proveEpoch KAT (compiled circuit)", () => {
   it("rejects a tampered pool root", async () => {
     const { rootOfRoots, witness } = buildScenario();
     const w = cloneWitness(witness);
-    w.poolEntry.poolRoot[0] = w.poolEntry.poolRoot[0]! ^ 1;
+    w.poolEntry.poolRoot ^= 1n;
     await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
   });
 
@@ -124,8 +155,13 @@ describe.skipIf(!HAVE_BUILD)("proveEpoch KAT (compiled circuit)", () => {
     await expect(runProveEpoch(witness, ID, other, EPOCH)).rejects.toThrow(POOL_PATH);
   });
 
-  it("rejects a witness built with the tagged Sha256Hasher (only CompactHasher matches)", async () => {
+  it("rejects a witness built with the tagged Sha256Hasher (only PoseidonHasher matches)", async () => {
     const { rootOfRoots, witness } = buildScenario(new Sha256Hasher());
+    await expect(runProveEpoch(witness, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
+  });
+
+  it("rejects pre-migration roots built with CompactHasher (persistentHash)", async () => {
+    const { rootOfRoots, witness } = buildScenario(new CompactHasher());
     await expect(runProveEpoch(witness, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
   });
 });

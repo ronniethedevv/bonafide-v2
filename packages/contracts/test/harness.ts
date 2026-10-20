@@ -1,10 +1,13 @@
 // Known-answer harness for the compiled epoch_proof circuit.
 //
-// Builds a real scenario with @mmr/merkle (CompactHasher), converts it to the
+// Builds a real scenario with @mmr/merkle (PoseidonHasher), converts it to the
 // exact witness shapes `proveEpoch` declares, and executes the compiled
 // circuit through @midnight-ntwrk/compact-runtime. Executing the circuit runs
-// every in-circuit `persistentHash` and `assert`, so a PASS means the TS roots
-// and the circuit's roots are byte-identical; a tampered witness must FAIL.
+// every in-circuit `transientHash` and `assert`, so a PASS means the TS roots
+// and the circuit's roots are identical; a tampered witness must FAIL.
+//
+// Field boundary: tree digests are Fields in the circuit (PathStep.sibling,
+// PoolEntry.poolRoot) and 32-byte LE images in TS; rootOfRoots stays Bytes<32>.
 //
 // The compiled contract lives in build/ (gitignored). Produce it with
 //   pnpm --filter @mmr/contracts kat:build
@@ -14,7 +17,6 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as rt from "@midnight-ntwrk/compact-runtime";
 import {
-  CompactHasher,
   type Digest,
   type Hasher,
   IndexedMerkleTree,
@@ -24,6 +26,7 @@ import {
   RootOfRoots,
   zeroMetrics,
 } from "@mmr/merkle";
+import { PoseidonHasher, digestToField } from "@mmr/merkle/poseidon";
 
 // KAT_EPOCH_BUILD overrides the compiled-contract dir (e.g. to test a draft circuit).
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
@@ -55,7 +58,7 @@ export interface TermsW {
   roundtrip_share_ppm: bigint; band_bps: bigint;
 }
 
-export interface PathStepW { sibling: Uint8Array; weAreRight: boolean }
+export interface PathStepW { sibling: bigint; weAreRight: boolean }
 
 export interface EpochWitness {
   committedWallets: bigint[];
@@ -67,7 +70,7 @@ export interface EpochWitness {
   bidMin: bigint[][];
   askMin: bigint[][];
   slotPaths: PathStepW[][];
-  poolEntry: { poolAddr: bigint; poolRoot: Uint8Array };
+  poolEntry: { poolAddr: bigint; poolRoot: bigint };
   poolPath: PathStepW[];
 }
 
@@ -85,8 +88,22 @@ export function toSlotLeaf(leaf: Leaf, present: boolean): SlotLeafW {
   };
 }
 
+const FIELD_MODULUS = rt.MAX_FIELD + 1n;
+
+/**
+ * TS digest -> Field witness. A PoseidonHasher digest is canonical and converts
+ * exactly (`Bytes<32> as Field`). A digest from another hasher can be >= the
+ * modulus; it is reduced, as any prover would have to, so the wrong-hasher
+ * cases reach the circuit's Merkle assert instead of failing in the harness.
+ */
+export function toField(d: Digest): bigint {
+  let x = 0n;
+  for (let i = d.length - 1; i >= 0; i--) x = (x << 8n) | BigInt(d[i]!);
+  return x < FIELD_MODULUS ? digestToField(d) : x % FIELD_MODULUS;
+}
+
 export const toPath = (p: readonly PathStep[]): PathStepW[] =>
-  p.map((s) => ({ sibling: s.sibling, weAreRight: s.weAreRight }));
+  p.map((s) => ({ sibling: toField(s.sibling), weAreRight: s.weAreRight }));
 
 const fill32 = (b: number): Digest => new Uint8Array(32).fill(b);
 const zeroGrid = (): bigint[][] =>
@@ -118,7 +135,7 @@ export interface Scenario {
  * an empty, non-present leaf with an all-zero path that the circuit never checks.
  */
 export function buildScenario(
-  hasher: Hasher = new CompactHasher(),
+  hasher: Hasher = new PoseidonHasher(),
   /** Extra active wallets (all present in the pool) after A and B; 14 fills all 16 slots. */
   extraMembers = 0,
 ): Scenario {
@@ -182,7 +199,7 @@ export function buildScenario(
       },
       termsSalt: fill32(0x7e),
       bidMin, askMin, slotPaths,
-      poolEntry: { poolAddr: pool.poolAddr, poolRoot: pool.poolRoot },
+      poolEntry: { poolAddr: pool.poolAddr, poolRoot: toField(pool.poolRoot) },
       poolPath: toPath(pool.path),
     },
   };

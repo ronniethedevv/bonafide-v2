@@ -33,8 +33,9 @@ export interface PoolInclusionProof {
 
 /**
  * Byte image of a pool leaf: poolAddr(20, little-endian) | poolRoot(32).
- * Exactly Compact's serialization of `PoolEntry`, so `persistentHash<PoolEntry>`
- * in epoch_proof.compact recomputes the same digest.
+ * The image of epoch_proof.compact's `PoolEntry { poolAddr: Uint<160>, poolRoot: Field }`
+ * (poolRoot's 32 bytes are the Field's LE image); PoseidonHasher decodes it and
+ * computes `transientHash<PoolEntry>` exactly as the circuit does.
  */
 export function encodePoolLeaf(entry: PoolEntry): Uint8Array {
   assertUint(entry.poolAddr, BITS.ADDR);

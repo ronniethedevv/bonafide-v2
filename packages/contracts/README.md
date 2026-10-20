@@ -12,9 +12,13 @@
 
 - **Compact 0.31.x on ledger 8** (ledger 9's `secp256k1` + in-circuit wallet
   ownership is deferred — see the product spec "Later" column).
-- Jubjub Schnorr for attester signatures. Trees hash with Compact's
-  `persistentHash` (SHA-256 over Compact's byte serialization); `@mmr/merkle`'s
-  `CompactHasher` reproduces it byte-for-byte (see `specs/progress_tracker.md` DD-8).
+- Jubjub Schnorr for attester signatures. Merkle trees (slot leaves, pool
+  leaves, nodes) hash with Compact's `transientHash` (Poseidon; digests are
+  `Field`); `@mmr/merkle/poseidon`'s `PoseidonHasher` reproduces it exactly via
+  compact-runtime. The public `rootOfRoots` stays `Bytes<32>` (the Field root's
+  little-endian image). Commitments that are ledger state keep `persistentHash`
+  / `persistentCommit` (SHA-256), reproduced by `CompactHasher`
+  (see `specs/progress_tracker.md` DD-8).
 
 ## Known-answer test
 

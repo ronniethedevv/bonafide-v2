@@ -87,9 +87,9 @@ export function assertLeaf(leaf: Leaf): void {
  *
  * This is exactly Compact's serialization of `SlotLeafCore` in
  * epoch_proof.compact: Uints little-endian at their byte width, Boolean one
- * byte, Bytes<32> raw. `persistentHash<SlotLeafCore>` is SHA-256 of this image,
- * so the epoch circuit recomputes the same leaf digest (checked by the KAT in
- * packages/contracts/test).
+ * byte, Bytes<32> raw. PoseidonHasher decodes it back to `SlotLeafCore` and
+ * computes `transientHash<SlotLeafCore>`, the circuit's leaf digest (checked by
+ * the KAT in packages/contracts/test).
  */
 export function encodeLeaf(leaf: Leaf): Uint8Array {
   assertLeaf(leaf);

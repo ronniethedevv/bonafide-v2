@@ -31,12 +31,13 @@ leaf schema, root-of-roots).
 | 2026-10-19 | **KAT (C1 verified)** — `packages/contracts/test/epoch_proof.kat.test.ts` executes the compiled `proveEpoch` (compact-runtime 0.16.0) over a pool tree + root-of-roots built with `@mmr/merkle`. Found + fixed: (a) `persistentHash` is SHA-256 over Compact's byte serialization with **little-endian** Uints, not field elements, so the FE-split row above was wrong and `encodeLeaf`/`encodePoolLeaf` (big-endian) **diverged** from the circuit; both now LE, `CompactHasher` is exact; (b) Compact ranges are half-open, so `for j of 0..15` never verified **slot 15** (forged leaf accepted); loops now `0..16`. Tamper cases (metric, next_addr, depth_root, path dir, pool root/addr, rootOfRoots, slot 15, Sha256Hasher-built witness) all revert | **done (13 KAT tests)** |
 | 2026-10-19 | **H2 + L1** — `epoch_proof.compact`: `activeCount(): Uint<8>` witness; `assertWalletLayout` forces active wallets in `[0,n)` non-zero and strictly increasing, padding exactly 0 (rejects `[a,0,b]`, closes L1; `n` is determined by `W`). Merkle path + I2 only for active slots; padding forced `present=false` (no bogus opening needed). I6 depth now masked to member slots (padding / non-member depth no longer counts). Oracle unchanged: it already processes `activeCount` and only members | **done (+10 KAT tests)** |
 | 2026-10-19 | **C2** — `proveEpoch` now returns `disclose(EpochResult { uptime, walletCommit, termsCommit })`: `wc = persistentCommit<Vector<16,Uint<160>>>(w, walletSalt)` (same scheme as registration) and `tc = persistentCommit<Terms>(terms, termsSalt)`. `registration.compact` now commits the structured `Terms` (identical struct) with a salt instead of `persistentHash(termsPreimage)` (DD-9). Caller accepts only if both equal `walletCommit[id]` / `termsCommit[id]` (I8-style "enforced by the caller"). `@mmr/prover` `commitWallets` fixed to persistentCommit's layout (`SHA-256(salt ‖ LE image)`; was BE image ‖ salt) + new `commitTerms`. KAT executes compiled `register` then `proveEpoch`: honest commitments match the ledger and the TS helpers; loosened terms, a dropped wallet, or a changed salt still prove but fail the caller check | **done (+5 KAT tests)** |
+| 2026-10-20 | **Poseidon migration** — `epoch_proof.compact` Merkle hashing moved from `persistentHash` (SHA-256) to `transientHash` (Poseidon): slot leaves `transientHash<SlotLeafCore>`, pool leaves `transientHash<PoolEntry>`, nodes `transientHash<Vector<2, Field>>`; `PathStep.sibling` and `PoolEntry.poolRoot` are `Field`; public `rootOfRoots` stays `Bytes<32>` (DD-10). `@mmr/merkle/poseidon` `PoseidonHasher` calls compact-runtime's own `transientHash` (no re-implementation); digest = Field's 32-byte LE image (`Field as Bytes<32>`). Indexer trees + root-of-roots default to it (`commitHasher` split off for depth/flow commitments). KAT: honest witness passes; all tamper cases revert, plus new: pre-migration `CompactHasher` roots rejected, non-canonical digest rejected, pool-leaf/node hash equivalence pinned (safe by fixed path depth) | **done (32 KAT tests; 140 total)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 101 tests passing across 7 projects; `pnpm -r typecheck` clean; `next build`
+Total: 140 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -71,6 +72,22 @@ behind the existing interface. A fee-sponsor (DUST + self-relay) and a live
 IPFS/Blob `TreePublisher` are the remaining TS adapters, both behind interfaces
 that already exist and are tested against in-memory fakes.
 
+## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
+
+Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved).
+
+- [ ] **H1** — bind `bidMin`/`askMin` to each leaf's `depth_root` and select the
+      contracted band (I6). Today the depth witnesses are unconstrained. Pick the
+      depth-tree hash here (Poseidon, to match the slot trees) and move
+      `commitHasher` off `Sha256Hasher`.
+- [ ] **M1** — I7 round-trip cap: open `flow_root` per window in-circuit
+      (TS openings already exist).
+- [ ] **H3** — timestamps from a trusted source.
+- [ ] **H4** — `claim` must verify the epochs it credits (claim-input builder exists).
+- [ ] **M2** — I5 internal-transfer netting + cross-epoch disposal accounting.
+- [ ] **M3** — `bond.postBond` takes real custody (`receiveShielded`).
+- [ ] Proving benchmark / full keygen for `proveEpoch` (k, rows): see below.
+
 ## Immutable design decisions
 
 - **DD-1** Protocol tier is **Compact on Midnight (0.31.x / ledger 8)**, not EVM.
@@ -83,13 +100,28 @@ that already exist and are tested against in-memory fakes.
   in-circuit check deferred).
 - **DD-7** Bonds are **mandatory shielded USDM on Midnight** (v1); cross-chain
   slashing deferred.
-- **DD-8** Hash/commitment primitive injected behind an interface. Circuit trees
-  use Compact `persistentHash` = SHA-256 over Compact's byte serialization
-  (Uint LE, Bool 1 byte, Bytes raw; verified against compact-runtime 0.16.0).
-  `CompactHasher` + LE `encodeLeaf`/`encodePoolLeaf` reproduce it byte-for-byte
-  (KAT). `Sha256Hasher` (tagged) is off-circuit only. Open: moving trees to the
-  cheaper Poseidon `transientHash` is a circuit + TS change made together, gated
-  on the proving benchmark.
+- **DD-8** (resolved 2026-10-20) Hash primitive injected behind the `Hasher`
+  interface. `persistentHash` is SHA-256 by definition (over Compact's byte
+  serialization: Uint LE, Bool 1 byte, Bytes raw), so it was never a placeholder
+  to "fill in". **Merkle trees the circuit verifies now use `transientHash`**
+  (Poseidon, Field digests): `PoseidonHasher` in `@mmr/merkle/poseidon`, exact by
+  construction (it calls compact-runtime's `transientHash` over the circuit's own
+  types) and KAT-checked against the compiled `proveEpoch`. **Commitments that
+  are ledger state stay on `persistentHash` / `persistentCommit`** (C2 wallet /
+  terms, `epochKey`), reproduced by `CompactHasher`. `Sha256Hasher` (tagged) is
+  off-circuit only. Caveat: the runtime documents `transientHash` as "not
+  guaranteed to persist between upgrades". Roots are re-derivable from published
+  trees, but a Midnight upgrade that changes Poseidon would require re-rooting
+  in-flight epochs. Pin the toolchain and re-run the KAT on every upgrade.
+
+- **DD-10** `rootOfRoots` stays **`Bytes<32>`** in the public `proveEpoch`
+  interface (not `Field`). The circuit computes the root as a Field and casts it
+  once (`h10 as Bytes<32>`, little-endian; Field→Bytes is injective, so the
+  comparison is exact). Chosen because the TS caller, the attester-signed
+  manifest (`rootOfRootsHex`), and `registration.activate` already carry 32-byte
+  roots; `RootOfRoots.root` passes straight through. Cost: one 255-bit
+  decomposition per proof. The other direction (`Bytes<32> as Field`) was avoided
+  because it can fail on values ≥ the modulus at the public boundary.
 
 - **DD-9** (C2) The terms commitment is `persistentCommit<Terms>(terms, termsSalt)`
   over the **structured** `Terms`, in both `registration.register` and
