@@ -495,7 +495,8 @@ export circuit proveEpoch(
   const swapOut = sumSlots16(swapOutVec, pf);
   assert(swapOut <= swapIn + t.net_sell_S, "net selling cap (I4)");
 
-  // I5: outflows capped (excluding the loan inflow from treasury).
+  // I5: outflows capped, excluding the treasury loan: from_treasury ⊆ xfer_in, so
+  // xfer_out ≤ xfer_in − from_treasury + D, written underflow-safe (DD-11).
   const xferInVec: Vector<16, Uint<128>> = [
     leaves[0].xfer_in, leaves[1].xfer_in, leaves[2].xfer_in, leaves[3].xfer_in,
     leaves[4].xfer_in, leaves[5].xfer_in, leaves[6].xfer_in, leaves[7].xfer_in,
@@ -514,7 +515,7 @@ export circuit proveEpoch(
   const xferIn = sumSlots16(xferInVec, pf);
   const xferOut = sumSlots16(xferOutVec, pf);
   const fromTreasury = sumSlots16(fromTreasuryVec, pf);
-  assert(xferOut <= xferIn + t.disposal_D + fromTreasury, "outflow cap (I5)");
+  assert(xferOut + fromTreasury <= xferIn + t.disposal_D, "outflow cap (I5)");
 
   // I6: uptime — count buckets with summed per-slot minimum depth >= target on both sides.
   const bid = bidMin();

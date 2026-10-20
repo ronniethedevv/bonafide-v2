@@ -250,6 +250,33 @@ describe.skipIf(!HAVE_BUILD)("H2: active bitmap / padding slots", () => {
   });
 });
 
+describe.skipIf(!HAVE_BUILD)("M2(a): I5 excludes the treasury loan (DD-11)", () => {
+  const I5 = /outflow cap \(I5\)/;
+  // Terms: disposal_D = 100. The 1000 loan arrives inside xfer_in (from_treasury ⊆ xfer_in).
+  const prove = (over: { xferIn: bigint; xferOut: bigint; fromTreasury: bigint }) => {
+    const { rootOfRoots, witness } = buildScenario(undefined, 0, over);
+    return runProveEpoch(witness, ID, rootOfRoots, EPOCH);
+  };
+
+  it("rejects transferring the loan back out (xfer_out == from_treasury, xfer_in is only the loan)", async () => {
+    // The pre-fix `xfer_out <= xfer_in + D + from_treasury` accepted this: 1000 <= 2100.
+    await expect(prove({ xferIn: 1_000n, xferOut: 1_000n, fromTreasury: 1_000n })).rejects.toThrow(I5);
+  });
+
+  it("rejects outflow one unit over D when the only inflow is the loan", async () => {
+    await expect(prove({ xferIn: 1_000n, xferOut: 101n, fromTreasury: 1_000n })).rejects.toThrow(I5);
+  });
+
+  it("accepts outflow exactly D when the only inflow is the loan (boundary)", async () => {
+    await expect(prove({ xferIn: 1_000n, xferOut: 100n, fromTreasury: 1_000n })).resolves.toMatchObject({ uptime: 48n });
+  });
+
+  it("non-loan inflow still funds outflow", async () => {
+    await expect(prove({ xferIn: 1_500n, xferOut: 600n, fromTreasury: 1_000n })).resolves.toMatchObject({ uptime: 48n });
+    await expect(prove({ xferIn: 1_500n, xferOut: 601n, fromTreasury: 1_000n })).rejects.toThrow(I5);
+  });
+});
+
 describe.skipIf(!HAVE_BUILD || !HAVE_REG_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
   const SECRET = new Uint8Array(32).fill(0x99);
 

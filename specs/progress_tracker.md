@@ -37,12 +37,13 @@ leaf schema, root-of-roots).
 | 2026-10-20 | **M1 (TS half)** — `@mmr/prover/flow-openings`: `assembleFlowOpenings` opens every window a member wallet recorded against its `flow_root` (via `openWindow`); `verifyFlowOpenings` checks each against the committed `flow_root` (`verifyWindowOpening` reconstructs the window leaf, so flow can't be fabricated); `roundTripFromOpenings` recomputes I7 (`rt_w = min(Σbuy, Σsell)`, gross) from the bound values and equals the oracle's `sums.roundTripVolume`/`grossVolume`; `roundTripCapHolds` matches `invariants.I7`. Tests: openings verify, oracle-equivalence (rt=130, gross=330), tamper (deflated sell), corrupted path. **Circuit half (laptop):** open each window from `leaves[j].flow_root`, aggregate per window, enforce `rt·1e6 ≤ ppm·gross`; this module is the known-answer spec | **done (TS: +4 prover tests, 31 green; circuit edit pending)** |
 | 2026-10-20 | **CI fix** — `@mmr/tearsheet` real-Chromium PDF test timed out in CI (same commit passed on the PR-event run; a flake). Root cause: Chromium hangs on the GitHub runner's tiny `/dev/shm`. Added `--disable-dev-shm-usage` to the launch and aligned the vitest timeout (60s→120s) with Chrome's own execFile timeout. Passes locally in ~0.5s | **done** |
 | 2026-10-20 | **H4 (TS half)** — decision A1+B1 (DD-12): uptime pass threshold is a committed term (bucket count, matching the oracle's `minUptimeBuckets`), and `epochsTotal` is the committed contract length. `@mmr/watcher/verdict-log`: `EpochRecord` (mirrors an `epochUptime` entry), `deriveClaimFromRecords` (passed = records meeting the threshold over epochs 1..epochsTotal; a missing/failed epoch counts to total, not passed), `verifyClaimAgainstRecords` (denominator must equal the committed total; passed must equal the derived count). Tests: honest verifies, inflated passed rejected, wrong denominator rejected, out-of-range records ignored, stricter threshold credits fewer, passed never exceeds total. Threshold/total are explicit params for now — committing them in `Terms` is **atomic with the circuit** (commitTerms + circuit `Terms` struct + registration + KAT), deferred to the laptop session (DD-12). **Circuit half (laptop):** read the two terms, iterate 1..epochsTotal over `epochUptime`, assert claimed counters == counts | **done (TS: +7 watcher tests, 13 green; Terms-commit + circuit edit pending)** |
+| 2026-10-20 | **M2(a) (circuit)** — `epoch_proof.compact` I5 sign fix (DD-11): `assert(xferOut + fromTreasury <= xferIn + t.disposal_D)` (was `xferOut <= xferIn + D + fromTreasury`, which granted the loan as outflow budget). Now agrees with the oracle. KAT harness `buildScenario` takes wallet-A metric overrides (tree rebuilt, so openings stay valid). New KAT: loan-rug (`xfer_out == from_treasury`, `xfer_in` = loan only) reverts, D+1 reverts, exactly-D passes, non-loan inflow still funds outflow. Verified against a draft build of the old formula: the rug and D+1 cases **passed** there (bug reproduced), so the tests bite | **done (+4 KAT tests; 36 KAT, 166 total)** |
 | 2026-10-19 | `@mmr/read-model` — shared public types + fixtures + repository | **done (3 tests)** |
 | 2026-10-19 | `apps/api` — Fastify read-model backend (/api/mm, /:handle, /:handle/epochs, /health) | **done (5 tests)** |
 | 2026-10-19 | web→API wiring with fixture fallback (`apps/web/src/lib/data.ts`); full stack verified | **done** |
 | 2026-10-19 | circuit prep: flow-window openings (I7) + claim-input builder (H4) | **done** |
 
-Total: 140 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
+Total: 166 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
 `origin/ccr-0ae4f61d-euy47e` (frequent-push rule, §7).
 
@@ -114,9 +115,8 @@ H1 **TS half done** (see status log 2026-10-20) — only the circuit edit remain
       claimed `epochsPassed`/`epochsTotal` equal the counts and the committed total.
 - [ ] **M2 (circuit half)** — I5 **TS half done** (status log 2026-10-20): oracle
       sign fixed, internal netting shown emergent, `@mmr/prover/carry-forward`
-      commitment + `carryStep` built and tested. Circuit edit remaining: (a) fix
-      the same sign bug at `epoch_proof.compact:517` (`xferOut + fromTreasury <=
-      xferIn + disposal_D`); (b) wire the carry-forward commitment (open the prior
+      commitment + `carryStep` built and tested. (a) **done** — sign fix at
+      `epoch_proof.compact` I5 + KAT (status log 2026-10-20). Remaining: (b) wire the carry-forward commitment (open the prior
       cumulative commitment, add this epoch, check `cumulativeI5Holds`, re-commit)
       — `carry-forward.ts` is the known-answer spec. Keep the KAT in the loop.
 - [ ] **M3** — `bond.postBond` takes real custody (`receiveShielded`).

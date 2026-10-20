@@ -138,6 +138,8 @@ export function buildScenario(
   hasher: Hasher = new PoseidonHasher(),
   /** Extra active wallets (all present in the pool) after A and B; 14 fills all 16 slots. */
   extraMembers = 0,
+  /** Overrides for wallet A's metrics; the tree is built from them, so openings stay valid. */
+  walletA: Partial<Leaf["metrics"]> = {},
 ): Scenario {
   const leaf = (addr: bigint, over: Partial<Leaf["metrics"]>, tag: number): Leaf => ({
     addr, nextAddr: 0n, isProtocol: false,
@@ -147,7 +149,7 @@ export function buildScenario(
   const tree = IndexedMerkleTree.build(hasher, [
     leaf(WALLET_A, { baseStart: 900n, baseEnd: 1_000n, quoteEnd: 5n, lpBase: 7n, lpQuote: 3n,
                      xferIn: 4n, xferOut: 2n, swapBaseIn: 50n, swapBaseOut: 60n,
-                     swapQuoteIn: 120n, swapQuoteOut: 100n }, 0xa0),
+                     swapQuoteIn: 120n, swapQuoteOut: 100n, ...walletA }, 0xa0),
     leaf(OTHER_C, { baseEnd: 77n }, 0xc0),
     leaf(OTHER_D, { baseEnd: 88n, xferOut: 9n }, 0xd0),
     ...extras(extraMembers).map((a, k) => leaf(a, { baseEnd: BigInt(k + 1) }, 0xe0)),
