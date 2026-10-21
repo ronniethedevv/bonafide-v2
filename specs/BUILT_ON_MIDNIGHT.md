@@ -59,10 +59,13 @@ Midnight primitive directly:
 
 The Midnight/ZK core above is real and verified. The **IPFS tree publisher is now a
 real Pinata v3 adapter** (`PinataTreePublisher`, behind the `TreePublisher`
-interface; verified against live Pinata needs only a `PINATA_JWT`). The remaining
-**external I/O adapters** — a live Base archive-RPC reader, real Jubjub-Schnorr
-attester signing, and a DB — are still interface stubs behind the already-defined
-interfaces; the web/API run on fixtures. Those are ordinary integration work,
+interface; verified against live Pinata needs only a `PINATA_JWT`). The
+**PostgreSQL/Prisma `DbProfileRepository` (`@mmr/db`) is also real** behind the
+`ProfileRepository` interface (verified against a live DB needs only a
+`DATABASE_URL` + `prisma generate`). The remaining **external I/O adapters** — a
+live Base archive-RPC reader and real Jubjub-Schnorr attester signing — are still
+interface stubs behind the already-defined interfaces; the web/API run on fixtures
+by default. Those are ordinary integration work,
 clearly labelled, and do not touch the Midnight contract logic. The one remaining
 in-circuit gap is I8 (an on-chain attester-root registry), designed in
 `specs/OPEN_ITEMS.md`.
