@@ -71,7 +71,12 @@ fallback, and an **exportable tear sheet**.
 - CEX coverage (zkTLS), in-circuit wallet ownership (ledger 9 secp256k1),
   cross-chain slashing (VIA Labs), spread-at-size, BNB Chain, Midnight order
   books, mirrors to Intuition/EAS.
-- **We deploy no contracts to Base.** Base is read-only / indexed only.
+- **We deploy no contracts to Base or Ethereum.** Both are read-only / indexed
+  only. Indexing is **per-chain**: an engagement names its chain, roots are
+  computed per chain (a Base pool and an Ethereum pool never share a tree), and a
+  proof opens one chain's `rootOfRoots` — so the circuit is unchanged. Uniswap v3
+  is indexed on both chains (identical ABI); Aerodrome Slipstream is Base-only. A
+  single engagement spanning both chains in one proof is out of scope for v1.
 
 ## Known risks (carry into decisions)
 

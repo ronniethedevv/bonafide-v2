@@ -32,8 +32,9 @@ no round-trips) with **zero-knowledge proofs on Midnight**, verified against a
   security-in-depth).
 
 Where they differ on the contract tier, the artifact wins: the protocol layer
-is **Compact on Midnight** (not Solidity/EVM). Base is **read-only** in v1 — we
-index it, we deploy nothing to it.
+is **Compact on Midnight** (not Solidity/EVM). **Base and Ethereum are read-only**
+in v1 — we index them (per-chain, Uniswap v3 on both; Aerodrome on Base), we deploy
+nothing to them.
 
 ## Non-negotiable systemic invariants (from the blueprint, §1.2)
 

@@ -39,7 +39,7 @@ Midnight**, and **Base is read-only** (indexed, never written).
 | Backend | Node + TypeScript (Fastify) | Lightweight async API; WS for job status |
 | Async workers | Trigger.dev | Durable long-running indexing/proving (invariant #1) |
 | Protocol | **Compact 0.31.x (ledger 8) on Midnight** | ZK contracts; `disclose()`-gated flows |
-| Chain (read) | **Base** archive RPC (Uniswap v3, Aerodrome) | Deterministic source data; no deploy |
+| Chain (read) | **Base + Ethereum** archive RPC (Uniswap v3; Aerodrome on Base) | Deterministic source data; per-chain roots; no deploy |
 | ZK primitives | Jubjub Schnorr (attester sigs), Poseidon-family hash (trees) | Midnight-native |
 | DB / ORM | PostgreSQL / Prisma | Typed read models, fast indexing |
 | Off-chain store | IPFS (trees) · Vercel Blob (tear sheets) | Avoid on-chain bloat (invariant #3) |

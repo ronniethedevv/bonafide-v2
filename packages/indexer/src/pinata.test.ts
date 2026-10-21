@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PinataTreePublisher, PinataPublishError, type FetchLike } from "./pinata.js";
+import { PinataTreePublisher, PinataPublishError } from "./pinata.js";
+import type { FetchLike } from "./http.js";
 
 const JWT = "test.jwt.token";
 const CIDV1 = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";

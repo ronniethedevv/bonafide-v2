@@ -16,9 +16,7 @@
 // resolves on any gateway — the recomputability guarantee requires public retrieval.
 
 import type { TreePublisher } from "./provider.js";
-
-/** Minimal transport shape so tests inject a fake and the adapter needs no DOM lib. */
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+import type { FetchLike } from "./http.js";
 
 export interface PinataConfig {
   /** Pinata JWT (scoped Files:Write). Read from env, never committed. */
