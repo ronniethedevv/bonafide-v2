@@ -66,9 +66,13 @@ import {
   type MemberDepth,
   type CarryTotalsW,
   runProveEpoch,
+  KAT_ID,
+  WALLET_B,
+  toSlotLeaf,
 } from "./harness.js";
 
-const ID = new Uint8Array(32).fill(0x42);
+/** The harness registers each witness's wallets / terms under this id (C2 on-chain). */
+const ID = KAT_ID;
 const EPOCH = 7n;
 const SLOT_PATH = /slot Merkle path mismatch \(C1\)/;
 const POOL_PATH = /pool inclusion path mismatch \(C1\)/;
@@ -587,7 +591,7 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
   /** Register, prove `n` epochs on one ledger, and return what a claim needs. */
   async function setup(scenarios = epochScenarios()) {
     const reg = await runRegister(scenarios[0]!.witness, SECRET);
-    const { state, records } = await proveEpochs(scenarios, reg.id, new CompactHasher());
+    const { state, records } = await proveEpochs(scenarios, reg.id, new CompactHasher(), reg.state);
     const { terms, termsSalt } = scenarios[0]!.witness;
     const present = new Map(records.map((r) => [Number(r.epoch), r]));
     const base: ClaimArgs = {
@@ -684,6 +688,7 @@ function katActivity(addr: bigint, depthBuckets: DepthBucketSample[]): AddressAc
 
 describe.skipIf(!HAVE_BUILD)("C2: wallets + terms bound to the registered engagement", () => {
   const SECRET = new Uint8Array(32).fill(0x99);
+  const C2_WALLET = /wallet commitment does not match registration \(C2\)/;
 
   async function registered() {
     const s = buildScenario();
@@ -693,7 +698,7 @@ describe.skipIf(!HAVE_BUILD)("C2: wallets + terms bound to the registered engage
 
   it("honest epoch: disclosed commitments equal registration's ledger values", async () => {
     const { rootOfRoots, witness, reg } = await registered();
-    const r = await runProveEpoch(witness, reg.id, rootOfRoots, EPOCH);
+    const r = await runProveEpoch(witness, reg.id, rootOfRoots, EPOCH, reg.state);
     expect(r.walletCommit).toEqual(reg.walletCommit);
     expect(r.termsCommit).toEqual(reg.termsCommit);
     expect(callerAccepts(reg, r)).toBe(true);
@@ -708,33 +713,52 @@ describe.skipIf(!HAVE_BUILD)("C2: wallets + terms bound to the registered engage
     expect(commitTerms(h, termsToEngagement(t), witness.termsSalt)).toEqual(reg.termsCommit);
   });
 
-  it("loosened terms still prove, but the caller rejects them", async () => {
+  it("an unregistered engagement cannot prove an epoch", async () => {
+    const { rootOfRoots, witness, reg } = await registered();
+    const other = new Uint8Array(32).fill(0x42);
+    await expect(runProveEpoch(witness, other, rootOfRoots, EPOCH, reg.state))
+      .rejects.toThrow(/engagement not registered \(C2\)/);
+  });
+
+  it("loosened terms still prove; the caller (and settleEpoch, H3b) rejects them", async () => {
     const { rootOfRoots, witness, reg } = await registered();
     const w = cloneWitness(witness);
     w.terms.disposal_D = 1n << 100n; // an MM relaxing its own outflow cap
-    const r = await runProveEpoch(w, reg.id, rootOfRoots, EPOCH);
+    const r = await runProveEpoch(w, reg.id, rootOfRoots, EPOCH, reg.state);
     expect(r.walletCommit).toEqual(reg.walletCommit);
     expect(callerAccepts(reg, r)).toBe(false);
   });
 
-  it("a dropped wallet still proves, but the caller rejects it", async () => {
+  it("a dropped wallet reverts in-circuit", async () => {
     const { rootOfRoots, witness, reg } = await registered();
     const w = cloneWitness(witness);
     w.committedWallets[1] = 0n; // hide wallet B this epoch
     w.activeCount = 1n;
     w.slotLeaves[1]!.present = false;
-    const r = await runProveEpoch(w, reg.id, rootOfRoots, EPOCH);
-    expect(r.termsCommit).toEqual(reg.termsCommit);
-    expect(callerAccepts(reg, r)).toBe(false);
+    await expect(runProveEpoch(w, reg.id, rootOfRoots, EPOCH, reg.state)).rejects.toThrow(C2_WALLET);
   });
 
-  it("a different wallet or terms salt is rejected by the caller", async () => {
+  it("a swapped wallet reverts in-circuit, even with a valid non-membership opening", async () => {
+    const { rootOfRoots, witness, reg, tree } = await registered();
+    const w = cloneWitness(witness);
+    const swapped = WALLET_B + 1n; // another address outside the pool, bracketed by the same low leaf
+    w.committedWallets[1] = swapped;
+    const non = tree.nonMembershipProof(swapped);
+    w.slotLeaves[1] = toSlotLeaf(non.lowLeaf, false);
+    w.slotPaths[1] = toPath(non.path);
+    await expect(runProveEpoch(w, reg.id, rootOfRoots, EPOCH, reg.state)).rejects.toThrow(C2_WALLET);
+    // the same epoch proves for an engagement that registered the swapped wallet
+    const reg2 = await runRegister(w, new Uint8Array(32).fill(0x98));
+    await expect(runProveEpoch(w, reg2.id, rootOfRoots, EPOCH, reg2.state)).resolves.toMatchObject({ uptime: 48n });
+  });
+
+  it("a different wallet salt reverts in-circuit; a different terms salt is rejected by the caller", async () => {
     const { rootOfRoots, witness, reg } = await registered();
     const ws = cloneWitness(witness);
     ws.walletSalt[0] = ws.walletSalt[0]! ^ 1;
-    expect(callerAccepts(reg, await runProveEpoch(ws, reg.id, rootOfRoots, EPOCH))).toBe(false);
+    await expect(runProveEpoch(ws, reg.id, rootOfRoots, EPOCH, reg.state)).rejects.toThrow(C2_WALLET);
     const ts = cloneWitness(witness);
     ts.termsSalt[0] = ts.termsSalt[0]! ^ 1;
-    expect(callerAccepts(reg, await runProveEpoch(ts, reg.id, rootOfRoots, EPOCH))).toBe(false);
+    expect(callerAccepts(reg, await runProveEpoch(ts, reg.id, rootOfRoots, EPOCH, reg.state))).toBe(false);
   });
 });

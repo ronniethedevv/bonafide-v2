@@ -332,14 +332,32 @@ const EPOCH_REF = structType<{ id: Uint8Array; epoch: bigint }>(
 export const CARRY_TOTALS = structType<CarryTotalsW>(
   [["xfer_in", U192], ["xfer_out", U192], ["from_treasury", U192]]);
 
+/**
+ * The default KAT engagement: proveEpoch asserts the engagement is registered and its
+ * wallet commitment matches (C2), so a run without a ledger first registers the
+ * witness's own wallets / terms under KAT_SECRET, whose id is KAT_ID.
+ */
+export const KAT_SECRET = new Uint8Array(32).fill(0x5e);
+export const KAT_ID: Uint8Array = rt.persistentHash(new rt.CompactTypeBytes(32), KAT_SECRET);
+
 export async function runProveEpoch(
   w: EpochWitness,
   id: Uint8Array,
   rootOfRoots: Uint8Array,
   epoch: bigint,
-  /** Ledger state to run against (from a previous ProveResult); default a fresh contract. */
+  /**
+   * Ledger state to run against (from a previous ProveResult or a registration).
+   * Default: a fresh contract with `w`'s wallets and terms registered as KAT_ID.
+   */
   state?: rt.ChargedState,
 ): Promise<ProveResult> {
+  if (state === undefined) {
+    const reg = await runRegister(w, KAT_SECRET);
+    if (!reg.id.every((x, i) => x === id[i])) {
+      throw new Error("runProveEpoch without a state proves the KAT_ID engagement; pass the registered state");
+    }
+    state = reg.state;
+  }
   const mod = await import(BUILD_DIR);
   const witnesses = {
     ...stubWitnesses(),

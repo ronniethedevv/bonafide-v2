@@ -51,10 +51,9 @@ struct Terms {
   min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
 }
 
-// C2: proveEpoch's public output. The commitments let the caller bind this proof
-// to the registered engagement: it accepts only if walletCommit == walletCommit[id]
-// and termsCommit == termsCommit[id] (same "enforced by the caller" pattern as I8;
-// settleEpoch also checks the terms half on-chain, H3b). Both values are already
+// C2: proveEpoch's public output. Both commitments are now checked on-chain: the
+// wallet half by proveEpoch itself (walletCommit[id]), the terms half by settleEpoch
+// (termsCommit[id], H3b) — a caller may still compare them. Both values are already
 // public on the registration ledger under the same id, so disclosing them leaks nothing.
 struct EpochResult { uptime: Uint<8>, walletCommit: Bytes<32>, termsCommit: Bytes<32> }
 
@@ -514,6 +513,11 @@ export circuit proveEpoch(
   // (same schemes as registration.register). Disclosed in the result; the caller
   // checks them against registration.walletCommit[id] / termsCommit[id].
   const wc = persistentCommit<Vector<16, Uint<160>>>(w, walletSalt());
+  // C2, wallet half on-chain (DD-17 put registration in this contract): the opened
+  // wallet vector must be the one registered for this engagement, so a wallet cannot
+  // be swapped or dropped for an epoch. The terms half is checked by settleEpoch.
+  assert(status.member(disclose(id)), "engagement not registered (C2)");
+  assert(disclose(wc) == walletCommit.lookup(disclose(id)), "wallet commitment does not match registration (C2)");
   const leaves = slotLeaves();
   const t = terms();
   const tc = persistentCommit<Terms>(t, termsSalt());
