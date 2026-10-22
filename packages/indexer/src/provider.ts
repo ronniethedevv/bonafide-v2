@@ -79,7 +79,17 @@ export interface ChainProvider {
   finalizedBlock(): Promise<number>;
   poolsAboveFloor(floor: bigint, atBlock: number): Promise<PoolDescriptor[]>;
   poolActivity(pool: PoolDescriptor, range: EpochRange): Promise<AddressActivity[]>;
-  poolPriceSamples(pool: PoolDescriptor, range: EpochRange): Promise<PriceSample[]>;
+  /**
+   * Spot price at each of `times` (ascending unix seconds inside the range), replayed
+   * from pool state. The caller derives `times` from config (`twapSampleTimes`), so the
+   * schedule — and the reference price — is fixed by the committed config, not the
+   * provider.
+   */
+  poolPriceSamples(
+    pool: PoolDescriptor,
+    range: EpochRange,
+    times: readonly number[],
+  ): Promise<PriceSample[]>;
 }
 
 /** Content-addressed store. The full tree is published before its root is signed. */

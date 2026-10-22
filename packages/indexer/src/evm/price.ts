@@ -88,15 +88,3 @@ export async function lastBlockAtOrBefore(
   }
   return lo;
 }
-
-/** Sample times: every `stepSeconds` from startTs, plus endTs itself. */
-export function sampleTimes(startTs: number, endTs: number, stepSeconds: number): number[] {
-  if (!Number.isInteger(stepSeconds) || stepSeconds <= 0) {
-    throw new PriceError(`sample step must be a positive integer, got ${stepSeconds}`);
-  }
-  if (endTs <= startTs) throw new PriceError(`empty sample window [${startTs}, ${endTs}]`);
-  const out: number[] = [];
-  for (let t = startTs; t < endTs; t += stepSeconds) out.push(t);
-  out.push(endTs);
-  return out;
-}

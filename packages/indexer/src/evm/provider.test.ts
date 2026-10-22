@@ -91,10 +91,12 @@ describe("UniswapV3ChainProvider.poolPriceSamples", () => {
   // blocks 0..1800 span ts 1001..4601; the epoch is [1000, 4600]
   const range = { epoch: 1, startBlock: 0, endBlock: 1799, endBlockHash: "0x", startTs: 1000, endTs: 4600 };
 
+  const times = [1000, 1900, 2800, 3700, 4600];
+
   it("reads slot0 at the last block at or before each sample time, oriented and Q96", async () => {
     const rpc = fake();
-    const p = new UniswapV3ChainProvider(resolveChain(8453), rpc, 900);
-    const samples = await p.poolPriceSamples(pool, range);
+    const p = new UniswapV3ChainProvider(resolveChain(8453), rpc);
+    const samples = await p.poolPriceSamples(pool, range, times);
     // ts 1000 precedes block 0 (ts 1001): not sampled. 1900 -> block 449 (ts 1899), etc.
     const blocks = [449, 899, 1349, 1799];
     expect(samples.map((s) => s.ts)).toEqual([1900, 2800, 3700, 4600]);
@@ -105,25 +107,32 @@ describe("UniswapV3ChainProvider.poolPriceSamples", () => {
   });
 
   it("is deterministic across provider instances", async () => {
-    const a = await new UniswapV3ChainProvider(resolveChain(8453), fake(), 900).poolPriceSamples(pool, range);
-    const b = await new UniswapV3ChainProvider(resolveChain(8453), fake(), 900).poolPriceSamples(pool, range);
+    const a = await new UniswapV3ChainProvider(resolveChain(8453), fake()).poolPriceSamples(pool, range, times);
+    const b = await new UniswapV3ChainProvider(resolveChain(8453), fake()).poolPriceSamples(pool, range, times);
     expect(a).toEqual(b);
   });
 
   it("fails loudly when the descriptor's tokens are not the pool's", async () => {
-    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ token1: WETH + 1n }), 900);
-    await expect(p.poolPriceSamples(pool, range)).rejects.toThrow(/do not match its descriptor/);
+    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ token1: WETH + 1n }));
+    await expect(p.poolPriceSamples(pool, range, times)).rejects.toThrow(/do not match its descriptor/);
   });
 
   it("refuses a pool with no quote asset", async () => {
     const odd = { ...pool, token0: 1n, token1: 2n };
-    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ token0: 1n, token1: 2n }), 900);
-    await expect(p.poolPriceSamples(odd, range)).rejects.toThrow(/no quote asset/);
+    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ token0: 1n, token1: 2n }));
+    await expect(p.poolPriceSamples(odd, range, times)).rejects.toThrow(/no quote asset/);
+  });
+
+  it("rejects sample times outside the range or out of order", async () => {
+    const p = new UniswapV3ChainProvider(resolveChain(8453), fake());
+    for (const bad of [[999], [4601], [2000, 2000], [3000, 2000]]) {
+      await expect(p.poolPriceSamples(pool, range, bad)).rejects.toThrow(/ascend strictly/);
+    }
   });
 
   it("refuses an uninitialized pool", async () => {
-    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ sqrtAt: () => 0n }), 900);
-    await expect(p.poolPriceSamples(pool, range)).rejects.toThrow(/not initialized/);
+    const p = new UniswapV3ChainProvider(resolveChain(8453), fake({ sqrtAt: () => 0n }));
+    await expect(p.poolPriceSamples(pool, range, times)).rejects.toThrow(/not initialized/);
   });
 });
 

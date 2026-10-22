@@ -58,6 +58,11 @@ signs from there, not from intuition.
 ## 2. Suggested order (simplest + most verifiable first)
 
 ### 2a. `poolPriceSamples` — spot price replay
+> **Done (2026-10-22, DD-19 + DD-20).** Orientation = ranked quote allowlist; price
+> = Q96 raw quote per raw base. Samples are *not* bucket boundaries any more: the
+> caller passes `twapSampleTimes(config, endTs)` — every `priceSampleSeconds` (60 s)
+> across the TWAP window, endTs included. The notes below are the original plan.
+
 - Map each sample time (bucket boundaries across `[startTs, endTs]`) to a block:
   binary-search `eth_getBlockByNumber` on timestamps, or walk blocks. Record the
   real block, don't interpolate.
@@ -68,6 +73,19 @@ signs from there, not from intuition.
   match what `winsorizedTwap` + the oracle expect — pin it by checking one sample
   against the pool's price on a block explorer / Uniswap subgraph at the same block.
 - Determinism: all inputs are (pool, block) — no clocks.
+
+### Range rule (applies to 2b and 2c, decided 2026-10-22)
+An `EpochRange` for `[startTs, endTs]` is pinned as **`startBlock` = the last block
+with timestamp ≤ `startTs`** and **`endBlock` = the last block with timestamp ≤
+`endTs`** (`lastBlockAtOrBefore`, `evm/price.ts`). So the state at a time `t` is
+always the state after some in-range block, and epochs tile without gaps:
+- **State reads** (balances, `liquidity()`, `slot0`) for "start of epoch" are at
+  `startBlock`; for "end of epoch" at `endBlock`.
+- **Event scans** (`eth_getLogs` for Transfer/Swap/Mint/Burn) cover
+  **`(startBlock, endBlock]`** — i.e. `fromBlock = startBlock + 1` — because events in
+  `startBlock` happened at or before `startTs` and belong to the previous epoch.
+- Build ranges with one shared helper (added in 2b) so 2b, 2c and the watcher agree.
+  On Base, blocks land on odd seconds: the start block is at `startTs − 1`.
 
 ### 2b. `poolsAboveFloor` — discovery
 - Enumerate pools from the chain's UniswapV3Factory `PoolCreated` logs

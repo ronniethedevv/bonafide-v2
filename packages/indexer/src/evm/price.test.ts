@@ -4,7 +4,6 @@ import {
   lastBlockAtOrBefore,
   orientPool,
   priceQ96FromSqrt,
-  sampleTimes,
 } from "./price.js";
 import { resolveChain } from "../chains.js";
 import type { BlockHeader } from "./rpc.js";
@@ -104,17 +103,5 @@ describe("lastBlockAtOrBefore", () => {
       worst = Math.max(worst, calls.length);
     }
     expect(worst).toBeLessThanOrEqual(2 + 2 * Math.ceil(Math.log2(500)));
-  });
-});
-
-describe("sampleTimes", () => {
-  it("steps from startTs and always ends on endTs", () => {
-    expect(sampleTimes(0, 3600, 1800)).toEqual([0, 1800, 3600]);
-    expect(sampleTimes(0, 4000, 1800)).toEqual([0, 1800, 3600, 4000]);
-  });
-
-  it("rejects an empty window or a bad step", () => {
-    expect(() => sampleTimes(10, 10, 1)).toThrow(PriceError);
-    expect(() => sampleTimes(0, 10, 0)).toThrow(PriceError);
   });
 });

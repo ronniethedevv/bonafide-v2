@@ -14,6 +14,12 @@ export interface IndexerConfig {
   readonly bucketSeconds: number;
   /** TWAP reference window in seconds (winsorized). */
   readonly twapWindowSeconds: number;
+  /**
+   * Spacing of spot-price samples inside the TWAP window, in seconds (DD-20). The
+   * window [endTs − twapWindowSeconds, endTs] is sampled at every multiple of this
+   * step from its start, endTs included; must divide twapWindowSeconds.
+   */
+  readonly priceSampleSeconds: number;
   /** Winsorization fraction trimmed from each tail of the price samples. */
   readonly winsorFraction: number;
   /** Anti-JIT: LP positions alive fewer than this many blocks get no depth credit. */
@@ -30,6 +36,7 @@ export const DEFAULT_CONFIG: IndexerConfig = {
   epochSeconds: 24 * 60 * 60,
   bucketSeconds: 30 * 60,
   twapWindowSeconds: 30 * 60,
+  priceSampleSeconds: 60,
   winsorFraction: 0.05,
   kMinBlocks: 30,
   liquidityFloor: 0n,
@@ -46,6 +53,15 @@ export function assertConfig(cfg: IndexerConfig): void {
   if (cfg.epochSeconds % cfg.bucketSeconds !== 0) {
     throw new Error("epochSeconds must be a whole number of buckets");
   }
+  if (!Number.isInteger(cfg.twapWindowSeconds) || cfg.twapWindowSeconds <= 0 || cfg.twapWindowSeconds > cfg.epochSeconds) {
+    throw new Error("twapWindowSeconds must be a positive integer no longer than the epoch");
+  }
+  if (!Number.isInteger(cfg.priceSampleSeconds) || cfg.priceSampleSeconds <= 0) {
+    throw new Error("priceSampleSeconds must be a positive integer");
+  }
+  if (cfg.twapWindowSeconds % cfg.priceSampleSeconds !== 0) {
+    throw new Error("twapWindowSeconds must be a whole number of price samples");
+  }
   if (cfg.winsorFraction < 0 || cfg.winsorFraction >= 0.5) {
     throw new Error("winsorFraction must be in [0, 0.5)");
   }
@@ -54,4 +70,11 @@ export function assertConfig(cfg: IndexerConfig): void {
 /** Number of time buckets per epoch. */
 export function bucketsPerEpoch(cfg: IndexerConfig): number {
   return cfg.epochSeconds / cfg.bucketSeconds;
+}
+
+/** Spot-price sample times for an epoch's TWAP window (DD-20), ascending, endTs included. */
+export function twapSampleTimes(cfg: IndexerConfig, endTs: number): number[] {
+  const out: number[] = [];
+  for (let t = endTs - cfg.twapWindowSeconds; t <= endTs; t += cfg.priceSampleSeconds) out.push(t);
+  return out;
 }

@@ -14,7 +14,6 @@ import type {
   PriceSample,
 } from "../provider.js";
 import { resolveChain, type ChainConfig } from "../chains.js";
-import { DEFAULT_CONFIG } from "../config.js";
 import { JsonRpcClient, type BlockHeader, type EvmRpc } from "./rpc.js";
 import type { FetchLike } from "../http.js";
 import {
@@ -22,7 +21,6 @@ import {
   lastBlockAtOrBefore,
   orientPool,
   priceQ96FromSqrt,
-  sampleTimes,
 } from "./price.js";
 
 /** 4-byte selectors of the pool views read here. */
@@ -39,8 +37,6 @@ export class UniswapV3ChainProvider implements ChainProvider {
   constructor(
     private readonly cfg: ChainConfig,
     private readonly rpc: EvmRpc,
-    /** Spacing of price samples in seconds; feeds the reference price, so fixed per epoch. */
-    private readonly priceSampleSeconds: number = DEFAULT_CONFIG.bucketSeconds,
   ) {}
 
   chainId(): number {
@@ -68,13 +64,23 @@ export class UniswapV3ChainProvider implements ChainProvider {
   }
 
   /**
-   * Spot price (Q96, raw quote per raw base; see price.ts) at every sample time in
-   * [startTs, endTs], read from slot0 at the last block in [startBlock, endBlock] whose
-   * timestamp is ≤ that time. Times before startBlock's timestamp have no in-range
-   * state and are not sampled. Inputs are only (pool, block): no clocks.
+   * Spot price (Q96, raw quote per raw base; see price.ts) at each of `times`, read from
+   * slot0 at the last block in [startBlock, endBlock] whose timestamp is ≤ that time.
+   * Times before startBlock's timestamp have no in-range state and are not sampled.
+   * Inputs are only (pool, block): no clocks.
    */
-  async poolPriceSamples(pool: PoolDescriptor, range: EpochRange): Promise<PriceSample[]> {
+  async poolPriceSamples(
+    pool: PoolDescriptor,
+    range: EpochRange,
+    times: readonly number[],
+  ): Promise<PriceSample[]> {
     const addr = toAddr(pool.poolAddr);
+    for (let i = 0; i < times.length; i++) {
+      const t = times[i]!;
+      if (t < range.startTs || t > range.endTs || (i > 0 && t <= times[i - 1]!)) {
+        throw new PriceError("sample times must ascend strictly inside [startTs, endTs]");
+      }
+    }
     // Fail loudly if the descriptor does not describe this pool.
     const [t0, t1] = await Promise.all([
       this.rpc.call(addr, SEL.token0, range.endBlock),
@@ -94,7 +100,7 @@ export class UniswapV3ChainProvider implements ChainProvider {
 
     const samples: PriceSample[] = [];
     let lo = range.startBlock;
-    for (const ts of sampleTimes(range.startTs, range.endTs, this.priceSampleSeconds)) {
+    for (const ts of times) {
       const block = await lastBlockAtOrBefore(header, ts, lo, range.endBlock);
       if (block === null) continue;
       lo = block; // sample times ascend, so their blocks do too
@@ -123,8 +129,6 @@ export interface ProviderOptions {
   readonly timeoutMs?: number;
   readonly fetchImpl?: FetchLike;
   readonly env?: Record<string, string | undefined>;
-  /** Price sample spacing in seconds (default: the indexer's bucket length). */
-  readonly priceSampleSeconds?: number;
 }
 
 /** Build a provider for a supported chain, reading the RPC url from env by default. */
@@ -138,5 +142,5 @@ export function uniswapV3Provider(chainId: number, opts: ProviderOptions = {}): 
     ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
     ...(opts.fetchImpl === undefined ? {} : { fetchImpl: opts.fetchImpl }),
   });
-  return new UniswapV3ChainProvider(cfg, rpc, opts.priceSampleSeconds);
+  return new UniswapV3ChainProvider(cfg, rpc);
 }

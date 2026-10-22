@@ -18,7 +18,7 @@ import {
   type PoolEntry,
 } from "@mmr/merkle";
 import { PoseidonHasher } from "@mmr/merkle/poseidon";
-import { type IndexerConfig, assertConfig } from "./config.js";
+import { type IndexerConfig, assertConfig, twapSampleTimes } from "./config.js";
 import {
   type AttesterCommittee,
   type AttesterSignature,
@@ -59,6 +59,10 @@ export interface EpochManifest {
   hasherId: string;
   bandsBps: readonly number[];
   bucketSeconds: number;
+  /** Reference-price parameters (DD-20): with the range, they make referencePrice recomputable. */
+  twapWindowSeconds: number;
+  priceSampleSeconds: number;
+  winsorFraction: number;
   poolCount: number;
   rootOfRootsHex: string;
   pools: PoolManifestEntry[];
@@ -116,7 +120,11 @@ export async function buildEpoch(
 
     const cid = await deps.publisher.publish(serializePoolTree(tree));
 
-    const samples = await deps.provider.poolPriceSamples(pool, range);
+    const samples = await deps.provider.poolPriceSamples(
+      pool,
+      range,
+      twapSampleTimes(config, range.endTs),
+    );
     const referencePrice = winsorizedTwap(
       samples,
       range.endTs - config.twapWindowSeconds,
@@ -147,6 +155,9 @@ export async function buildEpoch(
     hasherId: hasher.id,
     bandsBps: config.bandsBps,
     bucketSeconds: config.bucketSeconds,
+    twapWindowSeconds: config.twapWindowSeconds,
+    priceSampleSeconds: config.priceSampleSeconds,
+    winsorFraction: config.winsorFraction,
     poolCount: pools.length,
     rootOfRootsHex,
     pools: poolManifest,
