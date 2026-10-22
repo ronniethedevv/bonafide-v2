@@ -2,9 +2,10 @@
 //
 // Unit 1: the chain-agnostic foundation — identity + finality + RPC wiring, real and
 // testable. Unit 3 fills the data-extraction methods one at a time, each verified
-// against the live chain: price samples (2a) are done; pool discovery and per-address
-// activity still require live verification of Uniswap v3 tick/liquidity math, so they
-// stay behind a typed NotImplementedError rather than returning fabricated data.
+// against the live chain: price samples (2a) and pool discovery (2b) are done;
+// per-address activity still requires live verification of Uniswap v3 tick/liquidity
+// math, so it stays behind a typed NotImplementedError rather than returning fabricated
+// data.
 
 import type {
   AddressActivity,
@@ -15,6 +16,8 @@ import type {
 } from "../provider.js";
 import { resolveChain, type ChainConfig } from "../chains.js";
 import { JsonRpcClient, type BlockHeader, type EvmRpc } from "./rpc.js";
+import { FEE_TIERS, computePoolAddress, sortTokens } from "./pool.js";
+import { SELECTOR, multicall, type Call } from "./multicall.js";
 import type { FetchLike } from "../http.js";
 import {
   PriceError,
@@ -23,8 +26,14 @@ import {
   priceQ96FromSqrt,
 } from "./price.js";
 
-/** 4-byte selectors of the pool views read here. */
-const SEL = { slot0: "0x3850c7bd", token0: "0x0dfe1681", token1: "0xd21220a7" } as const;
+const SEL = SELECTOR;
+
+export class DiscoveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DiscoveryError";
+  }
+}
 
 export class NotImplementedError extends Error {
   constructor(what: string) {
@@ -55,8 +64,72 @@ export class UniswapV3ChainProvider implements ChainProvider {
     }
   }
 
-  async poolsAboveFloor(_floor: bigint, _atBlock: number): Promise<PoolDescriptor[]> {
-    throw new NotImplementedError("poolsAboveFloor");
+  /**
+   * DD-21: pair enumeration, no log scan. For each base token × quote asset × fee tier,
+   * read factory.getPool at `atBlock` (Multicall3, one pinned block) and require any
+   * deployed pool to sit at its CREATE2 address. Deployed pools are kept when
+   * initialized (sqrtPriceX96 ≠ 0) and their active liquidity() ≥ floor.
+   */
+  async poolsAboveFloor(
+    floor: bigint,
+    atBlock: number,
+    baseTokens: readonly string[],
+  ): Promise<PoolDescriptor[]> {
+    const quotes = this.cfg.quoteAssets;
+    const candidates: { token0: string; token1: string; expected: string; factory: string; fee: number }[] = [];
+    for (const dex of this.cfg.dexes) {
+      for (const base of baseTokens) {
+        if (quotes.includes(base.toLowerCase())) {
+          throw new DiscoveryError(`base token ${base} is a quote asset on chain ${this.cfg.chainId}`);
+        }
+        for (const quote of quotes) {
+          for (const fee of FEE_TIERS) {
+            const [token0, token1] = sortTokens(base, quote);
+            const expected = computePoolAddress(dex.factory, { tokenA: base, tokenB: quote, fee }, dex.initCodeHash);
+            candidates.push({ token0, token1, expected, factory: dex.factory, fee });
+          }
+        }
+      }
+    }
+    const got = await multicall(
+      this.rpc,
+      candidates.map((c) => ({
+        target: c.factory,
+        data: `${SEL.getPool}${hexWord(BigInt(c.token0))}${hexWord(BigInt(c.token1))}${hexWord(BigInt(c.fee))}`,
+      })),
+      atBlock,
+    );
+    const deployed = candidates.filter((c, i) => {
+      const addr = word(got[i]!, 0);
+      if (addr === 0n) return false;
+      if (addr !== BigInt(c.expected)) {
+        throw new DiscoveryError(`factory.getPool returned 0x${addr.toString(16)}, CREATE2 gives ${c.expected}`);
+      }
+      return true;
+    });
+
+    const state = await multicall(
+      this.rpc,
+      deployed.flatMap((c): Call[] => [
+        { target: c.expected, data: SEL.liquidity },
+        { target: c.expected, data: SEL.slot0 },
+      ]),
+      atBlock,
+    );
+    const pools: PoolDescriptor[] = [];
+    deployed.forEach((c, i) => {
+      const liquidity = word(state[2 * i]!, 0);
+      const sqrtPriceX96 = word(state[2 * i + 1]!, 0);
+      if (sqrtPriceX96 === 0n || liquidity < floor) return;
+      pools.push({
+        poolAddr: BigInt(c.expected),
+        token0: BigInt(c.token0),
+        token1: BigInt(c.token1),
+        liquidity,
+        dex: "uniswap-v3",
+      });
+    });
+    return pools.sort((a, b) => (a.poolAddr < b.poolAddr ? -1 : a.poolAddr > b.poolAddr ? 1 : 0));
   }
 
   async poolActivity(_pool: PoolDescriptor, _range: EpochRange): Promise<AddressActivity[]> {
@@ -111,6 +184,8 @@ export class UniswapV3ChainProvider implements ChainProvider {
     return samples;
   }
 }
+
+const hexWord = (v: bigint): string => v.toString(16).padStart(64, "0");
 
 function toAddr(a: bigint): string {
   return `0x${a.toString(16).padStart(40, "0")}`;

@@ -59,6 +59,9 @@ export interface EpochManifest {
   hasherId: string;
   bandsBps: readonly number[];
   bucketSeconds: number;
+  /** Pool set (DD-21): with the end block, they make the discovered pools recomputable. */
+  baseTokens: readonly string[];
+  liquidityFloor: string;
   /** Reference-price parameters (DD-20): with the range, they make referencePrice recomputable. */
   twapWindowSeconds: number;
   priceSampleSeconds: number;
@@ -103,6 +106,7 @@ export async function buildEpoch(
   const discovered = await deps.provider.poolsAboveFloor(
     config.liquidityFloor,
     range.endBlock,
+    config.baseTokens,
   );
   const pools = discovered
     .filter((p) => p.liquidity >= config.liquidityFloor)
@@ -155,6 +159,8 @@ export async function buildEpoch(
     hasherId: hasher.id,
     bandsBps: config.bandsBps,
     bucketSeconds: config.bucketSeconds,
+    baseTokens: config.baseTokens,
+    liquidityFloor: config.liquidityFloor.toString(),
     twapWindowSeconds: config.twapWindowSeconds,
     priceSampleSeconds: config.priceSampleSeconds,
     winsorFraction: config.winsorFraction,

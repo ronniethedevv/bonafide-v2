@@ -77,7 +77,15 @@ export interface EpochRange {
 export interface ChainProvider {
   chainId(): number;
   finalizedBlock(): Promise<number>;
-  poolsAboveFloor(floor: bigint, atBlock: number): Promise<PoolDescriptor[]>;
+  /**
+   * Pools of `baseTokens` (DD-21) whose active liquidity at `atBlock` is ≥ `floor`,
+   * ascending by address. The caller passes `baseTokens` from config.
+   */
+  poolsAboveFloor(
+    floor: bigint,
+    atBlock: number,
+    baseTokens: readonly string[],
+  ): Promise<PoolDescriptor[]>;
   poolActivity(pool: PoolDescriptor, range: EpochRange): Promise<AddressActivity[]>;
   /**
    * Spot price at each of `times` (ascending unix seconds inside the range), replayed

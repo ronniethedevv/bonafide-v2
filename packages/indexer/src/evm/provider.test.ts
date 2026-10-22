@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { UniswapV3ChainProvider, NotImplementedError, uniswapV3Provider } from "./provider.js";
 import { resolveChain } from "../chains.js";
 import type { BlockHeader, EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import { MulticallFake } from "./multicall.fake.js";
+import { SELECTOR, type Call } from "./multicall.js";
+import { FEE_TIERS, computePoolAddress, sortTokens } from "./pool.js";
 
 const hexWord = (x: bigint): string => x.toString(16).padStart(64, "0");
 
@@ -63,11 +66,10 @@ describe("UniswapV3ChainProvider", () => {
     await expect(wrong.assertChainId()).rejects.toThrow(/does not match configured 1/);
   });
 
-  it("stages discovery + activity behind a typed error (no fabricated data)", async () => {
+  it("stages per-address activity behind a typed error (no fabricated data)", async () => {
     const p = new UniswapV3ChainProvider(resolveChain(1), new FakeRpc());
     const range = { epoch: 1, startBlock: 0, endBlock: 1, endBlockHash: "0x", startTs: 0, endTs: 1 };
     const pool = { poolAddr: 0n, token0: 0n, token1: 0n, liquidity: 0n, dex: "uniswap-v3" as const };
-    await expect(p.poolsAboveFloor(0n, 1)).rejects.toBeInstanceOf(NotImplementedError);
     await expect(p.poolActivity(pool, range)).rejects.toBeInstanceOf(NotImplementedError);
   });
 });
@@ -148,5 +150,67 @@ describe("uniswapV3Provider factory", () => {
 
   it("throws on an unsupported chain", () => {
     expect(() => uniswapV3Provider(137, { env: {} })).toThrow(/unsupported chainId 137/);
+  });
+});
+
+describe("UniswapV3ChainProvider.poolsAboveFloor (DD-21 pair enumeration)", () => {
+  const base = resolveChain(8453);
+  const dex = base.dexes[0]!;
+  const CBBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
+  const USDC = base.quoteAssets[0]!;
+  const WETH = base.quoteAssets[2]!;
+  const at = (q: string, fee: number) => computePoolAddress(dex.factory, { tokenA: CBBTC, tokenB: q, fee }, dex.initCodeHash);
+  const word = (v: bigint) => `0x${v.toString(16).padStart(64, "0")}`;
+
+  /** cbBTC/USDC exists at 500 and 3000, cbBTC/WETH at 3000 (uninitialized); nothing else. */
+  function chain(over: { getPool?: (addr: string) => string } = {}) {
+    const deployed = new Map<string, { liquidity: bigint; sqrt: bigint }>([
+      [at(USDC, 500), { liquidity: 2_000n, sqrt: 1n << 96n }],
+      [at(USDC, 3000), { liquidity: 10n, sqrt: 1n << 96n }],
+      [at(WETH, 3000), { liquidity: 0n, sqrt: 0n }],
+    ]);
+    const seen: Call[] = [];
+    const rpc = new MulticallFake((c) => {
+      seen.push(c);
+      if (c.data.startsWith(SELECTOR.getPool)) {
+        const w = (i: number) => BigInt(`0x${c.data.slice(10 + 64 * i, 74 + 64 * i)}`);
+        const [t0, t1] = sortTokens(`0x${w(0).toString(16).padStart(40, "0")}`, `0x${w(1).toString(16).padStart(40, "0")}`);
+        const addr = computePoolAddress(dex.factory, { tokenA: t0, tokenB: t1, fee: Number(w(2)) }, dex.initCodeHash);
+        const real = deployed.has(addr) ? addr : "0x0";
+        return word(BigInt(over.getPool ? over.getPool(real) : real));
+      }
+      const pool = deployed.get(c.target)!;
+      if (c.data === SELECTOR.liquidity) return word(pool.liquidity);
+      if (c.data === SELECTOR.slot0) return word(pool.sqrt) + "0".repeat(64 * 6);
+      throw new Error(`unexpected ${c.data}`);
+    });
+    return { rpc, seen };
+  }
+
+  it("enumerates base × quote × fee in one getPool batch and keeps initialized pools ≥ floor", async () => {
+    const { rpc, seen } = chain();
+    const p = new UniswapV3ChainProvider(base, rpc);
+    const pools = await p.poolsAboveFloor(0n, 100, [CBBTC]);
+    expect(seen.filter((c) => c.data.startsWith(SELECTOR.getPool)).length).toBe(base.quoteAssets.length * FEE_TIERS.length);
+    expect(rpc.batches).toBe(2);
+    // the uninitialized cbBTC/WETH pool is dropped; ascending by address
+    const want = [at(USDC, 500), at(USDC, 3000)].sort();
+    expect(pools.map((x) => `0x${x.poolAddr.toString(16).padStart(40, "0")}`)).toEqual(want);
+    const [t0, t1] = sortTokens(CBBTC, USDC);
+    expect(pools[0]).toMatchObject({ token0: BigInt(t0), token1: BigInt(t1), dex: "uniswap-v3" });
+    expect((await p.poolsAboveFloor(11n, 100, [CBBTC])).map((x) => x.liquidity)).toEqual([2_000n]);
+  });
+
+  it("finds nothing for no base tokens", async () => {
+    expect(await new UniswapV3ChainProvider(base, chain().rpc).poolsAboveFloor(0n, 100, [])).toEqual([]);
+  });
+
+  it("fails loudly when the factory's pool is not at its CREATE2 address", async () => {
+    const { rpc } = chain({ getPool: (a) => (a === "0x0" ? a : "0x1234") });
+    await expect(new UniswapV3ChainProvider(base, rpc).poolsAboveFloor(0n, 100, [CBBTC])).rejects.toThrow(/CREATE2 gives/);
+  });
+
+  it("rejects a base token that is a quote asset", async () => {
+    await expect(new UniswapV3ChainProvider(base, chain().rpc).poolsAboveFloor(0n, 100, [WETH])).rejects.toThrow(/is a quote asset/);
   });
 });

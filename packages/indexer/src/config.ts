@@ -26,6 +26,12 @@ export interface IndexerConfig {
   readonly kMinBlocks: number;
   /** Only pools with liquidity at or above this floor are indexed. */
   readonly liquidityFloor: bigint;
+  /**
+   * Base tokens whose pools are indexed (DD-21): every pool of a base token against
+   * each of the chain's quote assets, at every fee tier, found by factory.getPool.
+   * Lowercase 0x addresses, strictly ascending (one canonical form per config).
+   */
+  readonly baseTokens: readonly string[];
   /** Only blocks at or before this finalized height are indexed. */
   readonly finalityConfirmations: number;
 }
@@ -40,6 +46,7 @@ export const DEFAULT_CONFIG: IndexerConfig = {
   winsorFraction: 0.05,
   kMinBlocks: 30,
   liquidityFloor: 0n,
+  baseTokens: [],
   finalityConfirmations: 1800, // well past Base L1 finality; tune per environment
 };
 
@@ -61,6 +68,14 @@ export function assertConfig(cfg: IndexerConfig): void {
   }
   if (cfg.twapWindowSeconds % cfg.priceSampleSeconds !== 0) {
     throw new Error("twapWindowSeconds must be a whole number of price samples");
+  }
+  for (let i = 0; i < cfg.baseTokens.length; i++) {
+    if (!/^0x[0-9a-f]{40}$/.test(cfg.baseTokens[i]!)) {
+      throw new Error(`baseTokens must be lowercase 0x addresses: ${cfg.baseTokens[i]}`);
+    }
+    if (i > 0 && cfg.baseTokens[i]! <= cfg.baseTokens[i - 1]!) {
+      throw new Error("baseTokens must be strictly ascending");
+    }
   }
   if (cfg.winsorFraction < 0 || cfg.winsorFraction >= 0.5) {
     throw new Error("winsorFraction must be in [0, 0.5)");

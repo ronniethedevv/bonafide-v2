@@ -88,6 +88,12 @@ always the state after some in-range block, and epochs tile without gaps:
   On Base, blocks land on odd seconds: the start block is at `startTs − 1`.
 
 ### 2b. `poolsAboveFloor` — discovery
+> **Done (2026-10-22, DD-21) — differently from the plan below.** The RPC key is
+> Alchemy Free tier (`eth_getLogs` ≤ 10 blocks), so there is no `PoolCreated`
+> scan: pools are enumerated as `baseTokens × quoteAssets × FEE_TIERS` through
+> `factory.getPool` (Multicall3), each checked against `computePoolAddress`. Range
+> helper: `resolveEpochRange` (`evm/range.ts`). The notes below are the original plan.
+
 - Enumerate pools from the chain's UniswapV3Factory `PoolCreated` logs
   (`TOPIC0.poolCreated`), paged over block ranges (respect the provider's
   `eth_getLogs` range cap — chunk, e.g., ≤ 10k blocks, and surface, don't swallow,
@@ -100,6 +106,10 @@ always the state after some in-range block, and epochs tile without gaps:
   WETH/USDC pool) at a recent block; confirm its address against the explorer.
 
 ### 2c. `poolActivity` — per-address metrics (the hard one; split further)
+> **Log budget:** with the Free-tier key, one epoch of logs for one pool is
+> ~4 320 `eth_getLogs` calls on Base (43 200 blocks / 10). Filter by pool address
+> + topic0 per request; consider a paid key before running many pools/epochs.
+
 Collect the address set from Transfer/Swap/Mint/Burn logs over `[startBlock,
 endBlock]`, then per address:
 - **Balances** `baseStart` (at `startBlock`), `baseEnd`, `quoteEnd` (at `endBlock`):
