@@ -70,7 +70,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="muted" style={{ fontSize: 12 }}>
+      <div className="eyebrow" style={{ marginBottom: 2 }}>
         {label}
       </div>
       <div className="mono" style={{ fontSize: 18, color: tone ?? "var(--text)" }}>

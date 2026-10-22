@@ -4,13 +4,13 @@ export function PrivacyNote({ children }: { children: string }) {
       className="muted"
       style={{
         display: "flex",
-        gap: 8,
+        gap: 10,
         alignItems: "flex-start",
         fontSize: 13,
-        padding: "10px 14px",
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
+        padding: "12px 16px",
+        background: "var(--accent-soft)",
+        border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+        borderRadius: "var(--radius-sm)",
       }}
     >
       <span aria-hidden="true">{"🔒"}</span>

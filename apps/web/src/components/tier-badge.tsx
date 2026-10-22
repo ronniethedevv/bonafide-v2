@@ -16,18 +16,15 @@ const LABEL: Record<Tier, string> = {
 const GLYPH: Record<Tier, string> = { A: "◆", B: "▲", C: "●" };
 
 export function TierBadge({ tier }: { tier: Tier }) {
+  const color = COLOR[tier];
   return (
     <span
-      className="mono"
+      className="pill"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "2px 10px",
-        borderRadius: 999,
-        border: `1px solid ${COLOR[tier]}`,
-        color: COLOR[tier],
-        fontSize: 13,
+        color,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
+        borderColor: `color-mix(in srgb, ${color} 42%, transparent)`,
+        fontWeight: 550,
       }}
     >
       <span aria-hidden="true">{GLYPH[tier]}</span>

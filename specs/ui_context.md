@@ -23,12 +23,24 @@ Defined once as CSS variables on `:root`, redefined under
 
 ```css
 :root {
-  --bg: #0b0d12;        --surface: #12151c;    --surface-2: #171b24;
-  --border: #242a36;    --text: #e6e9ef;       --text-muted: #9aa3b2;
-  --accent: #5b8cff;    --pos: #3ecf8e;        --neg: #ff6b6b;
-  --warn: #f5a623;      --radius: 10px;        --gap: 16px;
+  --bg: #090a0f;        --surface: #121420;    --surface-2: #181b28;
+  --border: rgba(255,255,255,.07);  --border-strong: rgba(255,255,255,.13);
+  --text: #eef0f6;      --text-muted: #949db2;
+  --accent: #6d7cff;    --accent-2: #a569ff;   --accent-soft: rgba(109,124,255,.14);
+  --grad: linear-gradient(135deg,#5b8cff,#7c6cff,#a569ff); /* hero / gradient text */
+  --pos: #3ecf8e;       --neg: #ff6b6b;        --warn: #f5a623;
+  --radius: 14px;       --radius-sm: 10px;     --gap: 16px;
 }
 ```
+
+**Look & feel (console-dashboard inspired):** near-black cool canvas with soft
+indigo/violet radial glows; hairline (white-alpha) borders; 14px card radii;
+electric-indigo accent with a blue→violet gradient used for the brand mark, hero
+banners (subtle grid texture), gradient headline figures, and the primary button.
+Typography is **Inter** (loaded at runtime via a Google-Fonts `<link>` — no
+build-time fetch, so offline CI builds still pass) over a system-sans fallback.
+Reusable utilities live in `globals.css`: `.hero`, `.pill`, `.badge-new`, `.btn`
+/`.btn-primary`/`.btn-ghost`, `.meter`, `.gradient-text`, `.eyebrow`.
 
 - **Semantics:** `--pos` = KPI met / proof verified / bond intact; `--neg` =
   missed / defaulted / slashed; `--warn` = flagged / grace / challenged.

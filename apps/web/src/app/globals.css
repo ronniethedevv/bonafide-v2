@@ -1,34 +1,50 @@
-/* Design tokens — dark-first, per specs/ui_context.md. */
+/* Design tokens — dark-first, per specs/ui_context.md.
+   Visual language inspired by modern dev-console dashboards: near-black cool
+   canvas, electric-indigo accent + blue→violet gradients, hairline borders,
+   soft radii, Inter typography. Every token name the components already use is
+   preserved (values upgraded) so existing inline styles keep working. */
 :root {
-  --bg: #0b0d12;
-  --surface: #12151c;
-  --surface-2: #171b24;
-  --border: #242a36;
-  --text: #e6e9ef;
-  --text-muted: #9aa3b2;
-  --accent: #5b8cff;
+  --bg: #090a0f;
+  --bg-elev: #0d0f15;
+  --surface: #121420;
+  --surface-2: #181b28;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: #eef0f6;
+  --text-muted: #949db2;
+  --accent: #6d7cff;
+  --accent-2: #a569ff;
+  --accent-soft: rgba(109, 124, 255, 0.14);
+  --grad: linear-gradient(135deg, #5b8cff 0%, #7c6cff 52%, #a569ff 100%);
+  --grad-dim: linear-gradient(135deg, rgba(91, 140, 255, 0.16), rgba(165, 105, 255, 0.07));
   --pos: #3ecf8e;
   --neg: #ff6b6b;
   --warn: #f5a623;
-  --radius: 10px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
   --gap: 16px;
-  --tier-a: #5b8cff;
-  --tier-b: #8a7dff;
+  --tier-a: #6d8bff;
+  --tier-b: #a07dff;
   --tier-c: #9aa3b2;
   /* Chart series (validated categorical pair, light+dark). Identity also carried
      by marker shape + legend, never colour alone. */
-  --series-uptime: #5b8cff;
-  --series-depth: #d4772b;
+  --series-uptime: #6d8bff;
+  --series-depth: #e0893a;
 }
 
 /* Light theme only when the viewer explicitly asks for it. */
 :root[data-theme="light"] {
-  --bg: #f7f8fb;
+  --bg: #f6f7fb;
+  --bg-elev: #ffffff;
   --surface: #ffffff;
   --surface-2: #f0f2f7;
-  --border: #d9dee8;
+  --border: rgba(10, 15, 30, 0.1);
+  --border-strong: rgba(10, 15, 30, 0.16);
   --text: #121520;
   --text-muted: #5b6474;
+  --accent-soft: rgba(109, 124, 255, 0.12);
+  --grad-dim: linear-gradient(135deg, rgba(91, 140, 255, 0.12), rgba(165, 105, 255, 0.06));
 }
 
 * {
@@ -42,13 +58,34 @@ body {
 }
 
 body {
-  background: var(--bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(1100px 560px at 50% -8%, rgba(109, 124, 255, 0.13), transparent 62%),
+    radial-gradient(900px 520px at 100% 0%, rgba(165, 105, 255, 0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
   line-height: 1.5;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  font-weight: 650;
+}
+h1 {
+  font-size: clamp(28px, 4vw, 40px);
+}
+h2 {
+  font-size: 20px;
 }
 
 a {
@@ -59,26 +96,35 @@ a:hover {
   text-decoration: underline;
 }
 
+/* --- Layout --- */
 .container {
-  max-width: 980px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 32px 16px;
+  padding: 36px 16px 64px;
 }
 
-.mono {
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid var(--border);
 }
-
-.muted {
-  color: var(--text-muted);
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--grad);
+  box-shadow: 0 4px 16px rgba(109, 124, 255, 0.4);
 }
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
+.brand-name {
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .row {
@@ -86,8 +132,153 @@ a:hover {
   gap: var(--gap);
   flex-wrap: wrap;
 }
-
 .grid {
   display: grid;
   gap: var(--gap);
+}
+
+/* --- Type helpers --- */
+.mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0;
+}
+.muted {
+  color: var(--text-muted);
+}
+.gradient-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- Cards --- */
+.card {
+  position: relative;
+  display: block;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white 4%), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  color: inherit;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+a.card:hover,
+.card.interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  text-decoration: none;
+}
+
+/* Gradient hero banner. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  background:
+    var(--grad-dim),
+    linear-gradient(180deg, var(--bg-elev), var(--surface));
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(420px 220px at 12% 0%, black, transparent 72%);
+  pointer-events: none;
+}
+
+/* --- Pills / badges --- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.badge-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: color-mix(in srgb, var(--accent) 72%, white);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 550;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+.btn:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+.btn-primary {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(109, 124, 255, 0.34);
+}
+.btn-primary:hover {
+  box-shadow: 0 10px 28px rgba(109, 124, 255, 0.5);
+}
+.btn-ghost {
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* --- Meters (KPI bars) --- */
+.meter {
+  height: 7px;
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
 }
