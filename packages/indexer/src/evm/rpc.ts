@@ -25,6 +25,13 @@ export interface LogFilter {
   readonly toBlock: number;
 }
 
+export interface BlockHeader {
+  readonly number: number;
+  /** Unix seconds. */
+  readonly timestamp: number;
+  readonly hash: string;
+}
+
 export interface EvmRpc {
   /** eth_chainId. */
   chainId(): Promise<number>;
@@ -32,6 +39,8 @@ export interface EvmRpc {
   blockNumber(): Promise<number>;
   /** eth_getBlockByNumber("finalized") -> its number. */
   finalizedBlockNumber(): Promise<number>;
+  /** eth_getBlockByNumber(n, false) -> number, timestamp, hash. */
+  blockHeader(n: number): Promise<BlockHeader>;
   /** eth_getLogs. */
   getLogs(filter: LogFilter): Promise<RpcLog[]>;
   /** eth_call at a fixed block (hex-encoded return data). */
@@ -89,6 +98,28 @@ export class JsonRpcClient implements EvmRpc {
       throw new EvmRpcError("node did not return a finalized block");
     }
     return hexToNumber(block.number);
+  }
+
+  async blockHeader(n: number): Promise<BlockHeader> {
+    const block = await this.request<{ number?: unknown; timestamp?: unknown; hash?: unknown } | null>(
+      "eth_getBlockByNumber",
+      [numberToHex(n), false],
+    );
+    if (
+      !block ||
+      typeof block.number !== "string" ||
+      typeof block.timestamp !== "string" ||
+      typeof block.hash !== "string"
+    ) {
+      throw new EvmRpcError(`node did not return block ${n}`);
+    }
+    const header = {
+      number: hexToNumber(block.number),
+      timestamp: hexToNumber(block.timestamp),
+      hash: block.hash.toLowerCase(),
+    };
+    if (header.number !== n) throw new EvmRpcError(`asked for block ${n}, node returned ${header.number}`);
+    return header;
   }
 
   async getLogs(filter: LogFilter): Promise<RpcLog[]> {

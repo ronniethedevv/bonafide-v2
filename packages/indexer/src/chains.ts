@@ -25,6 +25,13 @@ export interface ChainConfig {
   /** Env var holding this chain's archive RPC URL (never hard-coded/committed). */
   readonly rpcEnvVar: string;
   readonly dexes: readonly DexConfig[];
+  /**
+   * Quote assets, ranked strongest first (lowercase). A pool's base token is the one
+   * that is not a quote asset; if both are, the higher-ranked one is the quote. A pool
+   * with no quote asset cannot be oriented and is not priced. Fixed per chain: it
+   * decides the orientation of every price and amount that feeds a root.
+   */
+  readonly quoteAssets: readonly string[];
 }
 
 /** Canonical Uniswap v3 pool init-code hash (identical across canonical deployments). */
@@ -42,12 +49,24 @@ export const CHAINS: Readonly<Record<number, ChainConfig>> = {
     name: "ethereum",
     rpcEnvVar: "ETH_ARCHIVE_RPC_URL",
     dexes: [{ kind: "uniswap-v3", factory: UNIV3.ethereum, initCodeHash: UNIV3_INIT_CODE_HASH }],
+    // USDC, USDT, WETH — symbol()/decimals() checked on mainnet (6, 6, 18).
+    quoteAssets: [
+      "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    ],
   },
   8453: {
     chainId: 8453,
     name: "base",
     rpcEnvVar: "BASE_ARCHIVE_RPC_URL",
     dexes: [{ kind: "uniswap-v3", factory: UNIV3.base, initCodeHash: UNIV3_INIT_CODE_HASH }],
+    // USDC, USDbC (bridged), WETH — symbol()/decimals() checked on Base (6, 6, 18).
+    quoteAssets: [
+      "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca",
+      "0x4200000000000000000000000000000000000006",
+    ],
   },
 };
 

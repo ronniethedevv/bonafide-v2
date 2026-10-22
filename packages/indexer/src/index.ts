@@ -8,6 +8,7 @@ export * from "./evm/provider.js";
 export * from "./evm/keccak.js";
 export * from "./evm/abi.js";
 export * from "./evm/pool.js";
+export * from "./evm/price.js";
 export * from "./twap.js";
 export * from "./commit.js";
 export * from "./leaves.js";
