@@ -83,9 +83,42 @@ describe("JsonRpcClient request framing", () => {
   });
 
   it("throws on an HTTP error with status + body", async () => {
-    const { fetch } = recording(() => new Response("rate limited", { status: 429 }));
+    const { fetch, calls } = recording(() => new Response("bad request", { status: 400 }));
     const client = new JsonRpcClient({ url: URL, fetchImpl: fetch });
-    await expect(client.blockNumber()).rejects.toMatchObject({ name: "EvmRpcError", code: 429 });
+    await expect(client.blockNumber()).rejects.toMatchObject({ name: "EvmRpcError", code: 400, detail: "bad request" });
+    expect(calls).toHaveLength(1); // not retried
+  });
+
+  it("backs off and retries rate limits, then succeeds", async () => {
+    const replies = [
+      new Response("rate limited", { status: 429 }),
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: 429, message: "Your app has exceeded its compute units per second capacity" } })),
+      new Response("bad gateway", { status: 502 }),
+      rpcResult("0x10"),
+    ];
+    const { fetch, calls } = recording(() => replies.shift()!);
+    const waits: number[] = [];
+    const client = new JsonRpcClient({ url: URL, fetchImpl: fetch, sleep: async (ms) => void waits.push(ms) });
+    expect(await client.blockNumber()).toBe(16);
+    expect(calls).toHaveLength(4);
+    expect(waits).toEqual([250, 500, 1000]);
+    expect(client.retriesTaken).toBe(3);
+  });
+
+  it("gives up after the retry budget", async () => {
+    const { fetch, calls } = recording(() => new Response("rate limited", { status: 429 }));
+    const client = new JsonRpcClient({ url: URL, fetchImpl: fetch, retries: 2, sleep: async () => {} });
+    await expect(client.blockNumber()).rejects.toMatchObject({ code: 429 });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("does not retry a too-wide log range (a caller bug, not a transient)", async () => {
+    const { fetch, calls } = recording(
+      () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32600, message: "you can make eth_getLogs requests with up to a 10 block range" } }), { status: 400 }),
+    );
+    const client = new JsonRpcClient({ url: URL, fetchImpl: fetch, sleep: async () => {} });
+    await expect(client.getLogs({ fromBlock: 0, toBlock: 100 })).rejects.toMatchObject({ code: 400 });
+    expect(calls).toHaveLength(1);
   });
 
   it("rejects a malformed log", async () => {

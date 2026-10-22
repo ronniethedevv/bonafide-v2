@@ -48,12 +48,29 @@ export interface EvmRpc {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRIES = 8;
+const DEFAULT_BACKOFF_MS = 250;
+const MAX_BACKOFF_MS = 8_000;
+
+/**
+ * Transient failures worth retrying: rate limits (HTTP 429, JSON-RPC 429 / -32005,
+ * Alchemy's compute-unit messages), 5xx, timeouts and network errors. Anything else
+ * (bad params, a too-wide log range, reverts) fails at once.
+ */
+function isTransient(err: EvmRpcError): boolean {
+  if (err.transient) return true;
+  if (err.code === 429 || err.code === -32005) return true;
+  if (err.code !== undefined && err.code >= 500 && err.code < 600) return true;
+  return /rate limit|compute units|too many requests|capacity|throughput/i.test(`${err.message} ${err.detail ?? ""}`);
+}
 
 export class EvmRpcError extends Error {
   constructor(
     message: string,
     readonly code?: number,
     readonly detail?: string,
+    /** Set for timeouts / network failures (no HTTP or JSON-RPC code). */
+    readonly transient = false,
   ) {
     super(message);
     this.name = "EvmRpcError";
@@ -64,13 +81,24 @@ interface JsonRpcConfig {
   readonly url: string;
   readonly timeoutMs?: number;
   readonly fetchImpl?: FetchLike;
+  /** Retries of a transient failure, with exponential backoff (default 8). */
+  readonly retries?: number;
+  /** First backoff delay in ms, doubling per retry up to 8 s (default 250). */
+  readonly backoffMs?: number;
+  /** Injectable for tests. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 export class JsonRpcClient implements EvmRpc {
   private readonly url: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: FetchLike;
+  private readonly retries: number;
+  private readonly backoffMs: number;
+  private readonly sleep: (ms: number) => Promise<void>;
   private id = 0;
+  /** Retries taken so far (observability for long log scans). */
+  retriesTaken = 0;
 
   constructor(cfg: JsonRpcConfig) {
     if (!cfg.url || cfg.url.trim() === "") throw new EvmRpcError("missing RPC url");
@@ -79,6 +107,9 @@ export class JsonRpcClient implements EvmRpc {
     this.url = cfg.url;
     this.timeoutMs = cfg.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.fetchImpl = fetchImpl;
+    this.retries = cfg.retries ?? DEFAULT_RETRIES;
+    this.backoffMs = cfg.backoffMs ?? DEFAULT_BACKOFF_MS;
+    this.sleep = cfg.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   async chainId(): Promise<number> {
@@ -141,6 +172,18 @@ export class JsonRpcClient implements EvmRpc {
   }
 
   private async request<T>(method: string, params: unknown[]): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.once<T>(method, params);
+      } catch (err) {
+        if (!(err instanceof EvmRpcError) || !isTransient(err) || attempt >= this.retries) throw err;
+        this.retriesTaken++;
+        await this.sleep(Math.min(this.backoffMs * 2 ** attempt, MAX_BACKOFF_MS));
+      }
+    }
+  }
+
+  private async once<T>(method: string, params: unknown[]): Promise<T> {
     const body = JSON.stringify({ jsonrpc: "2.0", id: ++this.id, method, params });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -154,9 +197,9 @@ export class JsonRpcClient implements EvmRpc {
       });
     } catch (err) {
       if (controller.signal.aborted) {
-        throw new EvmRpcError(`${method} timed out after ${this.timeoutMs}ms`);
+        throw new EvmRpcError(`${method} timed out after ${this.timeoutMs}ms`, undefined, undefined, true);
       }
-      throw new EvmRpcError(`${method} request failed: ${(err as Error).message}`);
+      throw new EvmRpcError(`${method} request failed: ${(err as Error).message}`, undefined, undefined, true);
     } finally {
       clearTimeout(timer);
     }
@@ -172,7 +215,7 @@ export class JsonRpcClient implements EvmRpc {
     }
     const env = parsed as { error?: { code?: number; message?: string }; result?: unknown };
     if (env.error) {
-      throw new EvmRpcError(`${method}: ${env.error.message ?? "rpc error"}`, env.error.code);
+      throw new EvmRpcError(`${method}: ${env.error.message ?? "rpc error"}`, env.error.code, text);
     }
     if (!("result" in env)) throw new EvmRpcError(`${method} response had no result`);
     return env.result as T;
