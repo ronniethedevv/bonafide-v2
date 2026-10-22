@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { UniswapV3ChainProvider, NotImplementedError, uniswapV3Provider } from "./provider.js";
 import { resolveChain } from "../chains.js";
-import type { BlockHeader, EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import type { BlockHeader, EvmRpc, LogFilter, RpcLog, TxReceipt } from "./rpc.js";
 import { MulticallFake } from "./multicall.fake.js";
 import { SELECTOR, type Call } from "./multicall.js";
 import { FEE_TIERS, computePoolAddress, sortTokens } from "./pool.js";
@@ -33,6 +33,9 @@ class FakeRpc implements EvmRpc {
   }
   async blockHeader(n: number): Promise<BlockHeader> {
     return { number: n, timestamp: (this.opts.pool?.t0 ?? 0) + 2 * n, hash: `0x${n.toString(16)}` };
+  }
+  async transactionReceipt(_hash: string): Promise<TxReceipt> {
+    throw new Error("no receipts in this fake");
   }
   async getLogs(_filter: LogFilter): Promise<RpcLog[]> {
     return [];

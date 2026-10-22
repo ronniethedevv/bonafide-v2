@@ -32,6 +32,14 @@ export interface BlockHeader {
   readonly hash: string;
 }
 
+export interface TxReceipt {
+  readonly transactionHash: string;
+  readonly blockNumber: number;
+  /** False for a reverted transaction (which has no logs). */
+  readonly status: boolean;
+  readonly logs: readonly RpcLog[];
+}
+
 export interface EvmRpc {
   /** eth_chainId. */
   chainId(): Promise<number>;
@@ -45,6 +53,8 @@ export interface EvmRpc {
   getLogs(filter: LogFilter): Promise<RpcLog[]>;
   /** eth_call at a fixed block (hex-encoded return data). */
   call(to: string, data: string, block: number): Promise<string>;
+  /** eth_getTransactionReceipt. */
+  transactionReceipt(hash: string): Promise<TxReceipt>;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -171,6 +181,33 @@ export class JsonRpcClient implements EvmRpc {
     return this.request<string>("eth_call", [{ to, data }, numberToHex(block)]);
   }
 
+  async transactionReceipt(hash: string): Promise<TxReceipt> {
+    const r = await this.request<{
+      transactionHash?: unknown;
+      blockNumber?: unknown;
+      status?: unknown;
+      logs?: unknown;
+    } | null>("eth_getTransactionReceipt", [hash]);
+    if (
+      !r ||
+      typeof r.transactionHash !== "string" ||
+      typeof r.blockNumber !== "string" ||
+      typeof r.status !== "string" ||
+      !Array.isArray(r.logs)
+    ) {
+      throw new EvmRpcError(`node did not return a receipt for ${hash}`);
+    }
+    if (r.transactionHash.toLowerCase() !== hash.toLowerCase()) {
+      throw new EvmRpcError(`asked for receipt ${hash}, node returned ${r.transactionHash}`);
+    }
+    return {
+      transactionHash: r.transactionHash.toLowerCase(),
+      blockNumber: hexToNumber(r.blockNumber),
+      status: hexToNumber(r.status) === 1,
+      logs: r.logs.map(parseLog),
+    };
+  }
+
   private async request<T>(method: string, params: unknown[]): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -250,7 +287,7 @@ function parseLog(raw: unknown): RpcLog {
     data: l.data,
     blockNumber: hexToNumber(l.blockNumber),
     logIndex: hexToNumber(l.logIndex),
-    transactionHash: l.transactionHash,
+    transactionHash: l.transactionHash.toLowerCase(),
   };
 }
 

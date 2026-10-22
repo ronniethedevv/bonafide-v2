@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveEpochRange, EpochRangeError } from "./range.js";
-import type { BlockHeader, EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import type { BlockHeader, EvmRpc, LogFilter, RpcLog, TxReceipt } from "./rpc.js";
 
 /** Blocks every 2 s on odd seconds (as on Base): block n has ts 1 + 2n. */
 class Chain implements EvmRpc {
@@ -16,6 +16,9 @@ class Chain implements EvmRpc {
   }
   async blockHeader(n: number): Promise<BlockHeader> {
     return { number: n, timestamp: 1 + 2 * n, hash: `0x${n.toString(16)}` };
+  }
+  async transactionReceipt(_hash: string): Promise<TxReceipt> {
+    throw new Error("no receipts in this fake");
   }
   async getLogs(_f: LogFilter): Promise<RpcLog[]> {
     return [];

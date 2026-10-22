@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getLogsChunked } from "./logs.js";
-import type { BlockHeader, EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import type { BlockHeader, EvmRpc, LogFilter, RpcLog, TxReceipt } from "./rpc.js";
 
 /** One log every 3rd block (two in block multiples of 9), served in shuffled order. */
 class LogChain implements EvmRpc {
@@ -20,6 +20,9 @@ class LogChain implements EvmRpc {
   }
   async call(): Promise<string> {
     return "0x";
+  }
+  async transactionReceipt(_hash: string): Promise<TxReceipt> {
+    throw new Error("no receipts in this fake");
   }
   async getLogs(f: LogFilter): Promise<RpcLog[]> {
     if (f.toBlock - f.fromBlock + 1 > this.maxSpan) throw new Error("range too wide");

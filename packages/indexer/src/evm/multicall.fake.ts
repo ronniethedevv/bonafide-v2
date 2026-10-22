@@ -3,7 +3,7 @@
 
 import { MULTICALL3, SELECTOR, type Call } from "./multicall.js";
 import { hexToBytes } from "./abi.js";
-import type { BlockHeader, EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import type { BlockHeader, EvmRpc, LogFilter, RpcLog, TxReceipt } from "./rpc.js";
 
 export const word = (v: bigint): string => v.toString(16).padStart(64, "0");
 
@@ -59,6 +59,9 @@ export class MulticallFake implements EvmRpc {
   }
   async blockHeader(n: number): Promise<BlockHeader> {
     return { number: n, timestamp: n, hash: "0x" };
+  }
+  async transactionReceipt(_hash: string): Promise<TxReceipt> {
+    throw new Error("no receipts in this fake");
   }
   async getLogs(_f: LogFilter): Promise<RpcLog[]> {
     return [];
