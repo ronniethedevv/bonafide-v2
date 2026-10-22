@@ -32,3 +32,6 @@ witnesses/
 # generated
 .turbo/
 prisma/*.db
+
+# local caches (rebuildable from chain state)
+.cache/

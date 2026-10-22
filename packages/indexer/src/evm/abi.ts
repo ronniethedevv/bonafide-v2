@@ -35,6 +35,8 @@ export const EVENT_SIG = {
   mint: "Mint(address,address,int24,int24,uint128,uint256,uint256)",
   burn: "Burn(address,int24,int24,uint128,uint256,uint256)",
   poolCreated: "PoolCreated(address,address,uint24,int24,address)",
+  increaseLiquidity: "IncreaseLiquidity(uint256,uint128,uint256,uint256)",
+  decreaseLiquidity: "DecreaseLiquidity(uint256,uint128,uint256,uint256)",
 } as const;
 
 export const TOPIC0 = {
@@ -43,6 +45,8 @@ export const TOPIC0 = {
   mint: eventTopic0(EVENT_SIG.mint),
   burn: eventTopic0(EVENT_SIG.burn),
   poolCreated: eventTopic0(EVENT_SIG.poolCreated),
+  increaseLiquidity: eventTopic0(EVENT_SIG.increaseLiquidity),
+  decreaseLiquidity: eventTopic0(EVENT_SIG.decreaseLiquidity),
 } as const;
 
 export function decodeUint(word: Uint8Array): bigint {
@@ -197,4 +201,19 @@ export function decodePoolCreated(log: RawLog): PoolCreatedEvent {
     tickSpacing: Number(decodeInt(w[0]!)),
     pool: decodeAddress(w[1]!),
   };
+}
+
+/** Position-manager IncreaseLiquidity / DecreaseLiquidity (tokenId indexed). */
+export interface LiquidityChangeEvent {
+  readonly tokenId: bigint;
+  /** Signed: positive for IncreaseLiquidity, negative for DecreaseLiquidity. */
+  readonly liquidityDelta: bigint;
+}
+
+export function decodeLiquidityChange(log: RawLog): LiquidityChangeEvent {
+  const inc = log.topics[0] === TOPIC0.increaseLiquidity;
+  if (!inc) requireTopic0(log, TOPIC0.decreaseLiquidity, "DecreaseLiquidity");
+  const w = dataWords(log.data, 3);
+  const liquidity = decodeUint(w[0]!);
+  return { tokenId: decodeUint(topicWord(log.topics[1]!)), liquidityDelta: inc ? liquidity : -liquidity };
 }

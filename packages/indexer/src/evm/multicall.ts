@@ -24,6 +24,8 @@ export const SELECTOR = {
   slot0: selector("slot0()"),
   token0: selector("token0()"),
   token1: selector("token1()"),
+  quoteExactInputSingle: selector("quoteExactInputSingle((address,address,uint256,uint24,uint160))"),
+  quoteExactOutputSingle: selector("quoteExactOutputSingle((address,address,uint256,uint24,uint160))"),
 } as const;
 
 export interface Call {
@@ -97,5 +99,81 @@ export async function multicall(rpc: EvmRpc, calls: readonly Call[], block: numb
     }
     out.push(...res.returnData);
   }
+  return out;
+}
+
+const AGGREGATE3 = selector("aggregate3((address,bool,bytes)[])");
+const GET_BLOCK_NUMBER = selector("getBlockNumber()");
+
+/** ABI-encode aggregate3((address,bool,bytes)[]) with allowFailure = true for every call. */
+export function encodeAggregate3(calls: readonly Call[]): string {
+  const tuples = calls.map((c) => {
+    const data = hexToBytes(c.data);
+    if (hexToBytes(c.target).length !== 20) throw new MulticallError(`bad call target ${c.target}`);
+    return word(BigInt(c.target)) + word(1n) + word(0x60n) + word(BigInt(data.length)) + pad32(c.data.slice(2));
+  });
+  let offsets = "";
+  let at = 32n * BigInt(calls.length);
+  for (const t of tuples) {
+    offsets += word(at);
+    at += BigInt(t.length / 2);
+  }
+  return `${AGGREGATE3}${word(0x20n)}${word(BigInt(calls.length))}${offsets}${tuples.join("")}`;
+}
+
+/** Decode aggregate3's (bool success, bytes returnData)[]. */
+export function decodeAggregate3(hex: string): { success: boolean; returnData: string }[] {
+  const b = hexToBytes(hex);
+  const read = (at: number): bigint => {
+    if (at + 32 > b.length) throw new MulticallError("short aggregate3 return data");
+    let v = 0n;
+    for (let i = at; i < at + 32; i++) v = (v << 8n) | BigInt(b[i]!);
+    return v;
+  };
+  const arr = Number(read(0));
+  const n = Number(read(arr));
+  const base = arr + 32;
+  const out: { success: boolean; returnData: string }[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = base + Number(read(base + 32 * i));
+    const at = t + Number(read(t + 32));
+    const len = Number(read(at));
+    if (at + 32 + len > b.length) throw new MulticallError("short aggregate3 return data");
+    out.push({ success: read(t) === 1n, returnData: bytesToHex(b.subarray(at + 32, at + 32 + len)) });
+  }
+  return out;
+}
+
+/**
+ * Like `multicall`, but a failing call yields null instead of reverting the batch
+ * (e.g. positions() of a burned NFT). Each batch leads with getBlockNumber(), which
+ * must report the pinned block. Batches run with bounded concurrency.
+ */
+export async function multicallTry(
+  rpc: EvmRpc,
+  calls: readonly Call[],
+  block: number,
+  opts: { concurrency?: number; onProgress?: (done: number, total: number) => void } = {},
+): Promise<(string | null)[]> {
+  const out: (string | null)[] = new Array(calls.length);
+  const starts: number[] = [];
+  for (let i = 0; i < calls.length; i += BATCH) starts.push(i);
+  let next = 0;
+  let done = 0;
+  const worker = async (): Promise<void> => {
+    while (next < starts.length) {
+      const i = starts[next++]!;
+      const chunk = calls.slice(i, i + BATCH);
+      const res = decodeAggregate3(
+        await rpc.call(MULTICALL3, encodeAggregate3([{ target: MULTICALL3, data: GET_BLOCK_NUMBER }, ...chunk]), block),
+      );
+      if (res.length !== chunk.length + 1 || !res[0]!.success || BigInt(res[0]!.returnData) !== BigInt(block)) {
+        throw new MulticallError(`aggregate3 batch did not run at block ${block}`);
+      }
+      res.slice(1).forEach((r, j) => (out[i + j] = r.success ? r.returnData : null));
+      opts.onProgress?.(++done, starts.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 1, starts.length) }, worker));
   return out;
 }

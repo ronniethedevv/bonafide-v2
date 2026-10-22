@@ -6,6 +6,7 @@ import {
   decodeAggregate,
   encodeAggregate,
   multicall,
+  multicallTry,
   type Call,
 } from "./multicall.js";
 import {
@@ -24,6 +25,8 @@ describe("selectors (keccak-derived)", () => {
       slot0: "0x3850c7bd",
       token0: "0x0dfe1681",
       token1: "0xd21220a7",
+      quoteExactInputSingle: "0xc6a5026a",
+      quoteExactOutputSingle: "0xbd21704a",
     });
   });
 });
@@ -63,5 +66,19 @@ describe("multicall", () => {
   it("fails loudly if the batch ran at another block", async () => {
     const rpc = new MulticallFake(echo, 8);
     await expect(multicall(rpc, [{ target: MULTICALL3, data: "0x" }], 9)).rejects.toThrow(/ran at block 8/);
+  });
+});
+
+describe("multicallTry (aggregate3)", () => {
+  it("returns null for failing calls, keeps order, and checks the block", async () => {
+    const rpc = new MulticallFake((c) => {
+      const v = BigInt(c.target);
+      if (v % 3n === 0n) throw new Error("burned");
+      return `0x${word(v)}`;
+    });
+    const calls = Array.from({ length: 450 }, (_, i) => ({ target: `0x${(i + 1).toString(16).padStart(40, "0")}`, data: "0x12345678" }));
+    const out = await multicallTry(rpc, calls, 9, { concurrency: 3 });
+    expect(out.map((r, i) => ((i + 1) % 3 === 0 ? r === null : BigInt(r!) === BigInt(i + 1))).every(Boolean)).toBe(true);
+    await expect(multicallTry(new MulticallFake(() => "0x", 8), calls.slice(0, 2), 9)).rejects.toThrow(/did not run at block 9/);
   });
 });

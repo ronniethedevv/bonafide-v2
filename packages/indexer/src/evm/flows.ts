@@ -159,6 +159,11 @@ export function classifyFlows(inp: FlowInputs): Map<bigint, AddressFlows> {
 export interface ExtractOptions extends ChunkOptions {
   /** Receipts fetched in parallel. Default 4. */
   readonly receiptConcurrency?: number;
+  /**
+   * Also scan this position manager's Increase/DecreaseLiquidity in the same requests
+   * (the depth replay needs them; one scan serves both).
+   */
+  readonly positionManager?: bigint;
 }
 
 /**
@@ -172,11 +177,16 @@ export async function extractFlows(
   opts: ExtractOptions = {},
 ): Promise<{ flows: Map<bigint, AddressFlows>; logs: RpcLog[]; swapTxs: number }> {
   const hex = (a: bigint): string => `0x${a.toString(16).padStart(40, "0")}`;
+  const npm = opts.positionManager;
   const logs = await getLogsChunked(
     rpc,
     {
-      address: [hex(inp.pool), hex(inp.base)],
-      topics: [[TOPIC0.swap, TOPIC0.mint, TOPIC0.burn, TOPIC0.transfer]],
+      address: npm === undefined ? [hex(inp.pool), hex(inp.base)] : [hex(inp.pool), hex(inp.base), hex(npm)],
+      topics: [
+        npm === undefined
+          ? [TOPIC0.swap, TOPIC0.mint, TOPIC0.burn, TOPIC0.transfer]
+          : [TOPIC0.swap, TOPIC0.mint, TOPIC0.burn, TOPIC0.transfer, TOPIC0.increaseLiquidity, TOPIC0.decreaseLiquidity],
+      ],
       fromBlock: range.startBlock + 1,
       toBlock: range.endBlock,
     },

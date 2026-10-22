@@ -2,12 +2,11 @@
 //
 // Unit 1: the chain-agnostic foundation — identity + finality + RPC wiring, real and
 // testable. Unit 3 fills the data-extraction methods one at a time, each verified
-// against the live chain: price samples (2a) and pool discovery (2b) are done;
-// per-address activity still requires live verification of Uniswap v3 tick/liquidity
-// math, so it stays behind a typed NotImplementedError rather than returning fabricated
-// data.
+// against the live chain: price samples (2a), pool discovery (2b) and per-address
+// activity (2c) are implemented.
 
 import type {
+  ActivityParams,
   AddressActivity,
   ChainProvider,
   EpochRange,
@@ -18,6 +17,9 @@ import { resolveChain, type ChainConfig } from "../chains.js";
 import { JsonRpcClient, type BlockHeader, type EvmRpc } from "./rpc.js";
 import { FEE_TIERS, computePoolAddress, sortTokens } from "./pool.js";
 import { SELECTOR, multicall, type Call } from "./multicall.js";
+import { bandEdges } from "./tickmath.js";
+import { extractPoolActivity, type ActivityOptions } from "./activity.js";
+import type { PoolDepthFloor } from "../config.js";
 import type { FetchLike } from "../http.js";
 import {
   PriceError,
@@ -46,6 +48,7 @@ export class UniswapV3ChainProvider implements ChainProvider {
   constructor(
     private readonly cfg: ChainConfig,
     private readonly rpc: EvmRpc,
+    private readonly activityOptions: ActivityOptions = {},
   ) {}
 
   chainId(): number {
@@ -68,10 +71,11 @@ export class UniswapV3ChainProvider implements ChainProvider {
    * DD-21: pair enumeration, no log scan. For each base token × quote asset × fee tier,
    * read factory.getPool at `atBlock` (Multicall3, one pinned block) and require any
    * deployed pool to sit at its CREATE2 address. Deployed pools are kept when
-   * initialized (sqrtPriceX96 ≠ 0) and their active liquidity() ≥ floor.
+   * initialized (sqrtPriceX96 ≠ 0) and their quote-denominated depth meets the floor
+   * for their quote asset (DD-23).
    */
   async poolsAboveFloor(
-    floor: bigint,
+    floor: PoolDepthFloor,
     atBlock: number,
     baseTokens: readonly string[],
   ): Promise<PoolDescriptor[]> {
@@ -116,24 +120,59 @@ export class UniswapV3ChainProvider implements ChainProvider {
       ]),
       atBlock,
     );
-    const pools: PoolDescriptor[] = [];
-    deployed.forEach((c, i) => {
-      const liquidity = word(state[2 * i]!, 0);
-      const sqrtPriceX96 = word(state[2 * i + 1]!, 0);
-      if (sqrtPriceX96 === 0n || liquidity < floor) return;
-      pools.push({
-        poolAddr: BigInt(c.expected),
-        token0: BigInt(c.token0),
-        token1: BigInt(c.token1),
-        liquidity,
-        dex: "uniswap-v3",
-      });
+    const live = deployed
+      .map((c, i) => ({ ...c, liquidity: word(state[2 * i]!, 0), sqrtPriceX96: word(state[2 * i + 1]!, 0) }))
+      .filter((c) => c.sqrtPriceX96 !== 0n);
+
+    // DD-23 floor: quote-denominated depth min(bid, ask) within ±floor.bandBps, from
+    // QuoterV2 at atBlock — bid = quote out selling base to the bid edge; ask = quote in
+    // (net of the pool fee) buying base to the ask edge. Only pools whose quote asset
+    // has a floor are measured.
+    const floored = live
+      .map((c) => {
+        const o = orientPool(quotes, BigInt(c.token0), BigInt(c.token1));
+        const quote = o.baseIsToken0 ? c.token1 : c.token0;
+        return { ...c, o, quote, base: o.baseIsToken0 ? c.token0 : c.token1, min: floor.minQuote[quote] ?? 0n };
+      })
+      .filter((c) => c.min > 0n);
+    const quoter = this.cfg.dexes[0]!.quoterV2;
+    const quotes2 = await multicall(
+      this.rpc,
+      floored.flatMap((c): Call[] => {
+        const e = bandEdges(c.sqrtPriceX96, floor.bandBps, c.o.baseIsToken0);
+        const params = (tin: string, tout: string, limit: bigint): string =>
+          hexWord(BigInt(tin)) + hexWord(BigInt(tout)) + hexWord(1n << 200n) + hexWord(BigInt(c.fee)) + hexWord(limit);
+        return [
+          { target: quoter, data: SEL.quoteExactInputSingle + params(c.base, c.quote, e.bidEdge) },
+          { target: quoter, data: SEL.quoteExactOutputSingle + params(c.quote, c.base, e.askEdge) },
+        ];
+      }),
+      atBlock,
+    );
+    const failing = new Set<string>();
+    floored.forEach((c, i) => {
+      const bid = word(quotes2[2 * i]!, 0);
+      const ask = (word(quotes2[2 * i + 1]!, 0) * BigInt(1_000_000 - c.fee)) / 1_000_000n;
+      if ((bid < ask ? bid : ask) < c.min) failing.add(c.expected);
     });
-    return pools.sort((a, b) => (a.poolAddr < b.poolAddr ? -1 : a.poolAddr > b.poolAddr ? 1 : 0));
+
+    return live
+      .filter((c) => !failing.has(c.expected))
+      .map(
+        (c): PoolDescriptor => ({
+          poolAddr: BigInt(c.expected),
+          token0: BigInt(c.token0),
+          token1: BigInt(c.token1),
+          liquidity: c.liquidity,
+          dex: "uniswap-v3",
+        }),
+      )
+      .sort((a, b) => (a.poolAddr < b.poolAddr ? -1 : a.poolAddr > b.poolAddr ? 1 : 0));
   }
 
-  async poolActivity(_pool: PoolDescriptor, _range: EpochRange): Promise<AddressActivity[]> {
-    throw new NotImplementedError("poolActivity");
+  /** Flows (DD-22), LP positions (DD-24) and quote-denominated depth (DD-23); see activity.ts. */
+  async poolActivity(pool: PoolDescriptor, range: EpochRange, params: ActivityParams): Promise<AddressActivity[]> {
+    return extractPoolActivity(this.rpc, this.cfg, pool, range, params, this.activityOptions);
   }
 
   /**
@@ -204,6 +243,8 @@ export interface ProviderOptions {
   readonly timeoutMs?: number;
   readonly fetchImpl?: FetchLike;
   readonly env?: Record<string, string | undefined>;
+  /** Position-registry cache file (DD-24); without it each epoch rescans every NFT id. */
+  readonly registryPath?: string;
 }
 
 /** Build a provider for a supported chain, reading the RPC url from env by default. */
@@ -217,5 +258,5 @@ export function uniswapV3Provider(chainId: number, opts: ProviderOptions = {}): 
     ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
     ...(opts.fetchImpl === undefined ? {} : { fetchImpl: opts.fetchImpl }),
   });
-  return new UniswapV3ChainProvider(cfg, rpc);
+  return new UniswapV3ChainProvider(cfg, rpc, opts.registryPath === undefined ? {} : { registryPath: opts.registryPath });
 }

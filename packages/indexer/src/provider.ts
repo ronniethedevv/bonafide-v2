@@ -6,6 +6,8 @@
 // reader, an IPFS client, and a Jubjub-Schnorr attester committee — live behind
 // these same interfaces and are NOT part of this build host's scope.
 
+import type { PoolDepthFloor } from "./config.js";
+
 export interface PoolDescriptor {
   readonly poolAddr: bigint;
   readonly token0: bigint;
@@ -74,19 +76,27 @@ export interface EpochRange {
   readonly endTs: number;
 }
 
+export interface ActivityParams {
+  readonly bucketSeconds: number;
+  readonly bandsBps: readonly number[];
+  readonly treasuryAddresses: readonly string[];
+}
+
 export interface ChainProvider {
   chainId(): number;
   finalizedBlock(): Promise<number>;
   /**
-   * Pools of `baseTokens` (DD-21) whose active liquidity at `atBlock` is ≥ `floor`,
-   * ascending by address. The caller passes `baseTokens` from config.
+   * Pools of `baseTokens` (DD-21) whose quote-denominated depth at `atBlock` meets the
+   * floor for their quote asset (DD-23), ascending by address. The caller passes
+   * `floor` and `baseTokens` from config.
    */
   poolsAboveFloor(
-    floor: bigint,
+    floor: PoolDepthFloor,
     atBlock: number,
     baseTokens: readonly string[],
   ): Promise<PoolDescriptor[]>;
-  poolActivity(pool: PoolDescriptor, range: EpochRange): Promise<AddressActivity[]>;
+  /** Per-address activity for one pool over one epoch; `params` come from config. */
+  poolActivity(pool: PoolDescriptor, range: EpochRange, params: ActivityParams): Promise<AddressActivity[]>;
   /**
    * Spot price at each of `times` (ascending unix seconds inside the range), replayed
    * from pool state. The caller derives `times` from config (`twapSampleTimes`), so the

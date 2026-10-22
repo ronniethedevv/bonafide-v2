@@ -17,6 +17,10 @@ export interface DexConfig {
   readonly factory: string;
   /** keccak256 of the pool creation bytecode; same for canonical Uniswap v3. */
   readonly initCodeHash: string;
+  /** NonfungiblePositionManager (LP positions as NFTs). */
+  readonly positionManager: string;
+  /** QuoterV2 (swap simulation; measures pool depth for the floor, DD-23). */
+  readonly quoterV2: string;
 }
 
 export interface ChainConfig {
@@ -48,7 +52,16 @@ export const CHAINS: Readonly<Record<number, ChainConfig>> = {
     chainId: 1,
     name: "ethereum",
     rpcEnvVar: "ETH_ARCHIVE_RPC_URL",
-    dexes: [{ kind: "uniswap-v3", factory: UNIV3.ethereum, initCodeHash: UNIV3_INIT_CODE_HASH }],
+    // positionManager / quoterV2: name() and factory() checked live (factory = UNIV3.ethereum).
+    dexes: [
+      {
+        kind: "uniswap-v3",
+        factory: UNIV3.ethereum,
+        initCodeHash: UNIV3_INIT_CODE_HASH,
+        positionManager: "0xc36442b4a4522e871399cd717abdd847ab11fe88",
+        quoterV2: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e",
+      },
+    ],
     // USDC, USDT, WETH — symbol()/decimals() checked on mainnet (6, 6, 18).
     quoteAssets: [
       "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
@@ -60,7 +73,16 @@ export const CHAINS: Readonly<Record<number, ChainConfig>> = {
     chainId: 8453,
     name: "base",
     rpcEnvVar: "BASE_ARCHIVE_RPC_URL",
-    dexes: [{ kind: "uniswap-v3", factory: UNIV3.base, initCodeHash: UNIV3_INIT_CODE_HASH }],
+    // positionManager / quoterV2: name() and factory() checked live (factory = UNIV3.base).
+    dexes: [
+      {
+        kind: "uniswap-v3",
+        factory: UNIV3.base,
+        initCodeHash: UNIV3_INIT_CODE_HASH,
+        positionManager: "0x03a520b32c04bf3beef7beb72e919cf822ed34f1",
+        quoterV2: "0x3d4e44eb1374240ce5f1b871ab261cd16335b76a",
+      },
+    ],
     // USDC, USDbC (bridged), WETH — symbol()/decimals() checked on Base (6, 6, 18).
     quoteAssets: [
       "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",

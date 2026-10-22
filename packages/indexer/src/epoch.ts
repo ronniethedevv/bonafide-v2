@@ -61,7 +61,8 @@ export interface EpochManifest {
   bucketSeconds: number;
   /** Pool set (DD-21): with the end block, they make the discovered pools recomputable. */
   baseTokens: readonly string[];
-  liquidityFloor: string;
+  treasuryAddresses: readonly string[];
+  poolDepthFloor: { bandBps: number; minQuote: Record<string, string> };
   /** Reference-price parameters (DD-20): with the range, they make referencePrice recomputable. */
   twapWindowSeconds: number;
   priceSampleSeconds: number;
@@ -104,12 +105,11 @@ export async function buildEpoch(
   const commitHasher = deps.commitHasher ?? new PoseidonHasher();
 
   const discovered = await deps.provider.poolsAboveFloor(
-    config.liquidityFloor,
+    config.poolDepthFloor,
     range.endBlock,
     config.baseTokens,
   );
-  const pools = discovered
-    .filter((p) => p.liquidity >= config.liquidityFloor)
+  const pools = [...discovered]
     .sort((a, b) => (a.poolAddr < b.poolAddr ? -1 : a.poolAddr > b.poolAddr ? 1 : 0));
 
   const trees = new Map<bigint, IndexedMerkleTree>();
@@ -117,7 +117,11 @@ export async function buildEpoch(
   const poolManifest: PoolManifestEntry[] = [];
 
   for (const pool of pools) {
-    const activity = await deps.provider.poolActivity(pool, range);
+    const activity = await deps.provider.poolActivity(pool, range, {
+      bucketSeconds: config.bucketSeconds,
+      bandsBps: config.bandsBps,
+      treasuryAddresses: config.treasuryAddresses,
+    });
     const leaves = activity.map((a) => activityToLeaf(commitHasher, a, config, range));
     const tree = IndexedMerkleTree.build(hasher, leaves);
     trees.set(pool.poolAddr, tree);
@@ -160,7 +164,15 @@ export async function buildEpoch(
     bandsBps: config.bandsBps,
     bucketSeconds: config.bucketSeconds,
     baseTokens: config.baseTokens,
-    liquidityFloor: config.liquidityFloor.toString(),
+    treasuryAddresses: config.treasuryAddresses,
+    poolDepthFloor: {
+      bandBps: config.poolDepthFloor.bandBps,
+      minQuote: Object.fromEntries(
+        Object.entries(config.poolDepthFloor.minQuote)
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([q, v]) => [q, v.toString()]),
+      ),
+    },
     twapWindowSeconds: config.twapWindowSeconds,
     priceSampleSeconds: config.priceSampleSeconds,
     winsorFraction: config.winsorFraction,

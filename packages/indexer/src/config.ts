@@ -3,6 +3,12 @@
 // Every value here feeds root computation and MUST be fixed per epoch so that
 // anyone with an archive RPC recomputes the same roots.
 
+export interface PoolDepthFloor {
+  readonly bandBps: number;
+  /** Lowercase quote-asset address -> minimum depth in raw quote units. */
+  readonly minQuote: Readonly<Record<string, bigint>>;
+}
+
 export interface IndexerConfig {
   /** Base chain id (8453 mainnet). */
   readonly chainId: number;
@@ -24,14 +30,25 @@ export interface IndexerConfig {
   readonly winsorFraction: number;
   /** Anti-JIT: LP positions alive fewer than this many blocks get no depth credit. */
   readonly kMinBlocks: number;
-  /** Only pools with liquidity at or above this floor are indexed. */
-  readonly liquidityFloor: bigint;
+  /**
+   * Pool inclusion floor (DD-23): a pool is indexed when its quote-denominated depth
+   * min(bid, ask) within ±bandBps, measured at the epoch's end block, is ≥ the floor
+   * for its quote asset. Floors are per quote asset (raw quote units), so pools are
+   * only ever compared in their own quote's units; a quote asset with no entry has
+   * floor 0.
+   */
+  readonly poolDepthFloor: PoolDepthFloor;
   /**
    * Base tokens whose pools are indexed (DD-21): every pool of a base token against
    * each of the chain's quote assets, at every fee tier, found by factory.getPool.
    * Lowercase 0x addresses, strictly ascending (one canonical form per config).
    */
   readonly baseTokens: readonly string[];
+  /**
+   * Treasury / loan-source addresses: base inflows from them are `fromTreasury` (I5
+   * excludes the loan from the outflow budget). Lowercase, strictly ascending.
+   */
+  readonly treasuryAddresses: readonly string[];
   /** Only blocks at or before this finalized height are indexed. */
   readonly finalityConfirmations: number;
 }
@@ -45,8 +62,9 @@ export const DEFAULT_CONFIG: IndexerConfig = {
   priceSampleSeconds: 60,
   winsorFraction: 0.05,
   kMinBlocks: 30,
-  liquidityFloor: 0n,
+  poolDepthFloor: { bandBps: 200, minQuote: {} },
   baseTokens: [],
+  treasuryAddresses: [],
   finalityConfirmations: 1800, // well past Base L1 finality; tune per environment
 };
 
@@ -69,12 +87,18 @@ export function assertConfig(cfg: IndexerConfig): void {
   if (cfg.twapWindowSeconds % cfg.priceSampleSeconds !== 0) {
     throw new Error("twapWindowSeconds must be a whole number of price samples");
   }
-  for (let i = 0; i < cfg.baseTokens.length; i++) {
-    if (!/^0x[0-9a-f]{40}$/.test(cfg.baseTokens[i]!)) {
-      throw new Error(`baseTokens must be lowercase 0x addresses: ${cfg.baseTokens[i]}`);
-    }
-    if (i > 0 && cfg.baseTokens[i]! <= cfg.baseTokens[i - 1]!) {
-      throw new Error("baseTokens must be strictly ascending");
+  const f = cfg.poolDepthFloor;
+  if (!Number.isInteger(f.bandBps) || f.bandBps <= 0 || f.bandBps >= 10_000) {
+    throw new Error("poolDepthFloor.bandBps must be an integer in (0, 10000)");
+  }
+  for (const [q, v] of Object.entries(f.minQuote)) {
+    if (!/^0x[0-9a-f]{40}$/.test(q)) throw new Error(`poolDepthFloor.minQuote keys must be lowercase addresses: ${q}`);
+    if (v < 0n) throw new Error("poolDepthFloor.minQuote values must be non-negative");
+  }
+  for (const [name, list] of [["baseTokens", cfg.baseTokens], ["treasuryAddresses", cfg.treasuryAddresses]] as const) {
+    for (let i = 0; i < list.length; i++) {
+      if (!/^0x[0-9a-f]{40}$/.test(list[i]!)) throw new Error(`${name} must be lowercase 0x addresses: ${list[i]}`);
+      if (i > 0 && list[i]! <= list[i - 1]!) throw new Error(`${name} must be strictly ascending`);
     }
   }
   if (cfg.winsorFraction < 0 || cfg.winsorFraction >= 0.5) {
