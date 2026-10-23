@@ -22,6 +22,7 @@ import {
   publishRoot,
   runLifecycle,
   runProveEpoch,
+  runProveFunding,
   runPublishRoot,
   runRegister,
   runningEngagement,
@@ -140,9 +141,10 @@ describe.skipIf(!HAVE_BUILD)("I8: settle and default gate on a published root", 
     const g = await runningEngagement({ proven: 0, publish: false });
     const fake = { id: g.id, epoch: 1n, uptime: 48n, termsCommit: g.reg.termsCommit };
     await expect(settle(g, g.state, 1n, epochEndOf(g, 1n), undefined, fake)).rejects.toThrow(/epoch root not published \(I8\)/);
-    // once published, the next gate (the record) is what stops it
+    // once published (and funding proven, DD-27), the next gate (the record) is what stops it
     const s = await publishRoot(g.state, 1n, g.scenario.rootOfRoots);
-    await expect(settle(g, s, 1n, epochEndOf(g, 1n), undefined, fake)).rejects.toThrow(/epoch record not on the ledger \(H3b\)/);
+    const f = await runProveFunding(g.scenario.witness, g.id, g.scenario.rootOfRoots, s);
+    await expect(settle(g, f.state, 1n, epochEndOf(g, 1n), undefined, fake)).rejects.toThrow(/epoch record not on the ledger \(H3b\)/);
   });
 
   it("a published, proven epoch settles", async () => {

@@ -87,6 +87,13 @@ root published; an epoch whose root was never published is not defaultable. The
 challenge window runs from settlement (`releaseEpoch`).
 *Circuits:* `publishRoot`, `proveEpoch`, `settleEpoch`, `defaultEngagement` (DD-26).
 
+## Funding · the loan reached the committed wallets (DD-27)
+
+Once per engagement, before any epoch settles: against epoch 1's published root
+(`publishedRoot[1]`, I8), with the same leaf openings as the epoch circuit (C1, I2, H2)
+and the registered wallets and terms (C2), `Σ_j from_treasury(m_j) ≥ L_0` over member
+slots. *Circuit:* `proveFunding`; `settleEpoch` requires it.
+
 ## I9 · Callers prove a secret; no key is the identity point
 
 No circuit trusts `ownPublicKey()` (the prover's machine chooses its value).

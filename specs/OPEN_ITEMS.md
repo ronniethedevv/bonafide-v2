@@ -93,6 +93,13 @@ governed set is in scope later; fixed-at-deploy is fine for v1).
 
 ## 2. `activate` funding-membership proof
 
+> **DONE 2026-10-23 (DD-27, status log).** A dedicated `proveFunding(id, rootOfRoots)`
+> (funding data only exists after epoch 1, so it cannot live in `activate`): bound to
+> `publishedRoot[1]` (I8), the same C1/I2/H2 openings as `proveEpoch` (one shared
+> circuit, `openSlotLeaves`), the C2 wallet + terms binding, and Σ `from_treasury` over
+> member slots ≥ `loan_L0`; once per engagement; `settleEpoch` requires it (so no
+> tranche releases before the loan is proven landed).
+
 **The gap.** `activate` records `activatedAt` and gates the funding window, but does
 **not** prove the loan actually reached the committed wallets — it omits the
 membership proof the original C1 note flagged. So an engagement can be activated

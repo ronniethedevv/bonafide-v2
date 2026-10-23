@@ -500,6 +500,31 @@ circuit assertWalletLayout(w: Vector<16, Uint<160>>, n: Uint<8>): [] {
   }
 }
 
+// C1 + I2 + H2, shared by proveEpoch and proveFunding: each active slot's opened leaf
+// (membership or low-leaf) is in poolRoot, and it accounts for that wallet exactly once;
+// padding slots open nothing and are forced non-present, so they add to no sum.
+// Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
+// slotLeafCore strips `present` before hashing (its byte image == encodeLeaf).
+circuit openSlotLeaves(w: Vector<16, Uint<160>>, act: Vector<16, Boolean>,
+                       leaves: Vector<16, SlotLeaf>, sp: Vector<16, Vector<16, PathStep>>,
+                       poolRoot: Field): [] {
+  for (const j of 0..16) {
+    const L = leaves[j];
+    if (act[j]) {
+      verifyPath16(transientHash<SlotLeafCore>(slotLeafCore(L)), sp[j], poolRoot);
+      if (L.present) {
+        assert(L.addr == w[j], "membership slot mismatch (I2)");
+        assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+      } else {
+        assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
+               "non-membership low-leaf does not bracket (I2)");
+      }
+    } else {
+      assert(!L.present, "padding slot opened as present (H2)");
+    }
+  }
+}
+
 // H2: slot j is active iff j < n.
 circuit activeFlags(n: Uint<8>): Vector<16, Boolean> {
   return [0 < n, 1 < n, 2 < n, 3 < n, 4 < n, 5 < n, 6 < n, 7 < n,
@@ -546,31 +571,20 @@ export circuit proveEpoch(
   verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
 
   // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
-  // (C1), and it accounts for that wallet exactly once (I2). Padding slots (H2)
-  // need no opening: they are forced empty (present = false, and w[j] = 0 by
-  // assertWalletLayout), so they contribute to no sum below.
-  // Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
-  // slotLeafCore strips `present` before hashing (its byte image == encodeLeaf).
+  // (C1), and it accounts for that wallet exactly once (I2); padding slots (H2) are
+  // forced empty (openSlotLeaves, shared with proveFunding).
+  openSlotLeaves(w, act, leaves, sp, pe.poolRoot);
+  // Per member slot (present => active, enforced above):
   for (const j of 0..16) {
     const L = leaves[j];
-    if (act[j]) {
-      verifyPath16(transientHash<SlotLeafCore>(slotLeafCore(L)), sp[j], pe.poolRoot);
-      if (L.present) {
-        assert(L.addr == w[j], "membership slot mismatch (I2)");
-        assert(!L.is_protocol, "wallet is a protocol contract (I2)");
-        // H1: this member's depth witness is the contracted band committed in depth_root.
-        verifyBandPath(transientHash<BandSeries>(BandSeries {
-                         band_bps: t.band_bps, bid: bid[j], ask: ask[j] }),
-                       dp[j], L.depth_root);
-        // M1: this member's flow witness is the whole series committed in flow_root.
-        assert((transientHash<FlowSeries>(FlowSeries { buy: fb[j], sell: fs[j] }) as Bytes<32>)
-                 == L.flow_root, "flow_root opening mismatch (M1)");
-      } else {
-        assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
-               "non-membership low-leaf does not bracket (I2)");
-      }
-    } else {
-      assert(!L.present, "padding slot opened as present (H2)");
+    if (L.present) {
+      // H1: this member's depth witness is the contracted band committed in depth_root.
+      verifyBandPath(transientHash<BandSeries>(BandSeries {
+                       band_bps: t.band_bps, bid: bid[j], ask: ask[j] }),
+                     dp[j], L.depth_root);
+      // M1: this member's flow witness is the whole series committed in flow_root.
+      assert((transientHash<FlowSeries>(FlowSeries { buy: fb[j], sell: fs[j] }) as Bytes<32>)
+               == L.flow_root, "flow_root opening mismatch (M1)");
     }
   }
 
@@ -911,9 +925,9 @@ export circuit activate(id: Bytes<32>, rootOfRoots: Bytes<32>, activatedTs: Uint
   assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "activatedTs too far in the past (H3b)");
   assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
   assert(blockTimeLt((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window closed (H3b)");
-  // NOTE: funding membership proof verified here against rootOfRoots using the
-  // same leaf/path scheme as @mmr/merkle. Omitted in this skeleton; see
-  // proveEpoch for the opening pattern.
+  // The loan's arrival is evidenced by epoch-1 indexed data, which does not exist yet:
+  // it is proven later by proveFunding against epoch 1's published root (DD-27), and
+  // settleEpoch requires it. rootOfRoots is not read here.
   status.insert(key, Status.Funded);
   activatedAt.insert(key, ts);
 }
@@ -965,6 +979,8 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   // I8 (DD-26): only an epoch whose root the committee published can be settled.
   assert(publishedRoot.member(e), "epoch root not published (I8)");
+  // DD-27: no epoch settles (so no tranche releases) until the loan is proven landed.
+  assert(fundingProven.member(key), "funding not proven (DD-27)");
   assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
   assert(blockTimeLt(graceDeadline(key, e)), "settlement deadline passed (H3b)");
   const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
@@ -1098,4 +1114,50 @@ export circuit publishRoot(epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64>): []
       publishedCid.insert(e, disclose(cid));
     }
   }
+}
+
+// --- Funding membership (DD-27) ----------------------------------------------------
+//
+// Proves the loan reached the committed wallets, against epoch 1's attested root (the
+// first indexed data after activation; I8 must publish it first, so the opening cannot
+// use a self-made root). Same openings as proveEpoch (C1 + I2 + H2 via openSlotLeaves)
+// and the same binding to the registration (C2: wallets and terms, so loan_L0 is the
+// registered one); then Σ from_treasury over member slots ≥ loan_L0. Once per
+// engagement; settleEpoch requires it. Nothing private is disclosed.
+
+export ledger fundingProven: Set<Bytes<32>>;
+
+export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
+  const key = disclose(id);
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(!fundingProven.member(key), "funding already proven (DD-27)");
+  assert(publishedRoot.member(1) && publishedRoot.lookup(1) == disclose(rootOfRoots),
+         "funding root is not epoch-1's attested root (DD-27)");
+
+  const w = committedWallets();
+  const n = activeCount();
+  assertWalletLayout(w, n);
+  const act = activeFlags(n);
+  // C2: the registered wallets and terms.
+  assert(disclose(persistentCommit<Vector<16, Uint<160>>>(w, walletSalt())) == walletCommit.lookup(key),
+         "wallet commitment does not match registration (C2)");
+  const t = terms();
+  assert(disclose(persistentCommit<Terms>(t, termsSalt())) == termsCommit.lookup(key),
+         "terms commitment does not match registration (C2)");
+
+  // C1: the pool is in epoch 1's root, and every slot's leaf is in the pool.
+  const leaves = slotLeaves();
+  const pe = poolEntry();
+  verifyPoolPath(transientHash<PoolEntry>(pe), poolPath(), rootOfRoots);
+  openSlotLeaves(w, act, leaves, slotPaths(), pe.poolRoot);
+
+  // The loan landed: treasury inflows to member wallets cover loan_L0.
+  const pf = presentFlags(leaves);
+  const fromTreasuryVec: Vector<16, Uint<128>> = [
+    leaves[0].from_treasury, leaves[1].from_treasury, leaves[2].from_treasury, leaves[3].from_treasury,
+    leaves[4].from_treasury, leaves[5].from_treasury, leaves[6].from_treasury, leaves[7].from_treasury,
+    leaves[8].from_treasury, leaves[9].from_treasury, leaves[10].from_treasury, leaves[11].from_treasury,
+    leaves[12].from_treasury, leaves[13].from_treasury, leaves[14].from_treasury, leaves[15].from_treasury];
+  assert(sumSlots16(fromTreasuryVec, pf) >= t.loan_L0, "loan not received by the committed wallets (DD-27)");
+  fundingProven.insert(key);
 }

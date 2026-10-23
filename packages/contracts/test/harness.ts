@@ -462,6 +462,31 @@ export async function publishRoot(state: rt.ChargedState, epoch: bigint, root: U
   return (await runPublishRoot(ATTESTERS[1]!, epoch, root, a.state)).state;
 }
 
+/**
+ * DD-27: proveFunding with the scenario's openings against `rootOfRoots` (which must be
+ * epoch 1's published root); returns the state and whether funding is recorded.
+ */
+export async function runProveFunding(
+  w: EpochWitness,
+  id: Uint8Array,
+  rootOfRoots: Uint8Array,
+  state: rt.ChargedState,
+): Promise<{ state: rt.ChargedState; proven: boolean }> {
+  const mod = await import(BUILD_DIR);
+  const contract = new mod.Contract({
+    ...stubWitnesses(),
+    committedWallets: wit(w.committedWallets), activeCount: wit(w.activeCount), walletSalt: wit(w.walletSalt),
+    slotLeaves: wit(w.slotLeaves), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
+    slotPaths: wit(w.slotPaths), poolEntry: wit(w.poolEntry), poolPath: wit(w.poolPath),
+  });
+  const res = contract.circuits.proveFunding(freshContext(contract, state), id, rootOfRoots);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  return { state: after, proven: mod.ledger(after).fundingProven.member(id) };
+}
+
+/** Wallet A's metrics in a scenario where the loan (loan_L0 = 1 000) arrived from the treasury. */
+export const FUNDED_A = { xferIn: 1_004n, fromTreasury: 1_000n } as const;
+
 /** A fresh contract state (the constructor run with the KAT committee). */
 export async function freshState(): Promise<rt.ChargedState> {
   const mod = await import(BUILD_DIR);
@@ -625,9 +650,10 @@ export const TIER_MIN = 500n;
  * 1..`proven` with the KAT scenario, all on one ledger. Nothing is settled yet.
  */
 export async function runningEngagement(
-  opts: { proven?: number; coin?: CoinW | null; secret?: Uint8Array; publish?: boolean } = {},
+  opts: { proven?: number; coin?: CoinW | null; secret?: Uint8Array; publish?: boolean; fund?: boolean } = {},
 ): Promise<Engagement> {
-  const scenario = buildScenario();
+  // Epoch 1's tree shows the loan landing (FUNDED_A), so the engagement can prove funding.
+  const scenario = buildScenario(undefined, 0, FUNDED_A);
   const reg = await runRegister(scenario.witness, opts.secret ?? new Uint8Array(32).fill(0x99));
   let state = reg.state;
   if (opts.coin !== null) {
@@ -641,6 +667,8 @@ export async function runningEngagement(
   // (roots are per indexer epoch, independent of any MM). opts.publish: false skips it.
   if (opts.publish !== false) {
     for (let e = 1n; e <= scenario.witness.terms.epochs_total; e++) state = await publishRoot(state, e, scenario.rootOfRoots);
+    // DD-27: prove the loan landed (against epoch 1's published root) unless opts.fund is false.
+    if (opts.fund !== false) state = (await runProveFunding(scenario.witness, reg.id, scenario.rootOfRoots, state)).state;
   }
   const n = opts.proven ?? 3;
   let records: EpochRecordW[] = [];
