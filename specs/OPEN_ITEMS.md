@@ -1,5 +1,11 @@
 # Open design items awaiting decision
 
+> **DECIDED 2026-10-23 (user):** I8 → **Option B** (attester-submitted counted
+> registry), committee **fixed at deploy** (2-of-3). Funding-membership opens
+> against **epoch-1's `rootOfRoots`**. Implementation plan: `specs/I8_FUNDING_HANDOFF.md`
+> (I8 first, so funding can bind to the attested `publishedRoot[1]`). Both close the
+> last in-circuit gaps and re-key together.
+
 Two circuit-tier gaps are tracked as known-open (see progress_tracker.md). Both
 need a design decision before implementation, so they are written up here rather
 than guessed. Written by the cloud session from a full review of the current
