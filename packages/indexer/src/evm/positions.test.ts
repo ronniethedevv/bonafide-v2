@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decodePosition, emptyRegistry, loadRegistry, poolKeyId, saveRegistry, scanRegistry, SEL_NPM } from "./positions.js";
+import { decodePosition, emptyRegistry, loadRegistry, poolKeyId, positionsFromHistory, saveRegistry, scanRegistry, SEL_NPM } from "./positions.js";
+import { TOPIC0 } from "./abi.js";
 import { MulticallFake } from "./multicall.fake.js";
 
 const NPM = "0x03a520b32c04bf3beef7beb72e919cf822ed34f1";
@@ -59,5 +60,33 @@ describe("position registry (DD-24)", () => {
     const wider = loadRegistry(path, NPM, [poolKeyId(9n, 10n, 100)]);
     expect([wider.scannedUpTo, wider.pools.length]).toEqual([0n, 3]);
     expect(loadRegistry(path, "0xother", [A]).scannedUpTo).toBe(0n);
+  });
+});
+
+describe("positionsFromHistory (DD-25)", () => {
+  const POOL = 0x900n;
+  const t = (v: bigint): string => `0x${w(v)}`;
+  const log = (address: bigint, topics: string[], tx: string) => ({ address: `0x${address.toString(16).padStart(40, "0")}`, topics, transactionHash: tx });
+  const MINT = "0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde";
+  const INC = "0x3067048beee31b25b2f1681f88dac838c8bba36af25bfb2b7cf7473a5847e35f";
+  const npm = BigInt(NPM);
+  it("finds NFTs minted into this pool and every direct owner, confirmed on chain", async () => {
+    const logs = [
+      log(POOL, [MINT, t(npm), t(-60n), t(60n)], "0xa"), log(npm, [INC, t(2n)], "0xa"), // NFT 2 into this pool
+      log(npm, [INC, t(3n)], "0xb"), // NFT 3: increase in a tx with no Mint here (another pool)
+      log(POOL, [MINT, t(npm), t(-60n), t(60n)], "0xc"), log(npm, [INC, t(5n)], "0xc"), // NFT 5: positions() says another pool
+      log(POOL, [MINT, t(0x51c7n), t(-120n), t(120n)], "0xd"), // direct position
+    ];
+    const res = await positionsFromHistory(chain(10, new Set()), POOL, NPM, A, logs, [100]);
+    // chain(): even ids are pool A — 2 is confirmed; 5 is odd (pool B) and is dropped
+    expect(res.nfts.map((p) => p.tokenId)).toEqual([2n]);
+    expect(res.direct).toEqual([{ owner: 0x51c7n, tickLower: -120, tickUpper: 120 }]);
+  });
+});
+
+describe("topic constants used by the history test", () => {
+  it("match the derived Mint / IncreaseLiquidity topics", () => {
+    expect(TOPIC0.mint).toBe("0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde");
+    expect(TOPIC0.increaseLiquidity).toBe("0x3067048beee31b25b2f1681f88dac838c8bba36af25bfb2b7cf7473a5847e35f");
   });
 });

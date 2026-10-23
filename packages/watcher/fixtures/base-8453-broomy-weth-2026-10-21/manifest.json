@@ -1,0 +1,39 @@
+{
+ "chainId": 8453,
+ "epoch": 1,
+ "startBlock": 52875726,
+ "endBlock": 52918926,
+ "endBlockHash": "0xbfa89f75838705788e299c851c25c0b409582204819b786cfa2bad9ceb08334e",
+ "hasherId": "compact-transient-hash-v1",
+ "bandsBps": [
+  50,
+  100,
+  200,
+  500
+ ],
+ "bucketSeconds": 1800,
+ "baseTokens": [
+  "0x8d81043bc4bd37b43d7b244fda79d20c9c27603b"
+ ],
+ "treasuryAddresses": [],
+ "poolDepthFloor": {
+  "bandBps": 200,
+  "minQuote": {}
+ },
+ "twapWindowSeconds": 1800,
+ "priceSampleSeconds": 60,
+ "winsorFraction": 0.05,
+ "poolCount": 1,
+ "rootOfRootsHex": "0x5a3a6373489512ce231856573012a90e45d2bc2720ce5538b92fc74af1d04461",
+ "pools": [
+  {
+   "poolAddr": "0xff3733f7469c034f774d3873c14e23a75345011a",
+   "rootHex": "0xee671aaa9c08a9c001f539a7ed27b97ab118c5058e94f07cc62795ff1f8d8f51",
+   "cid": "mem://7f4528e70e4f74d383aae20170ea7ed24754da610fbb79",
+   "leafCount": 89,
+   "referencePrice": "15841198126689485689481"
+  }
+ ],
+ "signatures": [],
+ "_note": "Live Unit 3 end-to-end epoch (2026-10-21 UTC) on Base BROOMY/WETH 0.3%; buildEpoch twice -> same root; see specs/progress_tracker.md"
+}

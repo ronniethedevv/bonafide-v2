@@ -9,8 +9,13 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { EvmRpc } from "./rpc.js";
+import type { EvmRpc, RpcLog } from "./rpc.js";
 import { multicallTry, selector, type Call } from "./multicall.js";
+import { TOPIC0 } from "./abi.js";
+
+type RpcLogLike = Pick<RpcLog, "address" | "topics" | "transactionHash">;
+const MINT_TOPIC = TOPIC0.mint;
+const INCREASE_TOPIC = TOPIC0.increaseLiquidity;
 
 export interface RegisteredPosition {
   readonly tokenId: bigint;
@@ -170,4 +175,65 @@ export async function readPositionsAt(
     out.set(id, { owner: o ? word(o, 0) : null, liquidity: p ? decodePosition(p).liquidity : 0n });
   });
   return out;
+}
+
+export interface HistoryPositions {
+  /** Position-manager NFTs of the pool (confirmed by positions(id)), ascending. */
+  readonly nfts: RegisteredPosition[];
+  /** Direct (non-NFT) positions: every pool Mint owner other than the manager. */
+  readonly direct: { owner: bigint; tickLower: number; tickUpper: number }[];
+}
+
+/**
+ * Every LP position of one pool from its Mint history (DD-25, a bounded alternative to
+ * the global registry for a pool created recently enough that `logs` — pool Mint +
+ * position-manager IncreaseLiquidity from the pool's creation block on — can be
+ * scanned). An NFT id is a candidate when its IncreaseLiquidity shares a tx with a pool
+ * Mint owned by the manager; candidates are confirmed by reading positions(id).
+ */
+export async function positionsFromHistory(
+  rpc: EvmRpc,
+  pool: bigint,
+  positionManager: string,
+  poolKey: string,
+  logs: readonly RpcLogLike[],
+  confirmBlocks: readonly number[],
+): Promise<HistoryPositions> {
+  const npm = BigInt(positionManager);
+  const mintTxs = new Set<string>();
+  const direct = new Map<string, { owner: bigint; tickLower: number; tickUpper: number }>();
+  for (const l of logs) {
+    if (BigInt(l.address) !== pool || l.topics[0] !== MINT_TOPIC) continue;
+    const owner = BigInt(l.topics[1]!);
+    if (owner === npm) {
+      mintTxs.add(l.transactionHash);
+      continue;
+    }
+    const tl = Number(BigInt.asIntN(24, BigInt(l.topics[2]!)));
+    const tu = Number(BigInt.asIntN(24, BigInt(l.topics[3]!)));
+    direct.set(`${owner.toString(16)}:${tl}:${tu}`, { owner, tickLower: tl, tickUpper: tu });
+  }
+  const candidates = new Set<bigint>();
+  for (const l of logs) {
+    if (BigInt(l.address) === npm && l.topics[0] === INCREASE_TOPIC && mintTxs.has(l.transactionHash)) {
+      candidates.add(BigInt(l.topics[1]!));
+    }
+  }
+  const ids = [...candidates].sort((a, b) => (a < b ? -1 : 1));
+  // Confirm at each block until found (an NFT burned before the last block is read earlier).
+  const found = new Map<bigint, RegisteredPosition>();
+  for (const block of confirmBlocks) {
+    const todo = ids.filter((id) => !found.has(id));
+    const res = await multicallTry(rpc, todo.map((id) => ({ target: positionManager, data: SEL_NPM.positions + uintWord(id) })), block);
+    todo.forEach((id, i) => {
+      const r = res[i];
+      if (!r) return;
+      const p = decodePosition(r);
+      if (p.key === poolKey) found.set(id, { tokenId: id, tickLower: p.tickLower, tickUpper: p.tickUpper });
+    });
+  }
+  return {
+    nfts: ids.filter((id) => found.has(id)).map((id) => found.get(id)!),
+    direct: [...direct.values()].sort((a, b) => (a.owner < b.owner ? -1 : a.owner > b.owner ? 1 : a.tickLower - b.tickLower || a.tickUpper - b.tickUpper)),
+  };
 }

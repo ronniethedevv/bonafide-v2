@@ -14,7 +14,11 @@ import { extractFlows, type AddressFlows, type ExtractOptions } from "./flows.js
 import { multicall, selector, SELECTOR, type Call } from "./multicall.js";
 import { orientPool } from "./price.js";
 import { windowIndex } from "./range.js";
+import { getLogsChunked } from "./logs.js";
 import {
+  positionsFromHistory,
+  type HistoryPositions,
+  type RegisteredPosition,
   emptyRegistry,
   loadRegistry,
   poolKeyId,
@@ -31,6 +35,12 @@ export const MAX_LEAVES = 65_536;
 export interface ActivityOptions extends ExtractOptions {
   /** Registry cache file; without it the registry is rebuilt (slow: every NFT id). */
   readonly registryPath?: string;
+  /**
+   * DD-25: find the pool's positions from its Mint history instead of the global
+   * registry — scan pool Mint + position-manager IncreaseLiquidity from this block (the
+   * pool's creation block) to the epoch start. Complete for NFT and direct positions.
+   */
+  readonly historyFromBlock?: number;
   readonly onStage?: (stage: string) => void;
 }
 
@@ -89,17 +99,35 @@ export async function extractPoolActivity(
     positionManager: npm,
   });
 
-  // 2. NFT positions of this pool: registry (static), then owner/liquidity at both ends.
-  stage("registry");
+  // 2. NFT positions of this pool, then owner/liquidity at both ends.
   const key = poolKeyId(pool.token0, pool.token1, fee);
-  let reg: Registry = opts.registryPath ? loadRegistry(opts.registryPath, dex.positionManager, [key]) : emptyRegistry(dex.positionManager, [key]);
-  // A registry scanned after this epoch started may lack positions burned since then.
-  if (reg.scannedAt > range.startBlock) reg = emptyRegistry(dex.positionManager, reg.pools);
-  if (reg.scannedAt < range.startBlock) await scanRegistry(rpc, reg, range.startBlock);
-  const atStart = new Set((reg.byPool.get(key) ?? []).map((p) => p.tokenId));
-  await scanRegistry(rpc, reg, range.endBlock); // ids minted during the epoch
-  if (opts.registryPath) saveRegistry(opts.registryPath, reg);
-  const registered = reg.byPool.get(key) ?? [];
+  let registered: RegisteredPosition[];
+  let atStart: Set<bigint>;
+  let historyDirect: HistoryPositions["direct"] = [];
+  if (opts.historyFromBlock !== undefined) {
+    stage("history");
+    if (opts.historyFromBlock > range.startBlock) throw new DepthError("historyFromBlock is after the epoch start");
+    const history = await getLogsChunked(
+      rpc,
+      { address: [poolHex, hex(npm)], topics: [[TOPIC0.mint, TOPIC0.increaseLiquidity]], fromBlock: opts.historyFromBlock, toBlock: range.startBlock },
+      opts,
+    );
+    const found = await positionsFromHistory(rpc, pool.poolAddr, dex.positionManager, key, [...history, ...logs], [range.endBlock, range.startBlock]);
+    const before = await positionsFromHistory(rpc, pool.poolAddr, dex.positionManager, key, history, [range.startBlock]);
+    registered = found.nfts;
+    atStart = new Set(before.nfts.map((p) => p.tokenId));
+    historyDirect = found.direct;
+  } else {
+    stage("registry");
+    let reg: Registry = opts.registryPath ? loadRegistry(opts.registryPath, dex.positionManager, [key]) : emptyRegistry(dex.positionManager, [key]);
+    // A registry scanned after this epoch started may lack positions burned since then.
+    if (reg.scannedAt > range.startBlock) reg = emptyRegistry(dex.positionManager, reg.pools);
+    if (reg.scannedAt < range.startBlock) await scanRegistry(rpc, reg, range.startBlock);
+    atStart = new Set((reg.byPool.get(key) ?? []).map((p) => p.tokenId));
+    await scanRegistry(rpc, reg, range.endBlock); // ids minted during the epoch
+    if (opts.registryPath) saveRegistry(opts.registryPath, reg);
+    registered = reg.byPool.get(key) ?? [];
+  }
 
   const changed = new Set<bigint>();
   for (const l of logs) {
@@ -125,8 +153,10 @@ export async function extractPoolActivity(
     tracked.push({ key: npmKey(p.tokenId), owner, tickLower: p.tickLower, tickUpper: p.tickUpper, liquidityStart: s.liquidity });
   }
 
-  // 3. Direct (non-NFT) positions touched this epoch.
+  // 3. Direct (non-NFT) positions: the full history in history mode, else those
+  //    touched this epoch.
   const direct = new Map<string, { owner: bigint; tl: number; tu: number }>();
+  for (const d of historyDirect) direct.set(directKey(d.owner, d.tickLower, d.tickUpper), { owner: d.owner, tl: d.tickLower, tu: d.tickUpper });
   for (const l of logs) {
     if (addressToBigInt(l.address) !== pool.poolAddr || (l.topics[0] !== TOPIC0.mint && l.topics[0] !== TOPIC0.burn)) continue;
     const ev = l.topics[0] === TOPIC0.mint ? decodeMint(l) : decodeBurn(l);
