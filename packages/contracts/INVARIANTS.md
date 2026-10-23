@@ -76,12 +76,16 @@ Per window `w`: round-trip volume `rt_w = min(Σ_j buy(j,w), Σ_j sell(j,w))`.
 Require `Σ_w rt_w ≤ ρ · grossVolume`, and `rt_w` never counts toward reported
 volume. *Circuit:* `epoch_proof`, opened from each `flow_root`.
 
-## I8 · Only settled roots are scored
+## I8 · Only published roots are scored
 
-An epoch counts only if **≥ 2 of 3 attesters** signed its root **and** the
-challenge window passed unchallenged:
-`now ≥ h_root(e) + Δ_challenge ∧ ¬Challenged(e)`. *Contract:* `bond`/attester
-check gates `epoch_proof` acceptance; the circuit binds to the signed `R_e`.
+An epoch counts only against the root its attester committee published:
+`publishedRoot[e]` is set when **2 of the 3** committee members (fixed at deploy) have
+each submitted `publishRoot(e, root, cid)` for the same `(root, cid)`, each
+authenticated by proving knowledge of its secret (one vote per member per epoch).
+`proveEpoch` requires `rootOfRoots == publishedRoot[e]`; `settleEpoch` requires the
+root published; an epoch whose root was never published is not defaultable. The
+challenge window runs from settlement (`releaseEpoch`).
+*Circuits:* `publishRoot`, `proveEpoch`, `settleEpoch`, `defaultEngagement` (DD-26).
 
 ## I9 · Callers prove a secret; no key is the identity point
 

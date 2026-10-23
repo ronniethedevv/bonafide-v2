@@ -3,7 +3,7 @@
 // Pipeline (deterministic end to end):
 //   pools above floor -> per-address leaves -> per-pool indexed tree
 //   -> publish each tree to the content store -> epoch root-of-roots
-//   -> (optional) attester signatures over (epoch, root, cid).
+//   -> (optional) the attester committee's publishRoot votes on (epoch, root, cid).
 //
 // Everything that touches the network is injected (ChainProvider, TreePublisher,
 // AttesterCommittee), so this function is unit testable with in-memory fakes.
@@ -21,7 +21,7 @@ import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { type IndexerConfig, assertConfig, twapSampleTimes } from "./config.js";
 import {
   type AttesterCommittee,
-  type AttesterSignature,
+  type AttesterVote,
   type ChainProvider,
   type EpochRange,
   type TreePublisher,
@@ -70,7 +70,8 @@ export interface EpochManifest {
   poolCount: number;
   rootOfRootsHex: string;
   pools: PoolManifestEntry[];
-  signatures: AttesterSignature[];
+  /** Committee members that submitted publishRoot for this root (I8, DD-26). */
+  votes: AttesterVote[];
 }
 
 export interface EpochResult {
@@ -154,7 +155,7 @@ export async function buildEpoch(
   const rootOfRootsHex = rootOfRoots.rootHex();
 
   // Publish the manifest itself, then sign (epoch, root, manifest CID).
-  const preManifest: Omit<EpochManifest, "signatures"> = {
+  const preManifest: Omit<EpochManifest, "votes"> = {
     chainId: deps.provider.chainId(),
     epoch: range.epoch,
     startBlock: range.startBlock,
@@ -184,13 +185,13 @@ export async function buildEpoch(
     new TextEncoder().encode(JSON.stringify(preManifest)),
   );
 
-  const signatures = deps.attesters
-    ? await deps.attesters.sign(range.epoch, rootOfRootsHex, manifestCid)
+  const votes = deps.attesters
+    ? await deps.attesters.publishRoot(range.epoch, rootOfRootsHex, manifestCid)
     : [];
 
   return {
     rootOfRoots,
-    manifest: { ...preManifest, signatures },
+    manifest: { ...preManifest, votes },
     trees,
   };
 }

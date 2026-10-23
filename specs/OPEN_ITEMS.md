@@ -20,6 +20,19 @@ remains for full circuit soundness, beyond the real-data adapters.
 
 ## 1. I8 — attester-root registry (the biggest remaining circuit gap)
 
+> **DONE 2026-10-23 (DD-26, status log).** Built as Option B with four changes the user
+> approved during implementation: (1) members authenticate by proving knowledge of a
+> secret whose `attesterId` is in the deploy-time committee — not `ownPublicKey()`,
+> which the prover chooses (I9); (2) `proveEpoch` asserts `rootOfRoots ==
+> publishedRoot[epoch]`, so a settled epoch is proven against the attested root (a
+> settle-only gate would not bind the proof); (3) a never-published epoch is **never
+> defaultable** (matches the product spec's `voided-no-root`; attester failure never
+> slashes the MM); (4) one vote per member per epoch over the exact (root, cid), so a
+> member cannot equivocate. **Open:** `publishedRoot` is keyed by the contract's epoch
+> number (engagement epoch e, as everywhere in this contract); attesters publish per
+> indexer epoch — aligning the two (e.g. activation at an indexer-epoch boundary) is a
+> deploy-layer item.
+
 **The gap.** Settlement and default currently trust that an epoch's root was
 published and attested. There is no on-chain record that ≥ 2-of-3 attesters signed
 `(epoch, rootOfRoots, cid)`, so:

@@ -87,7 +87,7 @@ describe("client verdict log", () => {
       // epoch 1: settled with an on-time proof
       range: range(1, 1_000_000, 1_000_000),
       activities: activities(1_000_000),
-      root: { publishedTs: 1_000_100, signatureCount: 2 },
+      root: { publishedTs: 1_000_100, voteCount: 2 },
       now: 1_100_000,
       challenged: false,
       proofAcceptedTs: 1_050_000,

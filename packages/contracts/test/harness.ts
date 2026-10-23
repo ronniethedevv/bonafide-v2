@@ -350,6 +350,11 @@ export async function runProveEpoch(
    * Default: a fresh contract with `w`'s wallets and terms registered as KAT_ID.
    */
   state?: rt.ChargedState,
+  /**
+   * I8: publish `rootOfRoots` for `epoch` first (2 of 3 votes) unless that epoch already
+   * has a published root. Off only in the KATs of the I8 binding itself.
+   */
+  opts: { publish?: boolean } = {},
 ): Promise<ProveResult> {
   if (state === undefined) {
     const reg = await runRegister(w, KAT_SECRET);
@@ -358,6 +363,7 @@ export async function runProveEpoch(
     }
     state = reg.state;
   }
+  if (opts.publish !== false) state = await publishRoot(state, epoch, rootOfRoots);
   const mod = await import(BUILD_DIR);
   const witnesses = {
     ...stubWitnesses(),
@@ -399,21 +405,75 @@ const ALL_WITNESSES = [
   "committedWallets", "activeCount", "walletSalt", "slotLeaves", "terms", "termsSalt", "bidMin", "askMin",
   "depthPaths", "flowBuy", "flowSell", "slotPaths", "poolEntry", "poolPath", "carryPrev", "carryPrevSalt",
   "carryNewSalt", "engagementSecret", "profileSecret", "claimRecordPresent", "claimRecordPaths",
-  "bondCoin", "settleRecordPath",
+  "bondCoin", "settleRecordPath", "attesterSecret",
 ] as const;
-const stubWitnesses = (): Record<string, unknown> =>
+export const stubWitnesses = (): Record<string, unknown> =>
   Object.fromEntries(ALL_WITNESSES.map((n) => [n, unusedWitness(n)]));
 const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
 
 interface CompiledContract {
-  initialState(ctx: unknown): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
+  initialState(ctx: unknown, committee: Uint8Array[]): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
+}
+
+// --- I8: attester committee (DD-26) -------------------------------------------------
+
+/** attesterId(secret) = persistentHash<Vector<2, Bytes<32>>>([pad(32, "mmr:attester:v1"), secret]). */
+export function attesterId(secret: Uint8Array): Uint8Array {
+  const tag = new Uint8Array(32);
+  tag.set(new TextEncoder().encode("mmr:attester:v1"));
+  return rt.persistentHash(new rt.CompactTypeVector(2, new rt.CompactTypeBytes(32)), [tag, secret]);
+}
+/** The KAT committee's member secrets; the deployed committee is their attesterIds. */
+export const ATTESTERS: readonly Uint8Array[] = [0xa1, 0xa2, 0xa3].map((b) => new Uint8Array(32).fill(b));
+export const KAT_COMMITTEE: Uint8Array[] = ATTESTERS.map(attesterId);
+/** A cid as the circuit's Bytes<64> (UTF-8, zero-padded). */
+export function cidBytes(cid: string): Uint8Array {
+  const b = new Uint8Array(64);
+  b.set(new TextEncoder().encode(cid).subarray(0, 64));
+  return b;
+}
+export const KAT_CID = cidBytes("bafy-kat-epoch-tree");
+
+/** One member's publishRoot transaction (authenticated by its secret). */
+export async function runPublishRoot(
+  secret: Uint8Array,
+  epoch: bigint,
+  root: Uint8Array,
+  state: rt.ChargedState,
+  cid: Uint8Array = KAT_CID,
+): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
+  const mod = await import(BUILD_DIR);
+  const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
+  const res = contract.circuits.publishRoot(freshContext(contract, state), epoch, root, cid);
+  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const led = mod.ledger(after);
+  return {
+    state: after,
+    published: led.publishedRoot.member(epoch) ? led.publishedRoot.lookup(epoch) : undefined,
+    cid: led.publishedCid.member(epoch) ? led.publishedCid.lookup(epoch) : undefined,
+  };
+}
+
+/** 2-of-3 publication of `root` for `epoch` (members 0 and 1), unless already published. */
+export async function publishRoot(state: rt.ChargedState, epoch: bigint, root: Uint8Array): Promise<rt.ChargedState> {
+  const mod = await import(BUILD_DIR);
+  if (mod.ledger(state).publishedRoot.member(epoch)) return state;
+  const a = await runPublishRoot(ATTESTERS[0]!, epoch, root, state);
+  return (await runPublishRoot(ATTESTERS[1]!, epoch, root, a.state)).state;
+}
+
+/** A fresh contract state (the constructor run with the KAT committee). */
+export async function freshState(): Promise<rt.ChargedState> {
+  const mod = await import(BUILD_DIR);
+  const contract = new mod.Contract(stubWitnesses());
+  return contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE).currentContractState.data;
 }
 
 /** Default block time for circuits that read it (H3): 2023-11-14T22:13:20Z. */
 export const BLOCK_TIME = 1_700_000_000n;
 
 function freshContext(contract: CompiledContract, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
-  const init = contract.initialState(rt.createConstructorContext({}, COIN_PK));
+  const init = contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE);
   const ctx = rt.createCircuitContext(
     rt.dummyContractAddress(), COIN_PK, state ?? init.currentContractState.data, init.currentPrivateState,
   );
@@ -565,7 +625,7 @@ export const TIER_MIN = 500n;
  * 1..`proven` with the KAT scenario, all on one ledger. Nothing is settled yet.
  */
 export async function runningEngagement(
-  opts: { proven?: number; coin?: CoinW | null; secret?: Uint8Array } = {},
+  opts: { proven?: number; coin?: CoinW | null; secret?: Uint8Array; publish?: boolean } = {},
 ): Promise<Engagement> {
   const scenario = buildScenario();
   const reg = await runRegister(scenario.witness, opts.secret ?? new Uint8Array(32).fill(0x99));
@@ -577,6 +637,11 @@ export async function runningEngagement(
   const activatedAt = BLOCK_TIME + 100n;
   state = (await runLifecycle("activate", [reg.id, new Uint8Array(32), activatedAt],
     { state, blockTime: activatedAt })).state;
+  // I8: the committee publishes a root for every epoch of the contract, proven or not
+  // (roots are per indexer epoch, independent of any MM). opts.publish: false skips it.
+  if (opts.publish !== false) {
+    for (let e = 1n; e <= scenario.witness.terms.epochs_total; e++) state = await publishRoot(state, e, scenario.rootOfRoots);
+  }
   const n = opts.proven ?? 3;
   let records: EpochRecordW[] = [];
   if (n > 0) {

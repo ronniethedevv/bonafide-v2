@@ -11,7 +11,7 @@ import {
 
 const t = DEFAULT_TIMING;
 const epochEndTs = 1000;
-const root: RootState = { publishedTs: 1100, signatureCount: 2 };
+const root: RootState = { publishedTs: 1100, voteCount: 2 };
 
 function input(over: Partial<SettlementInput>): SettlementInput {
   return {
@@ -39,8 +39,8 @@ describe("evaluateEpochSettlement", () => {
     );
   });
 
-  it("voids when signatures are below threshold at the timeout", () => {
-    const under = { publishedTs: 1100, signatureCount: 1 };
+  it("voids when votes are below threshold at the timeout", () => {
+    const under = { publishedTs: 1100, voteCount: 1 };
     expect(evaluateEpochSettlement(input({ root: under, now: 30_000 })).outcome).toBe(
       "voided-no-root",
     );

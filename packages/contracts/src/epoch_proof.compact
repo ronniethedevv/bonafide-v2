@@ -118,9 +118,16 @@ export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
 
 // Seed epochRecords with an all-zero genesis record so a valid path always exists for
 // claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
-constructor() {
+// I8 (DD-26): the attester committee is fixed at deploy — three member ids
+// attesterId(secret_i); there is no circuit that changes it.
+constructor(members: Vector<3, Bytes<32>>) {
   epochRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
                                     termsCommit: default<Bytes<32>> });
+  assert(members[0] != members[1] && members[0] != members[2] && members[1] != members[2],
+         "committee members must be distinct (I8)");
+  for (const i of 0..3) {
+    committee.insert(disclose(members[i]));
+  }
 }
 
 // I10 (moved from claim.compact, which could not read epochRecords: Compact contracts
@@ -669,8 +676,13 @@ export circuit proveEpoch(
                      0 as Uint<139>, grossVec);
   assert(roundTrip * 1000000 <= t.roundtrip_share_ppm * gross, "round-trip cap (I7)");
 
-  // I8 is enforced by the caller: proveEpoch is accepted only if >=2/3 attesters
-  // signed rootOfRoots for `epoch` and its challenge window passed unchallenged.
+  // I8 (DD-26): the root every opening above was checked against must be the one the
+  // committee published for this epoch (2-of-3 votes, publishRoot). Without this, a
+  // prover could open against a self-made root and still settle once the real root is
+  // published. Proofs come after publication (attester window, then challenge/proving).
+  const pe8 = disclose(epoch);
+  assert(publishedRoot.member(pe8) && publishedRoot.lookup(pe8) == disclose(rootOfRoots),
+         "rootOfRoots is not the epoch's published root (I8)");
 
   const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
   epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
@@ -841,8 +853,9 @@ circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
 
 // H3b: end of epoch `epoch` (1-based) on the engagement's schedule, and the last moment
 // it can still be settled: + attester timeout (6h; the latest a root can be published —
-// root publication is not on this ledger, so the MM gets the most lenient anchor)
-// + challenge (12h) + proving (24h) + grace (24h). Timing from specs/architecture.md.
+// publishedRoot (I8) records that a root was published, not when, so the MM gets the
+// most lenient anchor) + challenge (12h) + proving (24h) + grace (24h). Timing from
+// specs/architecture.md.
 circuit epochEnd(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
   const EPOCH: Uint<64> = 86400;   // 24h
   return (activatedAt.lookup(id) + epoch * EPOCH) as Uint<64>;
@@ -950,6 +963,8 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "settledTs too far in the past (H3b)");
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
+  // I8 (DD-26): only an epoch whose root the committee published can be settled.
+  assert(publishedRoot.member(e), "epoch root not published (I8)");
   assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
   assert(blockTimeLt(graceDeadline(key, e)), "settlement deadline passed (H3b)");
   const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
@@ -1012,13 +1027,16 @@ export circuit voidUnfunded(id: Bytes<32>): [] {
 
 // Default an epoch that was not settled by its grace deadline (anchor: the stored
 // activatedAt; a late proof is flagged by settling it in grace, not defaulted).
-// Slashes the bond.
+// Slashes the bond. I8 (DD-26): an epoch whose root was never published is not
+// defaultable at all — the MM could not settle it, and attester failure never slashes
+// the MM (the product spec voids such an epoch: settlement.ts "voided-no-root").
 export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
   const key = disclose(id);
   const e = disclose(epoch);
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   assert(!settledAt.member(persistentHash<EpochRef>(EpochRef { id: key, epoch: e })), "epoch was settled");
+  assert(publishedRoot.member(e), "epoch root never published: not defaultable (I8)");
   assert(blockTimeGte(graceDeadline(key, e)), "proving window open");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
   slashed.insert(key, true);
@@ -1026,5 +1044,58 @@ export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
   // M3: the whole escrowed bond goes to the beneficiary fixed at posting.
   if (escrowed.member(key)) {
     payOut(key, bondBeneficiary.lookup(key), escrowed.lookup(key).value);
+  }
+}
+
+// --- I8: attester-root registry (Option B, DD-26) --------------------------------
+//
+// Each committee member submits the (epoch, root, cid) it attests in its own publishRoot
+// transaction; the contract counts distinct members and publishes the root at 2 of 3.
+// Members authenticate by proving knowledge of their secret (I9: ownPublicKey() is chosen
+// by the prover, so it cannot authenticate). One vote per member per epoch: re-voting
+// the same (root, cid) is a no-op and a different one reverts, so a member cannot
+// equivocate and no two roots can both reach 2 of 3. Declared last so earlier ledger
+// indices do not move.
+
+// attesterId(secret) of each member, fixed by the constructor.
+export ledger committee: Set<Bytes<32>>;
+// persistentHash(MemberEpoch) -> persistentHash(RootVote) the member voted for.
+export ledger memberVote: Map<Bytes<32>, Bytes<32>>;
+// persistentHash(RootVote) -> distinct members that voted for exactly that triple.
+export ledger rootVoteCount: Map<Bytes<32>, Counter>;
+// epoch -> the root (and its tree's cid) that reached the threshold.
+export ledger publishedRoot: Map<Uint<64>, Bytes<32>>;
+export ledger publishedCid: Map<Uint<64>, Bytes<64>>;
+
+struct MemberEpoch { member: Bytes<32>, epoch: Uint<64> }
+struct RootVote { epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64> }
+
+// The submitting member's secret. Never disclosed; only attesterId(secret) is.
+witness attesterSecret(): Bytes<32>;
+
+// Domain-separated member id (distinct from engagement ids, which hash a bare secret).
+circuit attesterId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "mmr:attester:v1"), secret]);
+}
+
+export circuit publishRoot(epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64>): [] {
+  const THRESHOLD: Uint<64> = 2;
+  const member = disclose(attesterId(attesterSecret()));
+  assert(committee.member(member), "not a committee attester (I8)");
+  const e = disclose(epoch);
+  const vk = persistentHash<MemberEpoch>(MemberEpoch { member: member, epoch: e });
+  const ck = persistentHash<RootVote>(RootVote { epoch: e, root: disclose(root), cid: disclose(cid) });
+  if (memberVote.member(vk)) {
+    assert(memberVote.lookup(vk) == ck, "attester already voted another root for this epoch (I8)");
+  } else {
+    memberVote.insert(vk, ck);
+    if (!rootVoteCount.member(ck)) {
+      rootVoteCount.insertDefault(ck);
+    }
+    rootVoteCount.lookup(ck).increment(1);
+    if (rootVoteCount.lookup(ck).read() >= THRESHOLD && !publishedRoot.member(e)) {
+      publishedRoot.insert(e, disclose(root));
+      publishedCid.insert(e, disclose(cid));
+    }
   }
 }

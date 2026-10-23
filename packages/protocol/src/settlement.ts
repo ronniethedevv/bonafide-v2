@@ -18,10 +18,10 @@ export type EpochOutcome =
   | "defaulted"; // no valid proof by the grace deadline → default (slash)
 
 export interface RootState {
-  /** Unix seconds the signed root was published. */
+  /** Unix seconds the root was published. */
   publishedTs: number;
-  /** Number of attester signatures on (epoch, root, cid). */
-  signatureCount: number;
+  /** Distinct committee members that voted for (epoch, root, cid) via publishRoot. */
+  voteCount: number;
 }
 
 export interface SettlementInput {
@@ -29,7 +29,7 @@ export interface SettlementInput {
   now: number;
   /** null until attesters publish. */
   root: RootState | null;
-  /** Required attester signatures (2 of 3 in v1). */
+  /** Required attester votes (2 of 3 in v1). */
   threshold: number;
   /** A challenge was raised within the challenge window. */
   challenged: boolean;
@@ -51,7 +51,7 @@ export interface SettlementResult {
 /** I8 helper: the root is settled (counts for scoring) at `now`. */
 export function rootIsSettled(input: Omit<SettlementInput, "proofAcceptedTs">): boolean {
   const { root, threshold, challenged, now, timing } = input;
-  if (root === null || root.signatureCount < threshold || challenged) return false;
+  if (root === null || root.voteCount < threshold || challenged) return false;
   return now >= root.publishedTs + timing.challengeSeconds;
 }
 
@@ -59,7 +59,7 @@ export function evaluateEpochSettlement(input: SettlementInput): SettlementResul
   const { epochEndTs, now, root, threshold, challenged, proofAcceptedTs, timing } = input;
   const attesterDeadline = epochEndTs + timing.attesterTimeoutSeconds;
 
-  const noValidRoot = root === null || root.signatureCount < threshold;
+  const noValidRoot = root === null || root.voteCount < threshold;
   if (noValidRoot) {
     return {
       outcome: now >= attesterDeadline ? "voided-no-root" : "awaiting-root",
