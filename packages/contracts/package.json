@@ -22,5 +22,8 @@
     "@mmr/protocol": "workspace:*",
     "@mmr/prover": "workspace:*",
     "@mmr/watcher": "workspace:*"
+  },
+  "exports": {
+    "./epoch_proof": "./dist/epoch_proof/contract/index.js"
   }
 }
