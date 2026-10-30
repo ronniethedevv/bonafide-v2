@@ -107,10 +107,24 @@ For **`apps/web` (wallet-connect)**: `@midnight-ntwrk/dapp-connector-api@4.0.1` 
 `@midnight-ntwrk/wallet-api` (obsolete legacy → use `wallet-sdk`); `@midnight-ntwrk/ledger`
 & `@midnight-ntwrk/zswap` (zswap types now live inside `ledger-v8`, which midnight-js
 pins internally at `8.1.0`); the `@midnight-ntwrk/midnight-js` barrel (install the individual `-*`
-packages). **ledger-v8 fix (preflight):** two copies (8.1.0 + 8.1.3) otherwise cause
-`instanceof` errors — collapse them with a root **`"overrides": { "@midnight-ntwrk/ledger-v8":
-"8.1.0" }`** rather than adding it as a dep. Commit the lockfile; add any package with
-a native postinstall to root `onlyBuiltDependencies`.
+packages).
+
+**Native-copy pins (confirmed against the Midnight toolchain-mismatch runbook) — use
+`pnpm.overrides`, not top-level `overrides` (pnpm reads the former):**
+```jsonc
+"pnpm": { "overrides": {
+  "@midnight-ntwrk/ledger-v8": "8.1.0",
+  "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+} }
+```
+- `ledger-v8` → 8.1.0: collapses the 8.1.0/8.1.3 copies (`expected instance of` otherwise).
+- **`onchain-runtime-v3` → 3.0.0 (do NOT skip this):** pinning it is a documented
+  *consumer requirement* when midnight-js sits beside a retained/ledger-8 contract.
+  Two copies (3.0.0 + 3.1.2) only work when the contract and midnight-js reach the
+  **same** one; if they don't, deploy construction fails with `expected instance of
+  ContractMaintenanceAuthority`. The override removes that topology risk entirely.
+- `onlyBuiltDependencies` must include **`classic-level`** (native postinstall for the
+  LevelDB private-state provider — silently skipped otherwise). Commit the lockfile.
 
 ## Phase 2 — Locate the compiled contract module + keys (done, just point at it)
 
@@ -125,19 +139,40 @@ txs (the hard part — I1–I10 openings — is already written there).
 
 ## Phase 3 — New package `@mmr/dapp` (deploy + interact)
 
-1. **Providers** — wire the midnight-js providers to the testnet node + indexer + the
-   local proof server. **[verify provider wiring]**
-2. **Committee keys (demo)** — generate 3 attester secrets, derive their
-   `Bytes<32>` ids (same scheme the harness uses), pass them to the `constructor`.
-   The interact layer holds all 3 for the demo (a real committee would be 3 separate
-   parties); note this clearly in the demo caption.
-3. **Deploy** — submit the deploy tx, capture the contract address. `pnpm --filter
-   @mmr/dapp deploy`, writes the address to a gitignored file.
-4. **Interact** — one function per circuit that builds + submits the tx, feeding
-   private inputs from the existing stack: `@mmr/indexer` (the live BROOMY/WETH epoch
-   already produces a real `rootOfRoots` + published tree), `@mmr/prover` (openings),
-   `@mmr/watcher` (claim plan). Each call proves via the proof server and submits.
-5. **Read state** — query the indexer for `status`, `publishedRoot`, `epochRecords`
+1. **Providers** — one `MidnightProviders` object (all six required slots:
+   `privateStateProvider`, `publicDataProvider`, `zkConfigProvider` (NodeZkConfigProvider),
+   `proofProvider`, `walletProvider`, `midnightProvider`; `loggerProvider` optional).
+   **The same providers object is passed to deploy and every call.**
+2. **CompiledContract** — `CompiledContract.make("epoch_proof", Contract).pipe(
+   CompiledContract.withWitnesses(w), CompiledContract.withCompiledFileAssets(zkPath))`.
+   Import `CompiledContract` from `@midnight-ntwrk/midnight-js-protocol/compact-js`,
+   ledger types from `.../ledger`. **`.pipe` form, not nested** (nested fails to
+   type-check on 4.1.1). (preflight: `new Contract(witnesses)` is wrong for 4.1.1.)
+3. **Committee keys (demo)** — generate 3 attester secrets, derive their `Bytes<32>`
+   ids, pass them as the `constructor` arg (ledger field is `committee`). ⚠ For the
+   demo they're deterministic (KAT fill) → **publicly derivable, anyone could publish
+   roots** — fine for a demo *with the caption*, but real random secrets before this
+   is more than a demo.
+4. **Deploy** — `deployContract(providers, { compiledContract, privateStateId,
+   initialPrivateState, args: [committee] })`; address = `deployed.deployTxData.public.contractAddress`.
+   Invoke via **`pnpm --filter @mmr/dapp run deploy`** (bare `deploy` is a pnpm
+   built-in and never reaches the script — preflight). Write the address to a
+   gitignored file.
+5. **Interact** — reattach with `findDeployedContract(providers, { contractAddress,
+   compiledContract, privateStateId, initialPrivateState })`, then call each circuit
+   as **`found.callTx.<circuit>(args)`** — that single call builds + proves + balances
+   + submits and returns `{ public: { txId, blockHeight } }`. **No manual
+   `UnboundTx → balanceTx → submitTx`** (that low-level handle flow is a 5.0.0 concern,
+   not needed for 4.1.1 contract calls — the open question is resolved). Private inputs
+   come from `@mmr/indexer` (real BROOMY/WETH `rootOfRoots` + tree), `@mmr/prover`
+   (openings), `@mmr/watcher` (claim plan). **Note (ledger 8):** `findDeployedContract`
+   has a retained-era overload that takes the raw contract instance; confirm the attach
+   path against the live node.
+6. **Proof-server sanity check BEFORE the heavy `proveEpoch`:** prove one *cheap*
+   circuit first (e.g. `register`) to confirm proof-server 8.1.3 accepts our
+   `zkir/*.bzkir` ZKIR format. A ZKIR-version mismatch fails *at the proof server* —
+   catch it on a 10-second proof, not after minutes of `proveEpoch`.
+7. **Read state** — query the indexer for `status`, `publishedRoot`, `epochRecords`
    root, profile counters, to confirm each tx landed.
 
 ## Phase 4 — The scripted happy-path transcript (the demo)
