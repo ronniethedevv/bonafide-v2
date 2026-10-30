@@ -18,6 +18,14 @@
 > matrix lists 0.5.1 — confirm the emitted module + keys load on Preview, recompile
 > with the matrix toolchain only if they don't.)
 
+## Step 0 — back up the keyset BEFORE anything touches `compact` (do this first)
+
+The ~525 MB keyset (`packages/contracts/dist/epoch_proof/keys` + `zkir`) is
+**gitignored and took ~34 min / 9.5 GB to generate** — it is not recoverable from
+git. Copy it somewhere safe (another dir / drive) **before** any step that could
+run `compact` again (e.g. the open `--skip-zk` question). Losing it is the only
+expensive mistake available here, and it's fully avoidable.
+
 ## The contract, as it is now (11 circuits, keyed)
 
 `packages/contracts/src/epoch_proof.compact`, all keyed (final keygen DD, `k`: proveEpoch 20,
@@ -81,7 +89,10 @@ Add to **`packages/dapp` (`@mmr/dapp`)**, all `@midnight-ntwrk/midnight-js-*` at
 - `midnight-js-indexer-public-data-provider` — read public contract state
 - `midnight-js-level-private-state-provider` — persist private state (LevelDB)
 - `midnight-js-http-client-proof-provider` — talk to the local proof server
-- `midnight-js-fetch-zk-config-provider` — fetch ZK config/keys
+- `midnight-js-node-zk-config-provider` — load the **local** keys for headless deploy
+  (preflight correction: use this, **not** `fetch-zk-config-provider`, which is for
+  remote config). It reads `keys/*.prover|.verifier` + `zkir/*.bzkir`.
+- `midnight-js-protocol` — ledger types (via `/ledger`)
 - `@midnight-ntwrk/compact-js@2.5.1`, `@midnight-ntwrk/platform-js@2.2.4`,
   `@midnight-ntwrk/onchain-runtime-v3@3.0.0`
 - **`@midnightntwrk/wallet-sdk@1.2.0`** — headless seed signing. **Note the
@@ -95,16 +106,19 @@ For **`apps/web` (wallet-connect)**: `@midnight-ntwrk/dapp-connector-api@4.0.1` 
 **Do NOT install** (confirmed wrong/obsolete): `@midnight-ntwrk/wallet` &
 `@midnight-ntwrk/wallet-api` (obsolete legacy → use `wallet-sdk`); `@midnight-ntwrk/ledger`
 & `@midnight-ntwrk/zswap` (zswap types now live inside `ledger-v8`, which midnight-js
-pins internally at `8.1.0` — **do not add `ledger-v8` as a direct dep**, it causes
-`instanceof` errors from duplicate copies); the `@midnight-ntwrk/midnight-js` barrel
-(install the individual `-*` packages). Commit the lockfile; add any package with a
-native postinstall to root `onlyBuiltDependencies`.
+pins internally at `8.1.0`); the `@midnight-ntwrk/midnight-js` barrel (install the individual `-*`
+packages). **ledger-v8 fix (preflight):** two copies (8.1.0 + 8.1.3) otherwise cause
+`instanceof` errors — collapse them with a root **`"overrides": { "@midnight-ntwrk/ledger-v8":
+"8.1.0" }`** rather than adding it as a dep. Commit the lockfile; add any package with
+a native postinstall to root `onlyBuiltDependencies`.
 
 ## Phase 2 — Locate the compiled contract module + keys (done, just point at it)
 
 `compact compile` already emitted the contract's generated TS module + keys under
-`packages/contracts/build/epoch_proof` (keys gitignored). Confirm the module exports
-all 11 circuits above and that the keys are the final-layout regen (DD keygen).
+`packages/contracts/dist/epoch_proof` (**`dist/`, not `build/`** — preflight
+correction; keys gitignored, loaded by `NodeZkConfigProvider` from `keys/*.prover|.verifier`
++ `zkir/*.bzkir`). The module exports all 11 circuits above (preflight: 11/11
+instantiate under `compact-runtime@0.16.0`; no recompile).
 `packages/contracts/test/harness.ts` shows how to assemble each circuit's witnesses
 and run it via `compact-runtime` — **reuse that witness assembly verbatim** for real
 txs (the hard part — I1–I10 openings — is already written there).
@@ -167,8 +181,15 @@ bond, block-time gates, 2-of-3 attester registry). This is what a rushing judge 
 ## Gotchas / honesty notes
 
 - **Proof time:** `proveEpoch` (k=20, ~600k rows) is heavy; a single proof can take
-  real minutes on a laptop proof server. Budget for it; the demo can pre-generate the
-  slow proofs and submit live, but say so.
+  real minutes on a laptop proof server — **raise the default ~5-min proof timeout**
+  (preflight blocker). The demo can pre-generate the slow proofs and submit live, but
+  say so.
+- **Last unverified Phase-3 link (verify via docs, don't guess):** on midnight-js
+  4.1.1, the exact contract-**call** sequence (`UnboundTransaction → balanceTx →
+  submitTx`) and whether `callTx`/`findDeployedContract` take the same providers
+  object. Confirm against the docs/kapa MCP before wiring `interact`; everything else
+  is confirmed against real package contents.
+- **testkit-js dep scope:** keep `@midnight-ntwrk/testkit-js@4.1.1` a devDependency.
 - **[verify] everything SDK:** package names, versions, endpoints, the faucet URL,
   the proof-server image, and every provider/connector API shape change with the
   testnet. Confirm against docs.midnight.network and run it before committing; don't
