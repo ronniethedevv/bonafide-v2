@@ -41,6 +41,16 @@ export interface DappConfig {
   deploySeed: string;
   /** Encrypts the LevelDB private-state store (which holds contract signing keys). */
   privateStatePassword: string;
+  /**
+   * Amount added to every fee the wallet declares. A DUST spend has no refund,
+   * so this is spent in full on ordinary fees; `feeBlocksMargin` already covers
+   * price rises, and the SDK default is 0n. It also inflates what a first
+   * registration must wait to accrue, since `estimateRegistration` includes it,
+   * so keep it 0 unless a fee is actually coming up short.
+   */
+  additionalFeeOverhead: bigint;
+  /** How long to wait for retroactive DUST to accrue to a NIGHT UTXO, ms. */
+  dustWaitTimeoutMs: number;
 }
 
 function env(key: string, fallback: string): string {
@@ -78,5 +88,7 @@ export function loadConfig(): DappConfig {
     syncTimeoutMs: Number(env("MMR_SYNC_TIMEOUT_MS", String(90 * 60 * 1000))),
     deploySeed: requireEnv("DEPLOY_SEED", "MIDNIGHT_WALLET_SEED"),
     privateStatePassword: env("PRIVATE_STATE_PASSWORD", "mmr-local-private-state"),
+    additionalFeeOverhead: BigInt(env("MMR_ADDITIONAL_FEE_OVERHEAD", "0")),
+    dustWaitTimeoutMs: Number(env("MMR_DUST_WAIT_TIMEOUT_MS", String(30 * 60 * 1000))),
   };
 }

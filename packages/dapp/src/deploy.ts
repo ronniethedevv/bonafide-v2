@@ -46,10 +46,12 @@ async function main(): Promise<void> {
   console.log(`  NIGHT          ${wallet.nightBalance}`);
   console.log(`  DUST           ${wallet.dustBalance}`);
   if (wallet.dustBalance === 0n) {
-    await wallet.stop();
-    throw new Error(
-      "Wallet holds no DUST, so no fee can be paid. Fund with tNIGHT, register " +
-        "the UTXOs to designate a DUST address, and wait for tDUST to accrue.",
+    // A warning, not a gate: these balance readers probe a state shape that
+    // varies by SDK build, so the wallet's own balancer is the authority on
+    // whether a fee can actually be paid.
+    console.warn(
+      "  ! read DUST balance as 0. If balancing fails below, fund with tNIGHT, " +
+        "register the UTXOs to designate a DUST address, and wait for tDUST to accrue.",
     );
   }
 

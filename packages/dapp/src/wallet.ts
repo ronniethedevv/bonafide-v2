@@ -24,6 +24,7 @@ import type {
 } from "@midnight-ntwrk/midnight-js-types";
 import {
   DustWallet,
+  type FacadeState,
   HDWallet,
   NoOpTransactionHistoryStorage,
   PublicKey,
@@ -58,9 +59,13 @@ export interface HeadlessWallet {
   readonly facade: WalletFacade;
   /** Implements both WalletProvider and MidnightProvider; pass as both. */
   readonly provider: WalletProvider & MidnightProvider;
+  /** Holds the NIGHT (unshielded) key: signs data and yields the verifying key. */
+  readonly keystore: UnshieldedKeystore;
   readonly shieldedAddress: string;
   readonly nightBalance: bigint;
   readonly dustBalance: bigint;
+  /** The facade state as of the sync that `buildHeadlessWallet` waited for. */
+  readonly state: FacadeState;
   stop(): Promise<void>;
 }
 
@@ -96,8 +101,9 @@ export async function buildHeadlessWallet(cfg: DappConfig): Promise<HeadlessWall
   const configuration = {
     ...connection,
     costParameters: {
-      // A DUST spend has no refund, so this overhead is spent in full.
-      additionalFeeOverhead: 300_000_000_000_000n, // 0.3 DUST
+      // A DUST spend has no refund, so this overhead is spent in full; it also
+      // raises what a first dust registration must wait to accrue. Default 0.
+      additionalFeeOverhead: cfg.additionalFeeOverhead,
       feeBlocksMargin: 5,
     },
   };
@@ -141,9 +147,11 @@ export async function buildHeadlessWallet(cfg: DappConfig): Promise<HeadlessWall
   return {
     facade,
     provider,
-    shieldedAddress: String(await facade.shielded.getAddress()),
+    keystore,
+    shieldedAddress: formatShieldedAddress(await facade.shielded.getAddress()),
     nightBalance: readNight(state),
     dustBalance: readDust(state),
+    state,
     stop: () => facade.stop(),
   };
 }
@@ -187,6 +195,29 @@ async function waitForSync(facade: WalletFacade, cfg: DappConfig) {
 }
 
 /**
+ * A ShieldedAddress is an object, so plain String() yields "[object Object]".
+ * Prefer the bech32m encoding and fall back to the coin public key.
+ */
+function formatShieldedAddress(addr: unknown): string {
+  const a = addr as {
+    coinPublicKeyString?: () => string;
+    constructor?: { codec?: { encode?: (n: string, d: unknown) => unknown } };
+  };
+  try {
+    const encoded = a.constructor?.codec?.encode?.(getNetworkId(), addr);
+    if (encoded) return String(encoded);
+  } catch {
+    // fall through to the coin public key
+  }
+  try {
+    if (a.coinPublicKeyString) return a.coinPublicKeyString();
+  } catch {
+    // fall through
+  }
+  return "<unprintable address>";
+}
+
+/**
  * Renders one sub-wallet's sync position as "applied/target". Shielded and DUST
  * report appliedIndex/highestRelevantWalletIndex; unshielded reports
  * appliedId/highestTransactionId. Names vary by SDK build, hence the probing.
@@ -209,9 +240,13 @@ function readNight(state: unknown): bigint {
 }
 
 function readDust(state: unknown): bigint {
-  const s = state as { dust?: { walletBalance?: (at: Date) => bigint } };
+  // DustWalletState exposes balance(time); older builds used walletBalance.
+  const s = state as {
+    dust?: { balance?: (at: Date) => bigint; walletBalance?: (at: Date) => bigint };
+  };
   try {
-    return s.dust?.walletBalance?.(new Date()) ?? 0n;
+    const now = new Date();
+    return s.dust?.balance?.(now) ?? s.dust?.walletBalance?.(now) ?? 0n;
   } catch {
     return 0n;
   }
