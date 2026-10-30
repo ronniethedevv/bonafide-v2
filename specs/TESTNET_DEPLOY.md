@@ -3,11 +3,20 @@
 > The last big "their tech in action" win: a **live contract on Midnight testnet** +
 > a **connect-wallet-and-submit-a-proof** demo, which also produces the project's
 > first **real proof instances** (we have keys for all 11 circuits; no live proof has
-> run yet). This is a **laptop/testnet runbook** — this cloud session can't reach
-> Midnight hosts (proxy-blocked), so every SDK-specific line below is **[verify]**:
-> confirm the current package, version, endpoint, and API shape against
-> https://docs.midnight.network before wiring, and **never assume an API — check it,
-> run it against testnet, and only then commit**. No mocking.
+> run yet). This is a **laptop/testnet runbook** — the cloud session can't reach
+> Midnight hosts (proxy-blocked); the specifics below were **confirmed against the
+> Preview support matrix** (docs.midnight.network, Oct 2026) and are pinned, not
+> guessed. Still: **run each step before committing SDK code**, and `npm view` each
+> pin installs before relying on it (one pin — `@midnightntwrk/wallet-sdk` — has an
+> unusual scope, see Phase 0). No mocking.
+>
+> **Target network: Preview** (testnet-02 is retired). Direct public endpoints, no
+> API key. **Key de-risk:** Preview runs **ledger 8** (`compact-runtime 0.16.0`),
+> which is exactly what our contract is compiled + keyed against — so **no recompile,
+> no re-keygen**. Do **not** move to `compact-runtime 0.19/0.20` (ledger 9): those
+> would fail to deploy on Preview. (Double-check: our devtools `compact` was 0.5.3; the
+> matrix lists 0.5.1 — confirm the emitted module + keys load on Preview, recompile
+> with the matrix toolchain only if they don't.)
 
 ## The contract, as it is now (11 circuits, keyed)
 
@@ -39,33 +48,57 @@ The laptop agent can't create a wallet, pass a faucet captcha, or install browse
 extensions for you. Do these, then hand the agent the endpoints/paths (never paste a
 seed phrase into chat — put it in a gitignored `.env`).
 
-- [ ] **A Midnight-capable wallet.** Lace with Midnight support (browser), *and* a
-      seed/headless wallet for the scripted deploy (so the deploy script can sign
-      without clicking). **[verify current wallet + how to get a headless seed]**
-- [ ] **tDUST** (testnet gas) from the Midnight faucet into that wallet. **[verify
-      faucet URL + how much you need for ~15 proof-bearing txs]**
-- [ ] **The proof server running locally.** Midnight ships it as a Docker image; it
-      generates proofs client-side at submit time. Needs Docker on the laptop.
-      **[verify image name + port]**
-- [ ] **Testnet endpoints:** node (substrate/RPC) URL + indexer (GraphQL/pubsub) URL.
-      **[verify current URLs]**
-- [ ] Node 22 + the repo toolchain (already on the laptop).
+- [ ] **Lace wallet** (Chrome extension, Midnight built-in). Create it, back up the
+      24-word mnemonic, switch Network → **Preview**, copy the Midnight unshielded
+      address (`mn_addr_preview…`). The same mnemonic is the headless deploy seed.
+- [ ] **Fund it: tNIGHT → tDUST (two steps).** The faucet
+      (`https://midnight-tmnight-preview.nethermind.dev/`) dispenses **tNIGHT**, not
+      tDUST. After receiving tNIGHT, **register the tNIGHT UTXOs to designate a DUST
+      address**, which then **accrues tDUST over time** to pay fees. Fund early and
+      wait for a non-zero tDUST balance before deploying.
+- [ ] **Proof server** (Docker): `docker run -p 6300:6300 midnightntwrk/proof-server:8.1.3`
+      — confirm with `curl http://localhost:6300`. (Note the **unhyphenated** image
+      scope `midnightntwrk`.)
+- [ ] Node 22 + the repo toolchain (already on the laptop) + Docker.
 
-Put the non-secret ones in `packages/dapp/.env` (gitignored): `MIDNIGHT_NODE_URL`,
-`MIDNIGHT_INDEXER_URL`, `PROOF_SERVER_URL`, and the deploy seed in `DEPLOY_SEED`
-(gitignored, never committed — golden rule).
+Put the non-secrets in `packages/dapp/.env` (gitignored), and the mnemonic in
+`DEPLOY_SEED` (gitignored, never committed — golden rule):
+```
+MIDNIGHT_NODE_URL=https://rpc.preview.midnight.network
+MIDNIGHT_INDEXER_URL=https://indexer.preview.midnight.network/api/v4/graphql
+MIDNIGHT_INDEXER_WS_URL=wss://indexer.preview.midnight.network/api/v4/graphql/ws
+PROOF_SERVER_URL=http://localhost:6300
+NETWORK_ID=preview
+DEPLOY_SEED=<24-word-mnemonic-never-commit>
+```
 
-## Phase 1 — Confirm the SDK against live docs ([verify], before writing code)
+## Phase 1 — SDK packages (Preview support matrix, confirmed — pin these)
 
-Already used: `@midnight-ntwrk/compact-runtime`. The dApp layer additionally needs,
-**confirm exact names + versions on npm/docs** (do not trust this list blindly):
-- `@midnight-ntwrk/midnight-js-*` — contract providers + tx builder
-- `@midnight-ntwrk/wallet` + `@midnight-ntwrk/wallet-api`
-- `@midnight-ntwrk/dapp-connector-api` — browser wallet connect
-- `@midnight-ntwrk/ledger`, `@midnight-ntwrk/zswap`
+We already have `@midnight-ntwrk/compact-runtime@0.16.0` ✅ (ledger 8, Preview-correct).
+Add to **`packages/dapp` (`@mmr/dapp`)**, all `@midnight-ntwrk/midnight-js-*` at **4.1.1**:
+- `midnight-js-contracts` — deploy + call; `midnight-js-types`; `midnight-js-network-id`
+  (`setNetworkId('preview')`); `midnight-js-utils`
+- `midnight-js-indexer-public-data-provider` — read public contract state
+- `midnight-js-level-private-state-provider` — persist private state (LevelDB)
+- `midnight-js-http-client-proof-provider` — talk to the local proof server
+- `midnight-js-fetch-zk-config-provider` — fetch ZK config/keys
+- `@midnight-ntwrk/compact-js@2.5.1`, `@midnight-ntwrk/platform-js@2.2.4`,
+  `@midnight-ntwrk/onchain-runtime-v3@3.0.0`
+- **`@midnightntwrk/wallet-sdk@1.2.0`** — headless seed signing. **Note the
+  unhyphenated scope `@midnightntwrk`** (not `@midnight-ntwrk`); `npm view` it first —
+  if it's not on public npm, find the documented install path before wiring.
+- dev: `@midnight-ntwrk/testkit-js@4.1.1`
 
-Pin versions you actually install; add them to `onlyBuiltDependencies` in the root
-`package.json` if any has a native postinstall, and commit the lockfile.
+For **`apps/web` (wallet-connect)**: `@midnight-ntwrk/dapp-connector-api@4.0.1` +
+`@midnight-ntwrk/midnight-js-dapp-connector-proof-provider@4.1.1`.
+
+**Do NOT install** (confirmed wrong/obsolete): `@midnight-ntwrk/wallet` &
+`@midnight-ntwrk/wallet-api` (obsolete legacy → use `wallet-sdk`); `@midnight-ntwrk/ledger`
+& `@midnight-ntwrk/zswap` (zswap types now live inside `ledger-v8`, which midnight-js
+pins internally at `8.1.0` — **do not add `ledger-v8` as a direct dep**, it causes
+`instanceof` errors from duplicate copies); the `@midnight-ntwrk/midnight-js` barrel
+(install the individual `-*` packages). Commit the lockfile; add any package with a
+native postinstall to root `onlyBuiltDependencies`.
 
 ## Phase 2 — Locate the compiled contract module + keys (done, just point at it)
 
