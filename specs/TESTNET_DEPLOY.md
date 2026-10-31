@@ -335,27 +335,55 @@ is purely a local node_modules dedupe); the private-state LevelDB store is untou
 > were compiled with `--feature-zkir-v3` — recompile **without** it (ZKIR v2) and retry.
 > Catch this on the cheap `register` proof, before the heavy `proveEpoch`.
 
-## Phase 4 — The scripted happy-path transcript (the demo)
+## Phase 4 — The scripted interact transcript (the demo)
 
-Script the full lifecycle on testnet for one synthetic engagement, printing each tx
-hash + the resulting ledger state. Use the **real** root/tree from the committed live
-epoch (`packages/watcher/fixtures/`) so the inputs are genuine:
+Implemented in **`packages/dapp/src/interact.ts`** (`pnpm --filter @mmr/dapp run interact`).
+It reattaches to the deployed contract with `findDeployedContract`, stages each circuit's
+witnesses into the private state, and calls `found.callTx.<circuit>(...)`, printing each tx
+hash + block.
 
-```
-deploy(committee of 3)
-→ register(tier, now)                         → id
-→ postBond(id, tierMin, beneficiary)
-→ activate(id, root1, now)                     // root1 = epoch-1 rootOfRoots
-→ publishRoot(1, root1, cid) ×2 distinct attesters   // ⇒ publishedRoot[1]
-→ proveFunding(id, root1)                       // Σ from_treasury ≥ loan
-→ for each proven epoch e:
-     publishRoot(e, rootE, cid) ×2  →  proveEpoch(id, rootE, e)  →  settleEpoch(id, e, now)  →  releaseEpoch(id, e, tranche)
-→ claim(…)                                      // public reputation record
-```
+**The lifecycle splits on the real block-time gates** (confirmed from the circuit source):
 
-That printed transcript (tx hashes + state transitions) **is** the submission demo,
-and each proof is a real instance — it also closes the long-open "proving benchmark"
-(record wall-clock per circuit; `proveEpoch` at k=20 is the heavy one).
+- **Live-submittable in one session** (no epoch-end gate — each a real proof + tx):
+
+  ```
+  register(tier=1, now) → id
+  [opt] postBond(id, tierMin, beneficiary)        // needs a real escrow coin (Zswap)
+  activate(id, root, now)                          // Registered → Funded; within 72h window
+  publishRoot(1, root, cid) ×2 distinct attesters  // ⇒ publishedRoot[1]
+  proveFunding(id, root)                            // Σ from_treasury ≥ loan_L0
+  proveEpoch(id, root, 1)                           // the heavy k=20 delivery proof (I1–I7)
+  ```
+
+- **Time-gated — NOT runnable now** (`settleEpoch` asserts `blockTimeGte(epochEnd)`,
+  `epochEnd = activatedAt + e×86400` = 24h; H3 forbids backdating activation):
+  `settleEpoch → releaseEpoch → claim`. Re-run `interact.ts` ~24h after activation (then
+  after each challenge window), or exercise them in the time-advancing KAT suite, which
+  sets the block clock. This is the real schedule, not a demo gap.
+
+**Timestamps must be real wall-clock `now`** (H3 10-min tolerance) — not the KAT's fixed
+block time. **Committee alignment:** `interact.ts` derives the attester secrets with the
+same `committee.ts generateAttesterSecrets(3)` the deploy used, so the 2-of-3 `publishRoot`
+votes authenticate against the on-chain committee (membership is proven by the
+`attesterSecret` witness, not the tx signer — one wallet casts both votes).
+
+**Data provenance (the honest caption).** The contract, the attester registry, and every
+proof are real and on Preview. The Merkle tree + openings are built by the same
+`@mmr/merkle`/`@mmr/prover`/`@mmr/indexer` code the KATs verify (`buildScenario`, reused via
+the new `@mmr/contracts/harness` export) — **not mocked**; only the *market numbers* are an
+engineered-compliant scenario, because a passing `proveEpoch` needs the per-wallet
+depth/flow witness **pre-images**, which are the MM's private data and are deliberately not
+in any public artifact. The determinism of the real Base BROOMY/WETH epoch (rootOfRoots
+`0x5a3a6373…04461`) is attested separately by the committed watcher KAT. `interact.ts` has a
+**bonus step** (`MMR_PUBLISH_REAL_ROOT=1`) that publishes that genuine live root into the
+on-chain registry, so the real indexed root is demonstrably accepted by the deployed
+committee.
+
+The printed transcript (tx hashes + state transitions) **is** the submission demo, and also
+closes the long-open proving benchmark (wall-clock per circuit; `proveEpoch` is the heavy
+one). `interact.ts` carries `LAPTOP-VERIFY` markers on the few midnight-js 4.1.1 runtime-API
+shapes that can't be typechecked in the cloud (callTx witness threading, the `register`
+return accessor for the id, the `postBond` coin encoding) — confirm them on first run.
 
 ## Phase 5 — Wallet connect in `apps/web`
 
