@@ -284,6 +284,57 @@ shrinking alone would get the full deploy under ~60%; for `epoch_proof` the real
 spent (rejected pre-block). The CMA key `batch-deploy.ts` may have stored under an
 unused dry-run/failed address is harmless.
 
+## Phase 3.6 — If a contract CALL fails with "expected instance of StateValue / ContractMaintenanceAuthority"
+
+**Observed 2026-10-31**, on the first `register` call after a successful deploy:
+
+```
+Error: Unexpected error executing scoped transaction '<unnamed>':
+  Error: expected instance of StateValue
+    at _assertClass (onchain-runtime-v3@3.0.0/…_wasm_bg.js)
+    at new ChargedState (onchain-runtime-v3@3.0.0/…_wasm_bg.js)
+    at TransactionContextImpl.[…MergeUnsubmittedCallTxData] (midnight-js-contracts@4.1.1)
+```
+
+Not a witness or contract problem — it fails in midnight-js's `MergeUnsubmittedCallTxData`
+on the **ledger state**, before any proving. It is the documented
+**duplicate on-chain-runtime** issue (servicedesk `toolchain-version-mismatch-runbook`,
+`consumer-e2e`): the contract (via `compact-runtime@0.16.0`, which asks `^3.0.0`) and
+midnight-js (via `midnight-js-protocol@4.1.1`, which pins exactly `3.0.0`) resolve to
+**two physical copies** of `@midnight-ntwrk/onchain-runtime-v3`. A WASM class from one
+copy rejects an object minted by the other (`compact-runtime` mints the `StateValue`, so
+`ChargedState` must come from the same copy). The deploy survives it; a **call** does not.
+
+**The copy that must be shared is `onchain-runtime-v3`, not `compact-runtime`** (two
+`compact-runtime` copies are fine if both reach one `onchain-runtime-v3`).
+
+**Fix (applied):** force one physical copy via root `pnpm.overrides`, at the
+**matrix-supported 3.0.0** — the version midnight-js 4.1.1 pins and `compact-runtime
+0.16.0` accepts via `^3.0.0`. **Not 3.1.2:** that is only `compact-runtime`'s newest
+in-range resolution, it is *not* the network-supported version, and forcing it shoves
+`midnight-js-protocol` off its exact pin.
+
+```jsonc
+// package.json (workspace root)
+"pnpm": { "overrides": {
+  "@midnight-ntwrk/ledger-v8": "8.1.0",
+  "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"   // single shared copy; matrix version
+} }
+```
+
+After pulling: `pnpm install` (relinks to one copy — verify with
+`grep -oE "onchain-runtime-v3@[0-9.]+" pnpm-lock.yaml | sort -u` → only `3.0.0`, or
+`pnpm why @midnight-ntwrk/onchain-runtime-v3`). The on-chain contract is unaffected (this
+is purely a local node_modules dedupe); the private-state LevelDB store is untouched.
+
+> **ZKIR note — still unretired after this fix.** The `register` call reaching the proof
+> server is the *point* of the Phase 3 step-6 sanity check: a ZKIR-version mismatch fails
+> **at the proof server** (`Failed Proof Server response … code 400 "bad input"`), not
+> here. Our proof server is 8.1.3; the matrix lists 8.1.0, which reads ZKIR **v2**
+> (`ir-source[v2]`) and rejects v3. If `register` 400s at the proof server, the circuits
+> were compiled with `--feature-zkir-v3` — recompile **without** it (ZKIR v2) and retry.
+> Catch this on the cheap `register` proof, before the heavy `proveEpoch`.
+
 ## Phase 4 — The scripted happy-path transcript (the demo)
 
 Script the full lifecycle on testnet for one synthetic engagement, printing each tx
