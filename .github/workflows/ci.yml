@@ -28,11 +28,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # @mmr/dapp is excluded from CI: it imports the compiled contract module
+      # (@mmr/contracts/epoch_proof), a gitignored `compact compile` artifact that
+      # isn't present in CI (no Compact toolchain, like the skipped contract KATs).
+      # It is typechecked + run on the laptop against Midnight Preview, where the
+      # generated module exists.
       - name: Typecheck
-        run: pnpm -r typecheck
+        run: pnpm -r --filter='!@mmr/dapp' typecheck
 
       - name: Test
-        run: pnpm -r test
+        run: pnpm -r --filter='!@mmr/dapp' test
 
       - name: Build web
         run: pnpm --filter web build
