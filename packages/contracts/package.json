@@ -24,6 +24,7 @@
     "@mmr/watcher": "workspace:*"
   },
   "exports": {
-    "./epoch_proof": "./dist/epoch_proof/contract/index.js"
+    "./epoch_proof": "./dist/epoch_proof/contract/index.js",
+    "./harness": "./test/harness.ts"
   }
 }

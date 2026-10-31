@@ -203,17 +203,29 @@ Root cause (verbatim from the runbook):
 ### Diagnose (offline, no node/wallet/proof-server — risk-free)
 
 `packages/dapp/scripts/measure-deploy-cost.mjs` (verified runbook script, committed).
-It reads `<compiled-dir>/keys/*.verifier`, prices a synthetic deploy with the ledger's
-own cost model, and prints the exact `bytesWritten` + a batch plan. Run it in a
-throwaway dir so its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
+It reads `<compiled-dir>/keys/*.verifier`, prices a *synthetic* deploy with the ledger's
+own cost model, and prints `bytesWritten` + a batch plan. Run it in a throwaway dir so
+its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
 
 ```sh
 mkdir -p /tmp/measure && cd /tmp/measure
 npm i @midnight-ntwrk/ledger-v8@8.1.0
 cp ~/mm-reputation/packages/dapp/scripts/measure-deploy-cost.mjs .
 node measure-deploy-cost.mjs ~/mm-reputation/packages/contracts/dist/epoch_proof
-#   exit 0 = fits (problem is elsewhere), 3 = needs batching, 2 = bad input
+#   exit 3 = needs batching, 0 = synthetic fits (NOT conclusive — see below), 2 = bad input
 ```
+
+> ⚠ **The synthetic measure can rule batching IN (exit 3) but NOT out (exit 0).** It
+> builds the deploy with an **empty** initial ledger state, so it omits the
+> constructor's data. For `epoch_proof` that data is large — the `committee`
+> `Vector<3, Bytes<32>>` plus the `rootVote` / `rootVoteCount` / `publishedRoot`
+> maps — and it is exactly what tips us over. **Measured 2026-10-31:** the synthetic
+> script reported `bytesWritten 26153` for all 11 circuits and exit 0 ("fits"), but
+> the **real** deploy tx (next section, dry run) hit `bytesWritten 30405 > 30000` at
+> just **9** circuits. So the raw 22,541 VK bytes were never the problem; the
+> constructor state was. **`batch-deploy.ts`'s dry run is the authoritative check** —
+> it prices the real `createUnprovenDeployTx` output (constructor included). Trust it
+> over the synthetic measure whenever the contract has a non-trivial constructor.
 
 ### Fix: batched deploy (deploy a subset, then insert the rest)
 
@@ -247,35 +259,131 @@ Wire it with our existing `buildProviders` / `compiledEpochProof` / `emptyPrivat
 5. When all 11 keys are in, `findDeployedContract()` works as normal and Phase 4
    proceeds unchanged.
 
+**Measured plan for `epoch_proof` (2026-10-31 dry run, 60% headroom):**
+- **Batch 1 — subset deploy, 8 circuits:** `register`, `proveEpoch`, `claim`,
+  `activate`, `postBond`, `settleEpoch`, `releaseEpoch`, `voidUnfunded`. Stops at
+  `defaultEngagement` (`bytesWritten 30405 > 30000`). `register` lands in batch 1, so
+  the Phase 3 step-6 proof-server sanity check works before the inserts finish.
+- **Batches 2–4 — 3 single inserts:** `defaultEngagement`, `publishRoot`, `proveFunding`.
+- **4 transactions total.** ~25 min wallet sync before the first tx, then ~18s per
+  insert. The dry-run contract address is re-sampled on execute — use the one the
+  `execute: true` run prints, not the dry-run one.
+- **Before `execute: true`, back up the private-state LevelDB store**
+  (`mmr-epoch-proof-private-state`): the CMA signing key is written there before
+  batch 1 submits, and losing it leaves a permanently half-keyed contract that can
+  never be completed. Our wrapper reads `MMR_BATCH_EXECUTE=1` to submit and
+  `MMR_BATCH_CONTRACT_ADDRESS=<printed address>` to resume after an interruption.
+
 Only if batching is undesirable: shrink the deploy by making non-ledger helpers
 `export pure` / non-exported, or merge near-duplicate circuits (re-keys → recompile).
-The measure script's count tells you whether shrinking alone would get under ~60%.
+Check the real `batch-deploy.ts` dry run (not the synthetic measure) to see whether
+shrinking alone would get the full deploy under ~60%; for `epoch_proof` the real tx is
+~30.4 KB at 9 circuits, so dropping to 8 keyed circuits wouldn't fit all 11 anyway.
 
 **State after a 1010 rejection:** nothing is committed — no contract address, no DUST
 spent (rejected pre-block). The CMA key `batch-deploy.ts` may have stored under an
 unused dry-run/failed address is harmless.
 
-## Phase 4 — The scripted happy-path transcript (the demo)
+## Phase 3.6 — If a contract CALL fails with "expected instance of StateValue / ContractMaintenanceAuthority"
 
-Script the full lifecycle on testnet for one synthetic engagement, printing each tx
-hash + the resulting ledger state. Use the **real** root/tree from the committed live
-epoch (`packages/watcher/fixtures/`) so the inputs are genuine:
+**Observed 2026-10-31**, on the first `register` call after a successful deploy:
 
 ```
-deploy(committee of 3)
-→ register(tier, now)                         → id
-→ postBond(id, tierMin, beneficiary)
-→ activate(id, root1, now)                     // root1 = epoch-1 rootOfRoots
-→ publishRoot(1, root1, cid) ×2 distinct attesters   // ⇒ publishedRoot[1]
-→ proveFunding(id, root1)                       // Σ from_treasury ≥ loan
-→ for each proven epoch e:
-     publishRoot(e, rootE, cid) ×2  →  proveEpoch(id, rootE, e)  →  settleEpoch(id, e, now)  →  releaseEpoch(id, e, tranche)
-→ claim(…)                                      // public reputation record
+Error: Unexpected error executing scoped transaction '<unnamed>':
+  Error: expected instance of StateValue
+    at _assertClass (onchain-runtime-v3@3.0.0/…_wasm_bg.js)
+    at new ChargedState (onchain-runtime-v3@3.0.0/…_wasm_bg.js)
+    at TransactionContextImpl.[…MergeUnsubmittedCallTxData] (midnight-js-contracts@4.1.1)
 ```
 
-That printed transcript (tx hashes + state transitions) **is** the submission demo,
-and each proof is a real instance — it also closes the long-open "proving benchmark"
-(record wall-clock per circuit; `proveEpoch` at k=20 is the heavy one).
+Not a witness or contract problem — it fails in midnight-js's `MergeUnsubmittedCallTxData`
+on the **ledger state**, before any proving. It is the documented
+**duplicate on-chain-runtime** issue (servicedesk `toolchain-version-mismatch-runbook`,
+`consumer-e2e`): the contract (via `compact-runtime@0.16.0`, which asks `^3.0.0`) and
+midnight-js (via `midnight-js-protocol@4.1.1`, which pins exactly `3.0.0`) resolve to
+**two physical copies** of `@midnight-ntwrk/onchain-runtime-v3`. A WASM class from one
+copy rejects an object minted by the other (`compact-runtime` mints the `StateValue`, so
+`ChargedState` must come from the same copy). The deploy survives it; a **call** does not.
+
+**The copy that must be shared is `onchain-runtime-v3`, not `compact-runtime`** (two
+`compact-runtime` copies are fine if both reach one `onchain-runtime-v3`).
+
+**Fix (applied):** force one physical copy via root `pnpm.overrides`, at the
+**matrix-supported 3.0.0** — the version midnight-js 4.1.1 pins and `compact-runtime
+0.16.0` accepts via `^3.0.0`. **Not 3.1.2:** that is only `compact-runtime`'s newest
+in-range resolution, it is *not* the network-supported version, and forcing it shoves
+`midnight-js-protocol` off its exact pin.
+
+```jsonc
+// package.json (workspace root)
+"pnpm": { "overrides": {
+  "@midnight-ntwrk/ledger-v8": "8.1.0",
+  "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"   // single shared copy; matrix version
+} }
+```
+
+After pulling: `pnpm install` (relinks to one copy — verify with
+`grep -oE "onchain-runtime-v3@[0-9.]+" pnpm-lock.yaml | sort -u` → only `3.0.0`, or
+`pnpm why @midnight-ntwrk/onchain-runtime-v3`). The on-chain contract is unaffected (this
+is purely a local node_modules dedupe); the private-state LevelDB store is untouched.
+
+> **ZKIR note — still unretired after this fix.** The `register` call reaching the proof
+> server is the *point* of the Phase 3 step-6 sanity check: a ZKIR-version mismatch fails
+> **at the proof server** (`Failed Proof Server response … code 400 "bad input"`), not
+> here. Our proof server is 8.1.3; the matrix lists 8.1.0, which reads ZKIR **v2**
+> (`ir-source[v2]`) and rejects v3. If `register` 400s at the proof server, the circuits
+> were compiled with `--feature-zkir-v3` — recompile **without** it (ZKIR v2) and retry.
+> Catch this on the cheap `register` proof, before the heavy `proveEpoch`.
+
+## Phase 4 — The scripted interact transcript (the demo)
+
+Implemented in **`packages/dapp/src/interact.ts`** (`pnpm --filter @mmr/dapp run interact`).
+It reattaches to the deployed contract with `findDeployedContract`, stages each circuit's
+witnesses into the private state, and calls `found.callTx.<circuit>(...)`, printing each tx
+hash + block.
+
+**The lifecycle splits on the real block-time gates** (confirmed from the circuit source):
+
+- **Live-submittable in one session** (no epoch-end gate — each a real proof + tx):
+
+  ```
+  register(tier=1, now) → id
+  [opt] postBond(id, tierMin, beneficiary)        // needs a real escrow coin (Zswap)
+  activate(id, root, now)                          // Registered → Funded; within 72h window
+  publishRoot(1, root, cid) ×2 distinct attesters  // ⇒ publishedRoot[1]
+  proveFunding(id, root)                            // Σ from_treasury ≥ loan_L0
+  proveEpoch(id, root, 1)                           // the heavy k=20 delivery proof (I1–I7)
+  ```
+
+- **Time-gated — NOT runnable now** (`settleEpoch` asserts `blockTimeGte(epochEnd)`,
+  `epochEnd = activatedAt + e×86400` = 24h; H3 forbids backdating activation):
+  `settleEpoch → releaseEpoch → claim`. Re-run `interact.ts` ~24h after activation (then
+  after each challenge window), or exercise them in the time-advancing KAT suite, which
+  sets the block clock. This is the real schedule, not a demo gap.
+
+**Timestamps must be real wall-clock `now`** (H3 10-min tolerance) — not the KAT's fixed
+block time. **Committee alignment:** `interact.ts` derives the attester secrets with the
+same `committee.ts generateAttesterSecrets(3)` the deploy used, so the 2-of-3 `publishRoot`
+votes authenticate against the on-chain committee (membership is proven by the
+`attesterSecret` witness, not the tx signer — one wallet casts both votes).
+
+**Data provenance (the honest caption).** The contract, the attester registry, and every
+proof are real and on Preview. The Merkle tree + openings are built by the same
+`@mmr/merkle`/`@mmr/prover`/`@mmr/indexer` code the KATs verify (`buildScenario`, reused via
+the new `@mmr/contracts/harness` export) — **not mocked**; only the *market numbers* are an
+engineered-compliant scenario, because a passing `proveEpoch` needs the per-wallet
+depth/flow witness **pre-images**, which are the MM's private data and are deliberately not
+in any public artifact. The determinism of the real Base BROOMY/WETH epoch (rootOfRoots
+`0x5a3a6373…04461`) is attested separately by the committed watcher KAT. `interact.ts` has a
+**bonus step** (`MMR_PUBLISH_REAL_ROOT=1`) that publishes that genuine live root into the
+on-chain registry, so the real indexed root is demonstrably accepted by the deployed
+committee.
+
+The printed transcript (tx hashes + state transitions) **is** the submission demo, and also
+closes the long-open proving benchmark (wall-clock per circuit; `proveEpoch` is the heavy
+one). `interact.ts` carries `LAPTOP-VERIFY` markers on the few midnight-js 4.1.1 runtime-API
+shapes that can't be typechecked in the cloud (callTx witness threading, the `register`
+return accessor for the id, the `postBond` coin encoding) — confirm them on first run.
 
 ## Phase 5 — Wallet connect in `apps/web`
 
