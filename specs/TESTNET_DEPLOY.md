@@ -203,17 +203,29 @@ Root cause (verbatim from the runbook):
 ### Diagnose (offline, no node/wallet/proof-server — risk-free)
 
 `packages/dapp/scripts/measure-deploy-cost.mjs` (verified runbook script, committed).
-It reads `<compiled-dir>/keys/*.verifier`, prices a synthetic deploy with the ledger's
-own cost model, and prints the exact `bytesWritten` + a batch plan. Run it in a
-throwaway dir so its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
+It reads `<compiled-dir>/keys/*.verifier`, prices a *synthetic* deploy with the ledger's
+own cost model, and prints `bytesWritten` + a batch plan. Run it in a throwaway dir so
+its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
 
 ```sh
 mkdir -p /tmp/measure && cd /tmp/measure
 npm i @midnight-ntwrk/ledger-v8@8.1.0
 cp ~/mm-reputation/packages/dapp/scripts/measure-deploy-cost.mjs .
 node measure-deploy-cost.mjs ~/mm-reputation/packages/contracts/dist/epoch_proof
-#   exit 0 = fits (problem is elsewhere), 3 = needs batching, 2 = bad input
+#   exit 3 = needs batching, 0 = synthetic fits (NOT conclusive — see below), 2 = bad input
 ```
+
+> ⚠ **The synthetic measure can rule batching IN (exit 3) but NOT out (exit 0).** It
+> builds the deploy with an **empty** initial ledger state, so it omits the
+> constructor's data. For `epoch_proof` that data is large — the `committee`
+> `Vector<3, Bytes<32>>` plus the `rootVote` / `rootVoteCount` / `publishedRoot`
+> maps — and it is exactly what tips us over. **Measured 2026-10-31:** the synthetic
+> script reported `bytesWritten 26153` for all 11 circuits and exit 0 ("fits"), but
+> the **real** deploy tx (next section, dry run) hit `bytesWritten 30405 > 30000` at
+> just **9** circuits. So the raw 22,541 VK bytes were never the problem; the
+> constructor state was. **`batch-deploy.ts`'s dry run is the authoritative check** —
+> it prices the real `createUnprovenDeployTx` output (constructor included). Trust it
+> over the synthetic measure whenever the contract has a non-trivial constructor.
 
 ### Fix: batched deploy (deploy a subset, then insert the rest)
 
@@ -247,9 +259,26 @@ Wire it with our existing `buildProviders` / `compiledEpochProof` / `emptyPrivat
 5. When all 11 keys are in, `findDeployedContract()` works as normal and Phase 4
    proceeds unchanged.
 
+**Measured plan for `epoch_proof` (2026-10-31 dry run, 60% headroom):**
+- **Batch 1 — subset deploy, 8 circuits:** `register`, `proveEpoch`, `claim`,
+  `activate`, `postBond`, `settleEpoch`, `releaseEpoch`, `voidUnfunded`. Stops at
+  `defaultEngagement` (`bytesWritten 30405 > 30000`). `register` lands in batch 1, so
+  the Phase 3 step-6 proof-server sanity check works before the inserts finish.
+- **Batches 2–4 — 3 single inserts:** `defaultEngagement`, `publishRoot`, `proveFunding`.
+- **4 transactions total.** ~25 min wallet sync before the first tx, then ~18s per
+  insert. The dry-run contract address is re-sampled on execute — use the one the
+  `execute: true` run prints, not the dry-run one.
+- **Before `execute: true`, back up the private-state LevelDB store**
+  (`mmr-epoch-proof-private-state`): the CMA signing key is written there before
+  batch 1 submits, and losing it leaves a permanently half-keyed contract that can
+  never be completed. Our wrapper reads `MMR_BATCH_EXECUTE=1` to submit and
+  `MMR_BATCH_CONTRACT_ADDRESS=<printed address>` to resume after an interruption.
+
 Only if batching is undesirable: shrink the deploy by making non-ledger helpers
 `export pure` / non-exported, or merge near-duplicate circuits (re-keys → recompile).
-The measure script's count tells you whether shrinking alone would get under ~60%.
+Check the real `batch-deploy.ts` dry run (not the synthetic measure) to see whether
+shrinking alone would get the full deploy under ~60%; for `epoch_proof` the real tx is
+~30.4 KB at 9 circuits, so dropping to 8 keyed circuits wouldn't fit all 11 anyway.
 
 **State after a 1010 rejection:** nothing is committed — no contract address, no DUST
 spent (rejected pre-block). The CMA key `batch-deploy.ts` may have stored under an
