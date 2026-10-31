@@ -175,6 +175,86 @@ txs (the hard part — I1–I10 openings — is already written there).
 7. **Read state** — query the indexer for `status`, `publishedRoot`, `epochRecords`
    root, profile counters, to confirm each tx landed.
 
+## Phase 3.5 — If the deploy is rejected with 1010 "would exhaust the block limits"
+
+**Observed 2026-10-31 on Preview.** The deploy proved fine (~1.8s) and was balanced,
+then the node rejected it at submission with:
+
+```
+1010: Invalid Transaction: Transaction would exhaust the block limits
+```
+
+This is **not** a proof, fee, funding or balance problem (all were ruled out live).
+It is the documented **oversized-contract deploy**: a deploy carries **one verifier
+key per exported circuit**, and together they overflow the per-block write budget.
+Confirmed against the Midnight docs (servicedesk `contract-batched-deploy-runbook`
+and docs.midnight.network `decode-1010-transaction-rejection-errors`), pinned to our
+exact stack (midnight-js 4.1.1 → ledger-v8 8.1.0, compact-runtime 0.16.0).
+
+Root cause (verbatim from the runbook):
+- Per-block `block_limits.bytesWritten` = **50,000** (same on mainnet/preprod/preview).
+- A deploy writes ≈ **1.2 × total verifier-key bytes**, plus the constructor's ledger
+  data (our `committee` Vector + the vote/count/publishedRoot maps' initial state).
+- A single tx may use only **~60–65%** of a block (Substrate `NORMAL_DISPATCH_RATIO`
+  75% minus overheads). Measured live on node 0.22.1: 62.6% included, 68.1% rejected
+  with 1010. So a deploy can be under 100% of the block and still be rejected.
+- **A blind re-run fails identically** — this is deterministic, not a flake.
+
+### Diagnose (offline, no node/wallet/proof-server — risk-free)
+
+`packages/dapp/scripts/measure-deploy-cost.mjs` (verified runbook script, committed).
+It reads `<compiled-dir>/keys/*.verifier`, prices a synthetic deploy with the ledger's
+own cost model, and prints the exact `bytesWritten` + a batch plan. Run it in a
+throwaway dir so its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
+
+```sh
+mkdir -p /tmp/measure && cd /tmp/measure
+npm i @midnight-ntwrk/ledger-v8@8.1.0
+cp ~/mm-reputation/packages/dapp/scripts/measure-deploy-cost.mjs .
+node measure-deploy-cost.mjs ~/mm-reputation/packages/contracts/dist/epoch_proof
+#   exit 0 = fits (problem is elsewhere), 3 = needs batching, 2 = bad input
+```
+
+### Fix: batched deploy (deploy a subset, then insert the rest)
+
+The ledger accepts a deploy with only *some* circuits' keys; the remaining keys are
+added one per tx with a signed `MaintenanceUpdate` (`VerifierKeyInsert`), via the SDK's
+`submitInsertVerifierKeyTx`. Each insert is a flat ~3,003 `bytesWritten` (~6% of a
+block) and ~18s, so they always fit. midnight-js 4.1.1 has **no** one-call batched
+deploy, so use the runbook's `batch-deploy.ts` (dry-run by default; `execute: true` to
+submit). Fetch it verbatim — do not hand-reconstruct it — into `packages/dapp/scripts/`:
+
+```sh
+cd ~/mm-reputation/packages/dapp/scripts
+curl -fsSLO https://raw.githubusercontent.com/midnightntwrk/servicedesk/main/runbooks/contract-batched-deploy-runbook/scripts/batch-deploy.ts
+curl -fsSLO https://raw.githubusercontent.com/midnightntwrk/servicedesk/main/runbooks/contract-batched-deploy-runbook/scripts/batch-deploy.NOTES.md
+```
+
+Wire it with our existing `buildProviders` / `compiledEpochProof` / `emptyPrivateState`
+(same objects `deploy.ts` uses) and the `[committee]` constructor arg. Then:
+1. **Dry run** (default): prints how many of the 11 circuits fit in batch 1 and how
+   many single-insert txs follow. Submits nothing.
+2. **Execute** (`execute: true`): batch 1 is the subset deploy (CMA signing key +
+   initial private state are persisted **before** submit — back up the private-state
+   store; without that key the remaining circuits can never be added), then one
+   `submitInsertVerifierKeyTx` per remaining circuit, sequentially.
+3. Use `priorityCircuits` to land `register` first (the cheap proof-server sanity
+   check in Phase 3 step 6 needs a keyed circuit).
+4. **Resumable:** if interrupted, re-run with `contractAddress: '<printed address>'`;
+   it inserts only the circuits still missing on chain. If unsure whether batch 1
+   landed, dry-run with that `contractAddress` first — never blind re-run with
+   `execute: true` (it samples a new nonce and deploys a *second* partial contract).
+5. When all 11 keys are in, `findDeployedContract()` works as normal and Phase 4
+   proceeds unchanged.
+
+Only if batching is undesirable: shrink the deploy by making non-ledger helpers
+`export pure` / non-exported, or merge near-duplicate circuits (re-keys → recompile).
+The measure script's count tells you whether shrinking alone would get under ~60%.
+
+**State after a 1010 rejection:** nothing is committed — no contract address, no DUST
+spent (rejected pre-block). The CMA key `batch-deploy.ts` may have stored under an
+unused dry-run/failed address is harmless.
+
 ## Phase 4 — The scripted happy-path transcript (the demo)
 
 Script the full lifecycle on testnet for one synthetic engagement, printing each tx
