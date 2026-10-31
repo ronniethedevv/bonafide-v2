@@ -94,7 +94,7 @@ Add to **`packages/dapp` (`@mmr/dapp`)**, all `@midnight-ntwrk/midnight-js-*` at
   remote config). It reads `keys/*.prover|.verifier` + `zkir/*.bzkir`.
 - `midnight-js-protocol` — ledger types (via `/ledger`)
 - `@midnight-ntwrk/compact-js@2.5.1`, `@midnight-ntwrk/platform-js@2.2.4`,
-  `@midnight-ntwrk/onchain-runtime-v3@3.0.0`
+  `@midnight-ntwrk/onchain-runtime-v3@3.1.2` (ledger-8.1.3 paired — see override note below)
 - **`@midnightntwrk/wallet-sdk@1.2.0`** — headless seed signing. **Note the
   unhyphenated scope `@midnightntwrk`** (not `@midnight-ntwrk`); `npm view` it first —
   if it's not on public npm, find the documented install path before wiring.
@@ -114,15 +114,16 @@ packages).
 ```jsonc
 "pnpm": { "overrides": {
   "@midnight-ntwrk/ledger-v8": "8.1.0",
-  "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  "@midnight-ntwrk/onchain-runtime-v3": "3.1.2"
 } }
 ```
 - `ledger-v8` → 8.1.0: collapses the 8.1.0/8.1.3 copies (`expected instance of` otherwise).
-- **`onchain-runtime-v3` → 3.0.0 (do NOT skip this):** pinning it is a documented
-  *consumer requirement* when midnight-js sits beside a retained/ledger-8 contract.
-  Two copies (3.0.0 + 3.1.2) only work when the contract and midnight-js reach the
-  **same** one; if they don't, deploy construction fails with `expected instance of
-  ContractMaintenanceAuthority`. The override removes that topology risk entirely.
+  Keep it at 8.1.0 — the 8.1.3 release notes say a midnight-js 4.1.1 project must not bump it.
+- **`onchain-runtime-v3` → 3.1.2 (do NOT skip, and NOT 3.0.0):** pinning to one copy is a
+  documented *consumer requirement* (two copies → `expected instance of` on a call), and the
+  version must be **3.1.2**, the runtime paired with ledger 8.1.3 (what the live node runs).
+  3.0.0 dedupes but builds a non-canonical call transcript the 8.1.3 node rejects with
+  `117 NotNormalized`. Full rationale + the two-fault history is in **Phase 3.6** below.
 - `onlyBuiltDependencies` must include **`classic-level`** (native postinstall for the
   LevelDB private-state provider — silently skipped otherwise). Commit the lockfile.
 
@@ -308,24 +309,47 @@ copy rejects an object minted by the other (`compact-runtime` mints the `StateVa
 **The copy that must be shared is `onchain-runtime-v3`, not `compact-runtime`** (two
 `compact-runtime` copies are fine if both reach one `onchain-runtime-v3`).
 
-**Fix (applied):** force one physical copy via root `pnpm.overrides`, at the
-**matrix-supported 3.0.0** — the version midnight-js 4.1.1 pins and `compact-runtime
-0.16.0` accepts via `^3.0.0`. **Not 3.1.2:** that is only `compact-runtime`'s newest
-in-range resolution, it is *not* the network-supported version, and forcing it shoves
-`midnight-js-protocol` off its exact pin.
+**Fix (applied):** force one physical copy via root `pnpm.overrides`, at **3.1.2** — the
+on-chain-runtime paired with **ledger 8.1.3**, which is what the live Preview node runs
+(`midnight_ledgerVersion → =8.1.3`; official table: 8.1.3 ↔ onchain-runtime 3.1.2 ↔ ZKIR
+2.1.1).
+
+> **Correction (2026-10-31): a first override to `3.0.0` was wrong — there are TWO faults,
+> not one, and 3.0.0 fixed only the first.**
+> 1. **`expected instance of StateValue`** (two copies) → needs a *single* copy. Either
+>    3.0.0 or 3.1.2 fixes this; the call then reaches the node.
+> 2. **`1010: Custom error: 117 NotNormalized`** (single copy at 3.0.0) → the node runs
+>    ledger 8.1.3, whose security fix (GHSA-wr7g-rr4v-jmj8) rejects a contract-call
+>    transcript that isn't in canonical form. 3.0.0 is the ledger-8.0.x-paired runtime;
+>    its transcript builder predates that canonicalization, so an 8.1.3 node rejects it.
+>    The deploy *worked* because the deploy tx was built by compact-runtime's natural
+>    **3.1.2** copy before the override forced everything to 3.0.0.
+>
+> So the single copy must be **3.1.2** (node-aligned builder → canonical transcript),
+> keeping `ledger-v8` at **8.1.0** (the copy midnight-js 4.1.1 uses — the 8.1.3 release
+> notes' Known Issues say a 4.1.1 project must NOT bump ledger-v8, or a second copy clashes
+> with `expected instance of`). Pinning a single `onchain-runtime-v3` on the 3.1.x line is
+> the documented consumer pattern (`consumer-e2e`).
 
 ```jsonc
 // package.json (workspace root)
 "pnpm": { "overrides": {
-  "@midnight-ntwrk/ledger-v8": "8.1.0",
-  "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"   // single shared copy; matrix version
+  "@midnight-ntwrk/ledger-v8": "8.1.0",            // keep: midnight-js 4.1.1's ledger copy
+  "@midnight-ntwrk/onchain-runtime-v3": "3.1.2"    // single shared copy; ledger-8.1.3 paired
 } }
 ```
 
 After pulling: `pnpm install` (relinks to one copy — verify with
-`grep -oE "onchain-runtime-v3@[0-9.]+" pnpm-lock.yaml | sort -u` → only `3.0.0`, or
+`grep -oE "onchain-runtime-v3@[0-9.]+" pnpm-lock.yaml | sort -u` → only `3.1.2`, or
 `pnpm why @midnight-ntwrk/onchain-runtime-v3`). The on-chain contract is unaffected (this
 is purely a local node_modules dedupe); the private-state LevelDB store is untouched.
+
+**If `register` still 117s after the 3.1.2 override:** the fault is then the *contract
+transcript itself*, not the runtime version — the `dist/epoch_proof` keys came from an
+external full `compact compile` (the in-repo `compact:build` is stubbed for a GPU node),
+and an older compiler can emit a `noop 0` or a non-canonical field that 8.1.3 rejects. In
+that case recompile with the matrix compiler (Compact 0.31.x) and re-key, rather than
+touching the runtime pin again.
 
 > **ZKIR note — still unretired after this fix.** The `register` call reaching the proof
 > server is the *point* of the Phase 3 step-6 sanity check: a ZKIR-version mismatch fails
