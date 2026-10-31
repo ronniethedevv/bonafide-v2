@@ -87,7 +87,12 @@ export function loadConfig(): DappConfig {
     proofTimeoutMs: Number(env("MMR_PROOF_TIMEOUT_MS", String(45 * 60 * 1000))),
     syncTimeoutMs: Number(env("MMR_SYNC_TIMEOUT_MS", String(90 * 60 * 1000))),
     deploySeed: requireEnv("DEPLOY_SEED", "MIDNIGHT_WALLET_SEED"),
-    privateStatePassword: env("PRIVATE_STATE_PASSWORD", "mmr-local-private-state"),
+    // The level provider enforces >= 3 of {upper, lower, digit, special}; the
+    // old all-lowercase default had 2 and failed with PasswordValidationError
+    // before the store was even created. Deterministic on purpose: it encrypts
+    // the local store holding the CMA signing key, which cannot be recovered
+    // from the chain, so it must be identical on every run and every checkout.
+    privateStatePassword: env("PRIVATE_STATE_PASSWORD", "Mmr-local-private-state-1"),
     additionalFeeOverhead: BigInt(env("MMR_ADDITIONAL_FEE_OVERHEAD", "0")),
     dustWaitTimeoutMs: Number(env("MMR_DUST_WAIT_TIMEOUT_MS", String(30 * 60 * 1000))),
   };

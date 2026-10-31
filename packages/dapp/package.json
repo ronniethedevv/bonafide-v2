@@ -14,6 +14,7 @@
     "deploy:preview": "tsx src/deploy.ts",
     "deploy": "tsx src/deploy.ts",
     "register-dust": "tsx src/register-dust.ts",
+    "batch-deploy": "tsx src/batch-deploy-run.ts",
     "proof-server": "docker run --rm -p 6300:6300 --name mmr-proof-server midnightntwrk/proof-server:8.1.3"
   },
   "dependencies": {
