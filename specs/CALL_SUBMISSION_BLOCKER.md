@@ -185,3 +185,131 @@ curl -s -H 'content-type: application/json' \
   --data '{"query":"{contractAction(address:\"<addr>\"){__typename transaction{block{height}}}}"}' \
   https://indexer.preview.midnight.network/api/v4/graphql
 ```
+
+---
+
+# Update 2026-11-01: local-node test — **the call lands on a local 8.1.3 node**
+
+The ledger-version hypothesis above is **disproved**. The same client, the same
+dependency tree and the same compiled counter deploy *and* call successfully against a
+local node that is byte-identical to Preview's. The blocker is **Preview-specific**.
+
+## Local stack
+
+[midnight-local-dev](https://github.com/midnightntwrk/midnight-local-dev) `standalone.yml`,
+with `standalone.override.yml` raising the node and proof server to Preview's versions
+(the repo pins node 1.0.0 / proof-server 8.1.0):
+
+| Component | Local | Preview | Same? |
+|---|---|---|---|
+| `system_version` | `1.0.400-87c0fbdb` | `1.0.400-87c0fbdb` | **identical build hash** |
+| `midnight_ledgerVersion` | `=8.1.3` | `=8.1.3` | **yes** |
+| proof server | 8.1.3 | 8.1.3 | yes |
+| indexer | `indexer-standalone:4.3.3` | Preview indexer | no (unavoidable) |
+| network id | `undeployed` | `preview` | no (unavoidable) |
+| wallet | genesis dev seed `00…01` | our funded Preview wallet | no |
+
+Client side is literally the same checkout: midnight-js 4.1.1, `ledger-v8` 8.1.0,
+`onchain-runtime-v3` 3.1.2, `compact-runtime` 0.16.0, and the *same*
+`scratch/counter-build` artifacts (compiler 0.31.1, `ir-source[v2]`). Run with endpoint
+env overrides only — no code, pin or config change:
+
+```sh
+NETWORK_ID=undeployed MIDNIGHT_NODE_URL=http://localhost:9944 \
+MIDNIGHT_INDEXER_URL=http://localhost:8088/api/v4/graphql \
+MIDNIGHT_INDEXER_WS_URL=ws://localhost:8088/api/v4/graphql/ws \
+PROOF_SERVER_URL=http://localhost:6300 \
+DEPLOY_SEED=0000000000000000000000000000000000000000000000000000000000000001 \
+pnpm --filter @mmr/dapp exec tsx src/counter-check.ts
+```
+
+## Result: deploy **and** call both succeed
+
+```
+  ✓ contract addr 641d475a8dba95626261bfd3e22c317502f889ea5071ab968578d0e6fa9bb3f3
+    deploy tx     0064375c3f0eae01fdd9fb6e5ceb5d0f76eb396a334a9fa7bbea289eac12cd77d3
+    block height  10
+    proof+submit  20.1s
+
+  ✓ increment tx  000b42d088a3665834139a21bb711214feaf7add78a7163f981f17fdcb31fc62f1
+    block height  14
+    proof+submit  23.1s
+```
+
+Confirmed on chain by the local indexer — the thing that has never appeared on Preview:
+
+```json
+{ "contractAction": { "__typename": "ContractCall",
+    "transaction": { "hash": "097ac413…74b2", "block": { "height": 14 } } } }
+```
+
+**The node log contains zero rejections.** No `Rejecting transaction … at pre-dispatch`,
+no `Rejected … from mempool`, no `guaranteed execution would fail` — the grep count is 0.
+Both transactions appear only as:
+
+```
+2026-11-01 16:20:46 📋 Validated transaction be8a647b…c52a for mempool
+2026-11-01 16:21:06 📋 Validated transaction 097ac413…74b2 for mempool
+```
+
+So **there is no pre-dispatch rejection reason to capture**: locally nothing is rejected.
+The artifact the ticket wanted does not exist on a node that behaves correctly, which is
+itself the finding.
+
+## What this eliminates
+
+A node on ledger 8.1.3, same build hash as Preview's, accepts a call transcript built by
+midnight-js 4.1.1 on `ledger-v8` 8.1.0. Therefore **none** of these is the cause:
+
+- the ledger 8.1.3 call-transcript rules (GHSA-wr7g-rr4v-jmj8) — 8.1.3 accepts ours
+- the 8.1.0-client ↔ 8.1.3-node version gap — that exact pairing works
+- this monorepo's `onchain-runtime-v3` topology / pnpm overrides — unchanged between runs
+- the Compact compiler, the circuits or the ZKIR — same artifacts, both outcomes
+- `restrictDeployTo` / the batched deploy — already excluded, and not involved here
+
+The **bonus ledger-8.1.0 control arm is moot**: it was meant to show "8.1.3 rejects what
+8.1.0 accepts", and 8.1.3 does not reject. Running node 1.0.0 would test a hypothesis that
+is already disproved, so it was not run.
+
+## What is left
+
+The difference is Preview itself. Remaining uncontrolled variables, narrowest first:
+
+1. **Preview's chain/ledger state** — a live chain at ~1.55 M blocks vs a fresh dev chain.
+2. **The wallet.** Our Preview wallet has ~280 k shielded events and DUST obtained by
+   registration; the local one is the genesis dev wallet with full DUST. A fee/DUST spend
+   structure that only arises on the Preview wallet would fit `NotNormalized`, and the node
+   changelog has precedent: *"Fix `NotNormalized` error when dust spends and registrations
+   are empty — omit `DustActions` if it's a No-op."*
+3. **Network id** `preview` vs `undeployed` (affects transaction encoding; note a plain
+   mismatch would be 166 `InvalidNetworkId`, not 117).
+4. **The public endpoint / block-producer fleet.** Preview reports the same build hash, but
+   its producers are not observable from outside.
+
+Note (2) is the only one that also explains the deploy/call asymmetry on Preview, since
+deploys and maintenance updates from that same wallet land.
+
+## Revised recommendation
+
+File with servicedesk. The ticket is now much stronger than "our calls vanish": a minimal
+counter, matrix toolchain, **works on local node 1.0.400/8.1.3 and fails on Preview with
+the identical binary and client** — on Preview `register` gets `117 NotNormalized` at pool
+validation and `increment` is dropped with no code at all, while deploys and maintenance
+updates from the same wallet land. Only Midnight can inspect Preview's producer logs for
+the `Rejecting transaction … at pre-dispatch` line we cannot see.
+
+## Reproducing the local stack
+
+```sh
+git clone https://github.com/midnightntwrk/midnight-local-dev.git ~/midnight-local-dev
+# standalone.override.yml pins node 1.0.400 + proof-server 8.1.3 (repo pins 1.0.0 / 8.1.0)
+cd ~/midnight-local-dev && docker compose -f standalone.yml -f standalone.override.yml up -d
+curl -s -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"midnight_ledgerVersion","params":[]}' \
+  http://localhost:9944            # must report =8.1.3
+docker logs -f midnight-node       # watch for Rejecting/Rejected lines
+```
+
+Images: `midnight-node:1.0.400` (1.2 GB), `indexer-standalone:4.3.3` (231 MB),
+`proof-server:8.1.3` (114 MB). Ports 9944 / 8088 / 6300 — the local proof server takes
+6300, so stop any standalone `mmr-proof-server` first.
