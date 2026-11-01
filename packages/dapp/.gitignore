@@ -6,3 +6,7 @@ midnight-level-db/
 
 # Cached synced wallet state (lists coins, no keys) — never commit
 .wallet-state/
+
+# Throwaway counter build for the call-submission repro (keys are regenerable:
+# `compact compile scratch/counter.compact scratch/counter-build`)
+scratch/counter-build/
