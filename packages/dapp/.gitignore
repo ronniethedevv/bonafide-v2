@@ -3,3 +3,6 @@ preflight.mts
 measure.mts
 probe.mts
 midnight-level-db/
+
+# Cached synced wallet state (lists coins, no keys) — never commit
+.wallet-state/

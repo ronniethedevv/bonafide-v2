@@ -36,8 +36,55 @@ import {
   type UnshieldedKeystore,
 } from "@midnightntwrk/wallet-sdk";
 import { mnemonicToSeedSync, validateMnemonic } from "bip39";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as Rx from "rxjs";
 import type { DappConfig } from "./config.js";
+
+/**
+ * Where the synced wallet state is cached so a run doesn't re-sync from genesis
+ * (~25 min on Preview). Keyed by network; gitignored (`.wallet-state/`). The
+ * snapshot lists the wallet's coins but holds NO signing key (see the Midnight
+ * node-server-wallet guide), so it must stay private but is not a secret key.
+ * Restore only against the SAME network + indexer the state was saved on.
+ */
+function walletStatePath(cfg: DappConfig): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, "..", ".wallet-state", `${cfg.networkId}.json`);
+}
+
+interface WalletSnapshot { shielded: string; unshielded: string; dust: string }
+
+function loadSnapshot(path: string): WalletSnapshot | undefined {
+  try {
+    if (!existsSync(path)) return undefined;
+    const s = JSON.parse(readFileSync(path, "utf8")) as Partial<WalletSnapshot>;
+    if (typeof s.shielded === "string" && typeof s.unshielded === "string" && typeof s.dust === "string") {
+      return s as WalletSnapshot;
+    }
+  } catch {
+    // Unreadable/partial snapshot: fall back to a fresh sync.
+  }
+  return undefined;
+}
+
+/** Best-effort snapshot save (atomic via temp+rename, mode 600). Never throws. */
+async function saveSnapshot(facade: WalletFacade, path: string): Promise<void> {
+  try {
+    const snap: WalletSnapshot = {
+      shielded: await facade.shielded.serializeState(),
+      unshielded: await facade.unshielded.serializeState(),
+      dust: await facade.dust.serializeState(),
+    };
+    mkdirSync(dirname(path), { recursive: true });
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(snap), { mode: 0o600 });
+    renameSync(tmp, path);
+  } catch (err) {
+    console.warn(`  ! could not save wallet state (non-fatal): ${String(err)}`);
+  }
+}
 
 /** A 24-word mnemonic becomes its BIP-39 seed; a hex string is used as-is. */
 function toSeedBytes(secret: string): Uint8Array {
@@ -108,19 +155,52 @@ export async function buildHeadlessWallet(cfg: DappConfig): Promise<HeadlessWall
     },
   };
 
-  const facade = await WalletFacade.init({
-    configuration,
-    shielded: (c) => ShieldedWallet(c).startWithSecretKeys(shieldedSecretKeys),
-    unshielded: (c) => UnshieldedWallet(c).startWithPublicKey(PublicKey.fromKeyStore(keystore)),
-    dust: (c) =>
-      DustWallet(c).startWithSecretKey(
-        dustSecretKey,
-        LedgerParameters.initialParameters().dust,
-      ),
-  });
-  await facade.start(shieldedSecretKeys, dustSecretKey);
+  // Resume from a cached snapshot when one exists (skips the ~25-min genesis
+  // sync); fall back to a fresh sync if there is none or a restore fails.
+  const statePath = walletStatePath(cfg);
+  const initFacade = (saved: WalletSnapshot | undefined) =>
+    WalletFacade.init({
+      configuration,
+      shielded: (c) =>
+        saved ? ShieldedWallet(c).restore(saved.shielded) : ShieldedWallet(c).startWithSecretKeys(shieldedSecretKeys),
+      unshielded: (c) =>
+        saved ? UnshieldedWallet(c).restore(saved.unshielded) : UnshieldedWallet(c).startWithPublicKey(PublicKey.fromKeyStore(keystore)),
+      dust: (c) =>
+        saved
+          ? DustWallet(c).restore(saved.dust)
+          : DustWallet(c).startWithSecretKey(dustSecretKey, LedgerParameters.initialParameters().dust),
+    });
 
-  const state = await waitForSync(facade, cfg);
+  const saved = loadSnapshot(statePath);
+  let facade: WalletFacade;
+  try {
+    if (saved) console.log("  restoring wallet state from cache (skips genesis sync)…");
+    facade = await initFacade(saved);
+    await facade.start(shieldedSecretKeys, dustSecretKey);
+  } catch (err) {
+    if (!saved) throw err;
+    console.warn(`  ! cached wallet state unusable (${String(err)}); syncing fresh`);
+    try { rmSync(statePath, { force: true }); } catch { /* ignore */ }
+    facade = await initFacade(undefined);
+    await facade.start(shieldedSecretKeys, dustSecretKey);
+  }
+
+  let state: FacadeState;
+  try {
+    state = await waitForSync(facade, cfg);
+  } catch (err) {
+    // A stale snapshot can stall catch-up (e.g. "values inserted non-linearly").
+    // Drop it so the next run syncs fresh, and surface a clear message.
+    if (saved) {
+      try { rmSync(statePath, { force: true }); } catch { /* ignore */ }
+      throw new Error(
+        `${String(err)}\n  (dropped the cached wallet state at ${statePath}; re-run to sync fresh.)`,
+      );
+    }
+    throw err;
+  }
+  // Cache the synced state so subsequent runs resume instead of re-syncing.
+  await saveSnapshot(facade, statePath);
 
   const provider: WalletProvider & MidnightProvider = {
     getCoinPublicKey(): CoinPublicKey {
@@ -152,7 +232,11 @@ export async function buildHeadlessWallet(cfg: DappConfig): Promise<HeadlessWall
     nightBalance: readNight(state),
     dustBalance: readDust(state),
     state,
-    stop: () => facade.stop(),
+    // Save on shutdown too, so a run's catch-up progress is cached for the next one.
+    stop: async () => {
+      await saveSnapshot(facade, statePath);
+      await facade.stop();
+    },
   };
 }
 
