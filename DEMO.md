@@ -53,39 +53,50 @@ What to point at:
 
 ---
 
-## Demo B — the full epoch_proof lifecycle, live on a Midnight node (the hero)
+## Demo B — the epoch_proof lifecycle, live on a Midnight node + KAT-verified
 
-This runs the **entire** contract lifecycle against a real Midnight node (ledger 8.1.3),
-with real proofs and real on-chain contract calls — including the time-gated
-`settle → release → claim` tail, by advancing the node's block clock past the 24 h epoch
-and challenge windows.
+Runs the contract lifecycle against a real Midnight node (ledger 8.1.3) with real proofs
+and real on-chain contract calls. Two tiers, by proof weight and by what the node's clock
+allows:
+
+**B1 — live on-chain** (`register → proveFunding`, all ≤ k=17 — each a real ZK proof and a
+real `ContractCall` included in a block):
 
 ```bash
-# 1. bring up the local Midnight stack (node 1.0.400 / ledger 8.1.3, indexer, proof server)
-#    using packages/dapp/standalone.override.yml
-# 2. point the dapp at it, then run the lifecycle:
-pnpm --filter @mmr/dapp run interact
+# bring up the local stack (node 1.0.400 / ledger 8.1.3, indexer, proof server) via
+# packages/dapp/standalone.override.yml, point the dapp at it, then:
+pnpm --filter @mmr/dapp run interact     # MMR_STOP_AFTER=proveFunding
 ```
 
-Lifecycle transcript (real tx hashes + blocks + proof times):
-
-| Step | Circuit | What it proves (in ZK) | tx / block |
+| Step | Circuit | What it proves (in ZK) | block |
 |---|---|---|---|
 | 1 | `register` | engagement id derived from a secret; wallet + terms committed | <!-- FILL --> |
-| 2 | `postBond` | a real **shielded** performance bond escrowed (Zswap) | <!-- FILL --> |
-| 3 | `activate` | status → Funded within the 72 h funding window | <!-- FILL --> |
-| 4 | `publishRoot` ×2 | 2-of-3 attester committee publishes the epoch root on-chain (I8) | <!-- FILL --> |
-| 5 | `proveFunding` | Σ `from_treasury` ≥ loan, opened against the attested root | <!-- FILL --> |
-| 6 | `proveEpoch` | **I1–I7 in ZK** (depth, uptime, custody, net-sell, carry, round-trip) — the heavy k=20 proof | <!-- FILL --> |
-| 7 | `settleEpoch` | epoch settled after its end + challenge window (block-time gated) | <!-- FILL --> |
-| 8 | `releaseEpoch` | one bond tranche released to the MM | <!-- FILL --> |
-| 9 | `claim` | public reputation credit by **private Merkle path** — unlinkable (I10) | <!-- FILL --> |
+| 2 | `activate` | status → Funded within the 72 h funding window | <!-- FILL --> |
+| 3 | `publishRoot` ×2 | 2-of-3 attester committee publishes the epoch root on-chain (I8) | <!-- FILL --> / <!-- FILL --> |
+| 4 | `proveFunding` | Σ `from_treasury` ≥ loan, opened against the attested root | <!-- FILL --> |
 
-Final on-chain state to show: `publishedRoot[1]`, `fundingProven`, the `epochRecords`
-root, and the monotonic public profile counters (`completedCount`, `kpiHits`/`kpiTotal`).
+Each row is a real `__typename: ContractCall` in the local indexer — verifiable, not a log
+line. (`postBond` escrows a real shielded Zswap bond; included when a bond coin is wired.)
 
-> **Proving benchmark** (real, from this run): `proveEpoch` k=20 ≈ <!-- FILL --> s,
-> `claim` k=19 ≈ <!-- FILL --> s. Every proof was accepted by proof-server 8.1.3.
+**B2 — KAT-verified** (the heavy and the time-gated circuits): `proveEpoch` (k=20, ~599.5k
+rows), `settleEpoch`, `releaseEpoch`, `claim`. These run through the **real compiled
+circuit** via `@midnight-ntwrk/compact-runtime` — every `transientHash`, `checkRoot` and
+`assert` executes — with the block clock driven directly, which the node's AURA consensus
+can't do on-chain without 24 h of real time:
+
+```bash
+pnpm --filter @mmr/contracts test        # ~93 KATs: full lifecycle incl. proveEpoch + claim
+```
+
+> **Why the split:** midnight-node advances block time only in real time (fixed AURA slots),
+> so `settle → release → claim` (gated on epoch-end + challenge windows) can't be an on-chain
+> tx without waiting 24 h — the KATs cover them with a controlled clock. And `proveEpoch`'s
+> k=20 proof peaks ~9.5 GB, so it's proven live where RAM allows and KAT-verified otherwise.
+> Both tiers exercise the **same** compiled contract; nothing is mocked.
+
+Real ZK keys back every circuit: `proveEpoch` k=20 (305 MB prover key), `claim` k=19,
+`proveFunding` k=17, `register` k=15, `postBond` k=14, `activate` k=10 — `zkir` keygen
+output, non-empty, in `build/epoch_proof/keys`.
 
 ---
 
@@ -131,8 +142,10 @@ hero chart, per-epoch verdicts, no private data exposed.
 Real and verified: the whole Midnight/ZK core (one Compact 0.31.1 contract, all I1–I10
 bound in-circuit, ~93 known-answer tests that execute the *compiled* circuit and revert on
 any tampered witness), real `zkir` proving/verifying keys, the deterministic indexer, the
-independent watcher, the **live Preview deploy**, and — in Demo B — the **full lifecycle
-with real on-chain calls**. The IPFS publisher (Pinata v3) and Postgres repository
+independent watcher, the **live Preview deploy**, and — in Demo B — **5 real on-chain
+lifecycle calls** (`register → proveFunding`) plus the heavy/time-gated circuits
+(`proveEpoch`, `settle`/`release`/`claim`) executed through the real compiled circuit. The
+IPFS publisher (Pinata v3) and Postgres repository
 (`@mmr/db`) are real behind their interfaces. The remaining external adapters (a live Base
 archive-RPC reader, real Jubjub-Schnorr attester signing) are clearly-labelled interface
 stubs and do not touch the contract logic. Full detail:
