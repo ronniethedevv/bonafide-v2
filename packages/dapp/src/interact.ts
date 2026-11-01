@@ -2,6 +2,14 @@
 // contract already deployed to Midnight Preview.
 //
 //   pnpm --filter @mmr/dapp run interact
+//   MMR_STOP_AFTER=proveFunding pnpm --filter @mmr/dapp run interact   # demo B1 tier
+//
+// MMR_STOP_AFTER=<circuit> ends the run cleanly after that circuit (register, postBond,
+// activate, publishRoot, proveFunding, proveEpoch). The demo's live tier stops at
+// proveFunding: everything up to it is <= k=17, while proveEpoch's k=20 proof peaks at
+// ~9.5 GB and is OOM-killed on a 16 GB machine. MMR_ENGAGEMENT_SECRET=<64 hex> pins the
+// engagement secret, which is otherwise random per run so re-runs never collide with an
+// id a previous run already registered on the same chain.
 //
 // WHAT RUNS LIVE, IN ONE SESSION (no epoch-end gate — each is a real proof + tx):
 //   register → activate → publishRoot(1)×2 → proveFunding → proveEpoch(1)
@@ -129,13 +137,40 @@ async function main(): Promise<void> {
   // votes by swapping the witness. (DD-26.)
   const attesterSecrets = generateAttesterSecrets(3);
 
-  // The engagement under test. A fixed demo secret so the run is reproducible; its id is
-  // whatever register returns (deriveEngagementId = persistentHash<Bytes<32>>(secret)).
-  const engagementSecret = new Uint8Array(32).fill(0x99);
+  // The engagement under test. Its id is whatever register returns
+  // (deriveEngagementId = persistentHash<Bytes<32>>(secret)).
+  //
+  // Randomised per run by default: register asserts the derived id is not already on the
+  // status map, so a fixed secret makes the script single-use per chain — a re-run against
+  // a chain that already holds that engagement dies on "engagement id already registered".
+  // Set MMR_ENGAGEMENT_SECRET=<64 hex chars> to pin it (e.g. to re-derive the same id in a
+  // recorded demo).
+  const engagementSecret = (() => {
+    const hexArg = process.env.MMR_ENGAGEMENT_SECRET?.trim();
+    if (!hexArg) return crypto.getRandomValues(new Uint8Array(32));
+    if (!/^[0-9a-fA-F]{64}$/.test(hexArg)) {
+      throw new Error("MMR_ENGAGEMENT_SECRET must be exactly 64 hex characters (32 bytes).");
+    }
+    return Uint8Array.from(Buffer.from(hexArg, "hex"));
+  })();
 
   // One compliant scenario (real tree + openings). FUNDED_A: wallet A's from_treasury =
   // 1000 ≥ loan_L0 (proveFunding I5); depth flatDepth(10) meets depth_target 10 (proveEpoch
   // I6). Genesis carry (epoch 1) is already set on the witness.
+  // Stop cleanly after a named circuit instead of running the whole lifecycle. The demo's
+  // B1 tier is `register -> proveFunding` (all <= k=17): proveEpoch's k=20 proof peaks at
+  // ~9.5 GB and is OOM-killed on a 16 GB machine, so the live run stops before it and the
+  // KAT suite covers proveEpoch with the real compiled circuit instead.
+  const STOP_AFTER = process.env.MMR_STOP_AFTER?.trim() ?? "";
+  const STOP_POINTS = [
+    "register", "postBond", "activate", "publishRoot", "proveFunding", "proveEpoch",
+  ] as const;
+  if (STOP_AFTER !== "" && !STOP_POINTS.includes(STOP_AFTER as (typeof STOP_POINTS)[number])) {
+    throw new Error(`MMR_STOP_AFTER must be one of: ${STOP_POINTS.join(", ")} (got "${STOP_AFTER}")`);
+  }
+  /** True once the named circuit is the configured stopping point. */
+  const stopHere = (circuit: string) => STOP_AFTER === circuit;
+
   const scenario = buildScenario(undefined, 0, FUNDED_A);
   const root = scenario.rootOfRoots; // Uint8Array<32>
   const cid = cidBytes("mmr-preview-epoch1-scenario");
@@ -177,6 +212,16 @@ async function main(): Promise<void> {
       console.log(`  ✓ ${label.padEnd(16)} tx ${p.txId ?? "?"}  block ${String(p.blockHeight ?? "?")}`);
     };
 
+    /** Prints why the run ended early and what still covers the rest. */
+    const stopped = (circuit: string) => {
+      console.log(
+        `\nStopped after \`${circuit}\` (MMR_STOP_AFTER). Every call above is a real proof and ` +
+          `a real ContractCall in a block.\n` +
+          `  The remaining circuits run in the KAT suite against the same compiled contract:\n` +
+          `    pnpm --filter @mmr/contracts test`,
+      );
+    };
+
     // 1) register(declaredTier, registeredTs) → id. Timestamp must be ~now (H3, 10-min tol).
     await stage(bags.register(engagementSecret));
     const regRes = await found.callTx.register(1n, nowSec());
@@ -190,6 +235,7 @@ async function main(): Promise<void> {
       throw new Error("register did not return the engagement id (Bytes<32>) — check the callTx result shape");
     }
     console.log(`    id ${hex(id)}`);
+    if (stopHere("register")) return stopped("register");
 
     // 2) (optional) postBond(id, tierMin, beneficiary). Needs a REAL escrow coin: the
     // bondCoin witness must be a UTXO the wallet actually holds (Zswap). Off by default
@@ -202,21 +248,25 @@ async function main(): Promise<void> {
     } else {
       console.log("  · postBond            skipped (set MMR_POST_BOND=1 with a real escrow coin)");
     }
+    if (stopHere("postBond")) return stopped("postBond");
 
     // 3) activate(id, rootOfRoots, activatedTs). Status Registered → Funded; must be within
     // the 72h funding window (it is — we just registered). rootOfRoots is not read here.
     await stage(bags.activate());
     logTx("activate", await found.callTx.activate(id, root, nowSec()));
+    if (stopHere("activate")) return stopped("activate");
 
     // 4) publishRoot(epoch=1, root, cid) ×2 distinct committee members → publishedRoot[1].
     for (const i of [0, 1]) {
       await stage(bags.publishRoot(attesterSecrets[i]!));
       logTx(`publishRoot[1]#${i}`, await found.callTx.publishRoot(1n, root, cid));
     }
+    if (stopHere("publishRoot")) return stopped("publishRoot");
 
     // 5) proveFunding(id, root): Σ from_treasury ≥ loan_L0, opened against publishedRoot[1].
     await stage(bags.proveFunding());
     logTx("proveFunding", await found.callTx.proveFunding(id, root));
+    if (stopHere("proveFunding")) return stopped("proveFunding");
 
     // 6) proveEpoch(id, root, epoch=1): the heavy delivery proof (I1–I7 in-circuit). Binds
     // to publishedRoot[1] (already published above). Prints the disclosed uptime if present.
@@ -225,6 +275,7 @@ async function main(): Promise<void> {
     logTx("proveEpoch[1]", epRes);
     const epResult = (epRes as { private?: { result?: { uptime?: bigint } } }).private?.result;
     if (epResult?.uptime !== undefined) console.log(`    uptime ${epResult.uptime}`);
+    if (stopHere("proveEpoch")) return stopped("proveEpoch");
 
     // BONUS — the genuine live-indexed Base BROOMY/WETH root in the on-chain registry.
     // Publishes the real attested rootOfRoots (0x5a3a…04461) at a spare epoch number, so

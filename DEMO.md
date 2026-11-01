@@ -70,13 +70,14 @@ pnpm --filter @mmr/dapp run interact     # MMR_STOP_AFTER=proveFunding
 
 | Step | Circuit | What it proves (in ZK) | block |
 |---|---|---|---|
-| 1 | `register` | engagement id derived from a secret; wallet + terms committed | <!-- FILL --> |
-| 2 | `activate` | status → Funded within the 72 h funding window | <!-- FILL --> |
-| 3 | `publishRoot` ×2 | 2-of-3 attester committee publishes the epoch root on-chain (I8) | <!-- FILL --> / <!-- FILL --> |
-| 4 | `proveFunding` | Σ `from_treasury` ≥ loan, opened against the attested root | <!-- FILL --> |
+| 1 | `register` | engagement id derived from a secret; wallet + terms committed | **37** |
+| 2 | `activate` | status → Funded within the 72 h funding window | **41** |
+| 3 | `publishRoot` ×2 | 2-of-3 attester committee publishes the epoch root on-chain (I8) | **45** / **49** |
+| 4 | `proveFunding` | Σ `from_treasury` ≥ loan, opened against the attested root | **62** |
 
 Each row is a real `__typename: ContractCall` in the local indexer — verifiable, not a log
-line. (`postBond` escrows a real shielded Zswap bond; included when a bond coin is wired.)
+line; full transcript and tx hashes in [`specs/LIVE_LOCAL_LIFECYCLE.md`](specs/LIVE_LOCAL_LIFECYCLE.md)
+(contract `e45ab713…97ce`, recorded 2026-11-01). (`postBond` escrows a real shielded Zswap bond; included when a bond coin is wired.)
 
 **B2 — KAT-verified** (the heavy and the time-gated circuits): `proveEpoch` (k=20, ~599.5k
 rows), `settleEpoch`, `releaseEpoch`, `claim`. These run through the **real compiled
