@@ -107,6 +107,19 @@ Both are covered by the KAT suite against the **same compiled contract** via
 pnpm --filter @mmr/contracts test
 ```
 
+Run 2026-11-01, green:
+
+```
+ Test Files  7 passed (7)
+      Tests  123 passed (123)
+   Duration  161.61s
+```
+
+Those 123 KATs include the circuits B1 cannot put on chain here: `proveEpoch`, `claim`,
+`settleEpoch` and `releaseEpoch` — among them the time-gated
+`H4: claim credits only on-ledger epochs (DD-12)` cases, which drive the block clock
+directly. Same compiled contract as the on-chain calls above; nothing mocked.
+
 ## Reproducing
 
 ```sh

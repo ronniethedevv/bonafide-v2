@@ -2,8 +2,9 @@
   DEMO.md — the live demo script. Companion to specs/BUILT_ON_MIDNIGHT.md
   (what it is) and specs/TESTNET_DEPLOY.md (how it was deployed).
 
-  Placeholders marked <!-- FILL: ... --> are dropped in from the live local
-  lifecycle run (specs/LIVE_LOCAL_LIFECYCLE.md). Everything else is final.
+  Demo B1's block numbers were dropped in from the live local lifecycle run
+  (specs/LIVE_LOCAL_LIFECYCLE.md, contract e45ab713…97ce, 2026-11-01). No
+  placeholders remain; everything here is final.
 -->
 
 # mm-reputation — live demo
@@ -86,7 +87,7 @@ circuit** via `@midnight-ntwrk/compact-runtime` — every `transientHash`, `chec
 can't do on-chain without 24 h of real time:
 
 ```bash
-pnpm --filter @mmr/contracts test        # ~93 KATs: full lifecycle incl. proveEpoch + claim
+pnpm --filter @mmr/contracts test        # 123 KATs, 7 files: full lifecycle incl. proveEpoch + claim
 ```
 
 > **Why the split:** midnight-node advances block time only in real time (fixed AURA slots),
@@ -141,7 +142,7 @@ hero chart, per-epoch verdicts, no private data exposed.
 ## What's real vs. stubbed (integrity)
 
 Real and verified: the whole Midnight/ZK core (one Compact 0.31.1 contract, all I1–I10
-bound in-circuit, ~93 known-answer tests that execute the *compiled* circuit and revert on
+bound in-circuit, 123 known-answer tests that execute the *compiled* circuit and revert on
 any tampered witness), real `zkir` proving/verifying keys, the deterministic indexer, the
 independent watcher, the **live Preview deploy**, and — in Demo B — **5 real on-chain
 lifecycle calls** (`register → proveFunding`) plus the heavy/time-gated circuits
