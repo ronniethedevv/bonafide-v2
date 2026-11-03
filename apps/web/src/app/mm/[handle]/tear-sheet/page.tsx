@@ -106,8 +106,8 @@ export default async function TearSheetPage({
       </table>
 
       <p className="muted" style={{ fontSize: 12, marginTop: 16 }}>
-        Verified against a deterministic Base indexer and settled attester roots.
-        No account access or private books were shared to produce this record.
+        Every result here is checked against public on-chain activity. No account
+        access and no private books were shared to produce this record.
       </p>
     </main>
   );
