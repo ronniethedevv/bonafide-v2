@@ -92,8 +92,68 @@ const vega: MmProfile = {
   ],
 };
 
+const helixEpochSeries = [
+  { epoch: 1, uptime: 85, depth: 88 },
+  { epoch: 2, uptime: 87, depth: 89 },
+  { epoch: 3, uptime: 90, depth: 91 },
+  { epoch: 4, uptime: 89, depth: 92 },
+  { epoch: 5, uptime: 92, depth: 93 },
+  { epoch: 6, uptime: 91, depth: 94 },
+  { epoch: 7, uptime: 93, depth: 95 },
+  { epoch: 8, uptime: 94, depth: 95 },
+];
+
+const helix: MmProfile = {
+  handle: "helix-lq",
+  displayName: "Helix Liquidity",
+  headlineUptime: 92,
+  tierCounts: { A: 1, B: 2, C: 1 },
+  epochSeries: helixEpochSeries,
+  engagements: [
+    engagement({
+      id: "rec_h1",
+      tier: "A",
+      epochsPassed: 30,
+      epochsTotal: 30,
+      kpis: { depth: 97, uptime: 96, utilization: 73, custody: 100, noRoundTrips: 100 },
+      bond: { posted: "$8,000 USDM", status: "released" },
+      completedAt: "2026-10-02",
+    }),
+    engagement({
+      id: "rec_h2",
+      tier: "B",
+      epochsPassed: 27,
+      epochsTotal: 30,
+      kpis: { depth: 93, uptime: 92, utilization: 66, custody: 100, noRoundTrips: 99 },
+      bond: { posted: "$5,000 USDM", status: "released" },
+      completedAt: "2026-08-28",
+    }),
+    engagement({
+      id: "rec_h3",
+      tier: "B",
+      epochsPassed: 28,
+      epochsTotal: 30,
+      kpis: { depth: 95, uptime: 93, utilization: 69, custody: 100, noRoundTrips: 100 },
+      completedAt: "2026-07-15",
+    }),
+  ],
+  sandbox: [
+    engagement({
+      id: "rec_h_sbx",
+      tier: "C",
+      sandbox: true,
+      epochsPassed: 10,
+      epochsTotal: 14,
+      kpis: { depth: 86, uptime: 84, utilization: 55, custody: 100, noRoundTrips: 95 },
+      bond: { posted: "n/a", status: "intact" },
+      completedAt: "2026-05-20",
+    }),
+  ],
+};
+
 const PROFILES: Record<string, MmProfile> = {
   [vega.handle]: vega,
+  [helix.handle]: helix,
 };
 
 export function getProfile(handle: string): MmProfile | undefined {
