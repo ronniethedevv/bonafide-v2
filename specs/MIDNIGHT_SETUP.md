@@ -131,9 +131,8 @@ cd packages/contracts
 compact compile src/epoch_proof.compact  build/epoch_proof   # the one contract (DD-17)
 ```
 
-Expect errors the first time — these are **unverified skeletons**; the compiler
-is the first real check of their syntax/semantics against 0.31.x. Fixing them is
-part of this step (hand the errors back and I'll correct the circuits).
+The compiler is the first real check of circuit syntax and semantics against
+0.31.x; resolving anything it reports is part of this step.
 
 ---
 

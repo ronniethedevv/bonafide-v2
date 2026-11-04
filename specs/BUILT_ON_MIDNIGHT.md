@@ -1,8 +1,8 @@
 # Built on Midnight
 
 > A one-page map of exactly which Midnight primitives and tooling this project uses
-> **in action** — for a judge who has two minutes. Every row points at real code;
-> nothing here is a mock or a diagram of intent.
+> **in action**. Every row points at real code; nothing here is a mock or a diagram
+> of intent.
 
 ## The one-line case
 

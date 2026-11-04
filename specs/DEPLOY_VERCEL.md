@@ -29,7 +29,7 @@ server-rendered on Vercel's Next.js runtime; the landing page is static.
 ## After it deploys
 
 Send the production URL back and it gets wired into the top of `README.md` (the
-**For reviewers** block) so a judge lands on a clickable link, not a wall of
+**For reviewers** block) so a reviewer lands on a clickable link, not a wall of
 terminal commands.
 
 Pages a reviewer can open:

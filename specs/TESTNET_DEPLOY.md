@@ -423,7 +423,8 @@ read. The restyled UI (dark console look) already gives it a presentable surface
 Record the end-to-end run (connect wallet → submit proof → on-chain record updates) +
 a one-paragraph "what Midnight tech this exercises" caption pointing at
 `BUILT_ON_MIDNIGHT.md` (witness/disclose, transientHash, HistoricMerkleTree, Zswap
-bond, block-time gates, 2-of-3 attester registry). This is what a rushing judge sees.
+bond, block-time gates, 2-of-3 attester registry). That caption is the one-glance
+summary of what the run exercises.
 
 ## Gotchas / honesty notes
 
