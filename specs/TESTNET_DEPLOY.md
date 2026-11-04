@@ -90,8 +90,8 @@ Add to **`packages/dapp` (`@mmr/dapp`)**, all `@midnight-ntwrk/midnight-js-*` at
 - `midnight-js-level-private-state-provider` — persist private state (LevelDB)
 - `midnight-js-http-client-proof-provider` — talk to the local proof server
 - `midnight-js-node-zk-config-provider` — load the **local** keys for headless deploy
-  (preflight correction: use this, **not** `fetch-zk-config-provider`, which is for
-  remote config). It reads `keys/*.prover|.verifier` + `zkir/*.bzkir`.
+  (use this, **not** `fetch-zk-config-provider`, which is for remote config). It reads
+  `keys/*.prover|.verifier` + `zkir/*.bzkir`.
 - `midnight-js-protocol` — ledger types (via `/ledger`)
 - `@midnight-ntwrk/compact-js@2.5.1`, `@midnight-ntwrk/platform-js@2.2.4`,
   `@midnight-ntwrk/onchain-runtime-v3@3.1.2` (ledger-8.1.3 paired — see override note below)
@@ -123,17 +123,17 @@ packages).
   documented *consumer requirement* (two copies → `expected instance of` on a call), and the
   version must be **3.1.2**, the runtime paired with ledger 8.1.3 (what the live node runs).
   3.0.0 dedupes but builds a non-canonical call transcript the 8.1.3 node rejects with
-  `117 NotNormalized`. Full rationale + the two-fault history is in **Phase 3.6** below.
+  `117 NotNormalized`. Full two-fault rationale is in **Phase 3.6** below.
 - `onlyBuiltDependencies` must include **`classic-level`** (native postinstall for the
   LevelDB private-state provider — silently skipped otherwise). Commit the lockfile.
 
 ## Phase 2 — Locate the compiled contract module + keys (done, just point at it)
 
 `compact compile` already emitted the contract's generated TS module + keys under
-`packages/contracts/dist/epoch_proof` (**`dist/`, not `build/`** — preflight
-correction; keys gitignored, loaded by `NodeZkConfigProvider` from `keys/*.prover|.verifier`
-+ `zkir/*.bzkir`). The module exports all 11 circuits above (preflight: 11/11
-instantiate under `compact-runtime@0.16.0`; no recompile).
+`packages/contracts/dist/epoch_proof` (**`dist/`, not `build/`**; keys gitignored,
+loaded by `NodeZkConfigProvider` from `keys/*.prover|.verifier` + `zkir/*.bzkir`). The
+module exports all 11 circuits above (11/11 instantiate under `compact-runtime@0.16.0`;
+no recompile).
 `packages/contracts/test/harness.ts` shows how to assemble each circuit's witnesses
 and run it via `compact-runtime` — **reuse that witness assembly verbatim** for real
 txs (the hard part — I1–I10 openings — is already written there).
@@ -314,16 +314,14 @@ on-chain-runtime paired with **ledger 8.1.3**, which is what the live Preview no
 (`midnight_ledgerVersion → =8.1.3`; official table: 8.1.3 ↔ onchain-runtime 3.1.2 ↔ ZKIR
 2.1.1).
 
-> **Correction (2026-10-31): a first override to `3.0.0` was wrong — there are TWO faults,
-> not one, and 3.0.0 fixed only the first.**
-> 1. **`expected instance of StateValue`** (two copies) → needs a *single* copy. Either
->    3.0.0 or 3.1.2 fixes this; the call then reaches the node.
-> 2. **`1010: Custom error: 117 NotNormalized`** (single copy at 3.0.0) → the node runs
->    ledger 8.1.3, whose security fix (GHSA-wr7g-rr4v-jmj8) rejects a contract-call
->    transcript that isn't in canonical form. 3.0.0 is the ledger-8.0.x-paired runtime;
->    its transcript builder predates that canonicalization, so an 8.1.3 node rejects it.
->    The deploy *worked* because the deploy tx was built by compact-runtime's natural
->    **3.1.2** copy before the override forced everything to 3.0.0.
+> **Why 3.1.2 specifically — there are two distinct faults, and only 3.1.2 clears both:**
+> 1. **`expected instance of StateValue`** (two copies of the runtime) → needs a *single*
+>    copy. Any single copy fixes this; the call then reaches the node.
+> 2. **`1010: Custom error: 117 NotNormalized`** → the node runs ledger 8.1.3, whose
+>    security fix (GHSA-wr7g-rr4v-jmj8) rejects a contract-call transcript that isn't in
+>    canonical form. The 3.0.x runtime is paired with ledger 8.0.x; its transcript builder
+>    predates that canonicalization, so an 8.1.3 node rejects its calls. Only the
+>    node-aligned **3.1.2** builder produces a transcript the 8.1.3 node accepts.
 >
 > So the single copy must be **3.1.2** (node-aligned builder → canonical transcript),
 > keeping `ledger-v8` at **8.1.0** (the copy midnight-js 4.1.1 uses — the 8.1.3 release
