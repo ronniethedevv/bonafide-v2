@@ -119,8 +119,11 @@ integration work remains, and one item is an external ecosystem issue:
 - **Fee-sponsor** (DUST self-relay) and the live frontend API/DB path.
 
 Nothing above is a hole in the core logic; it is production plumbing and one
-external bug. See [`specs/progress_tracker.md`](./specs/progress_tracker.md) for the
-live ledger.
+external bug.
+
+<sub>Deep dive: [`specs/`](./specs) holds the full spec-driven context repository,
+including `progress_tracker.md` — the internal, dated build log of every decision and
+design iteration.</sub>
 
 ---
 
