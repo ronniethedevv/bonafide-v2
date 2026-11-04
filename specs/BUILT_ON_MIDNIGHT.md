@@ -35,8 +35,8 @@ Midnight. The whole protocol tier is **Compact on Midnight**; Base is only read
 - **Real ZK keys.** `zkir` keygen produces non-empty proving/verifying keys for every
   circuit — `proveEpoch` at **k=20 (~599.5k rows, 305 MB prover key)**, `claim` k=19
   (~486.7k), plus `register` k=15, `activate` k=10, `postBond` k=14, `releaseEpoch`
-  k=15. (Keygen demonstrated at ~9.5 GB peak; one regen on the final ledger layout is
-  the single pending step.)
+  k=15. **All 11 circuits are keyed on the final ledger layout** (`proveEpoch` keygen
+  peaks ~9.5 GB RSS).
 - **The tests run the compiled circuit, not a model.** ~93 known-answer tests drive
   the actual compiled contract via `@midnight-ntwrk/compact-runtime`: an honest
   witness passes and **every tampered witness reverts** — verified by mutation probes
@@ -57,15 +57,22 @@ Midnight primitive directly:
 
 ## Honest status (for integrity)
 
-The Midnight/ZK core above is real and verified. The **IPFS tree publisher is now a
-real Pinata v3 adapter** (`PinataTreePublisher`, behind the `TreePublisher`
-interface; verified against live Pinata needs only a `PINATA_JWT`). The
-**PostgreSQL/Prisma `DbProfileRepository` (`@mmr/db`) is also real** behind the
-`ProfileRepository` interface (verified against a live DB needs only a
-`DATABASE_URL` + `prisma generate`). The remaining **external I/O adapters** — a
-live Base archive-RPC reader and real Jubjub-Schnorr attester signing — are still
-interface stubs behind the already-defined interfaces; the web/API run on fixtures
-by default. Those are ordinary integration work,
-clearly labelled, and do not touch the Midnight contract logic. The one remaining
-in-circuit gap is I8 (an on-chain attester-root registry), designed in
-`specs/OPEN_ITEMS.md`.
+The Midnight/ZK core above is real and verified, and the circuit has **zero open
+in-circuit gaps**: I1–I10, the **I8 attester-root registry** (2-of-3, on-chain), and
+the **funding-membership** proof are all bound and KAT-covered (**123/123** tests).
+All 11 circuits are keyed, the contract is **deployed to Midnight Preview**
+(`48e2cfce…2d9eb6`, 11/11 circuits verified on chain), and the full lifecycle
+(`register → activate → publishRoot → proveFunding`) has **run live as real on-chain
+calls on a real Midnight node** (`specs/LIVE_LOCAL_LIFECYCLE.md`).
+
+The **IPFS tree publisher** is a real Pinata v3 adapter and the **PostgreSQL/Prisma
+`DbProfileRepository` (`@mmr/db`)** is real, both behind clean interfaces (they need
+only a `PINATA_JWT` / `DATABASE_URL`). What remains is production plumbing, clearly
+labelled and outside the contract logic: a **live Base/Ethereum archive-RPC reader**,
+**market-maker witness capture**, a live **3-operator attester fleet with
+Jubjub-Schnorr signing** (the on-chain threshold itself is already enforced), and a
+fee-sponsor. One item is an **external ecosystem issue**: live contract *calls* on
+public networks are currently dropped (`NotNormalized`) for a registration-funded
+wallet while deploys land — isolated to the wallet's DUST, reproduced as working on a
+byte-identical local node, and reported to Midnight
+(`specs/CALL_SUBMISSION_BLOCKER.md`).
