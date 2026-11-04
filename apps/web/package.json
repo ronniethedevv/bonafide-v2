@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Public reputation profile + tear sheet (read-mostly) for the MM Reputation Record.",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

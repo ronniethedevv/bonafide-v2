@@ -5,15 +5,41 @@ commitments — depth, uptime, custody, fair trading — without handing over yo
 wallets, balances, or strategy. Built with zero-knowledge proofs on **Midnight**,
 checked against a deterministic, public on-chain indexer that nobody can fake.
 
-### Explore
+## 👀 For reviewers — start here
+
+**No setup needed:**
+
+- **See the product** — the public reputation profile a client/MM actually sees:
+  **_[live URL — add after Vercel deploy]_** · _(until then: `pnpm --filter web dev` → `localhost:3000`)_
+  Open a profile (`/mm/vega-mm`), its depth/uptime chart, and the one-page tear
+  sheet (`/mm/vega-mm/tear-sheet`). This shows **what** the product is, in plain language.
+- **Check it's really on Midnight** — the `epoch_proof` contract is deployed and
+  verifiable on the public Preview testnet. Open the
+  **[Midnight Explorer](https://midnightexplorer.com)**, switch the network selector
+  to **Preview**, and paste the contract address:
+  `48e2cfceccd0a7b771f5bb71337455f2df03540aadcaf0bc3687d310e52d9eb6` (all 11 circuits on chain).
+
+**One command, if you have a terminal** (the strongest proof — it recomputes a real
+on-chain epoch and checks it):
+
+```sh
+pnpm install && pnpm --filter @mmr/watcher test
+```
+
+It rebuilds the attested root from published data and **fails if any single metric is
+changed by one unit** — i.e. the market maker cannot lie about what the chain recorded.
+
+### Go deeper
 
 | | |
 |---|---|
-| ▶️ **Demo walkthrough** | [`DEMO.md`](./DEMO.md) — what to run and what it proves |
+| ▶️ **Demo walkthrough** | [`DEMO.md`](./DEMO.md) — every command and what it proves |
 | 📄 **What's on Midnight** | [`specs/BUILT_ON_MIDNIGHT.md`](./specs/BUILT_ON_MIDNIGHT.md) — the ZK primitives, in action |
-| 🔍 **Verify it yourself** | `pnpm --filter @mmr/watcher test` — independently recomputes and checks a real on-chain epoch root |
-| 🖥️ **Run the UI** | `pnpm --filter web dev` → `localhost:3000` — the public reputation profile |
-| ⛓️ **Live on Midnight Preview** | `epoch_proof` deployed at `48e2cfceccd0a7b771f5bb71337455f2df03540aadcaf0bc3687d310e52d9eb6` (all 11 circuits on chain) |
+| 🚀 **Host the UI** | [`specs/DEPLOY_VERCEL.md`](./specs/DEPLOY_VERCEL.md) — one-click Vercel deploy (no env, runs on fixtures) |
+
+> The UI shows **what** the product is and runs with zero setup. The terminal demos
+> prove the **cryptography** underneath. A non-technical reviewer should open the UI;
+> a technical one runs the verify command above.
 
 ---
 
