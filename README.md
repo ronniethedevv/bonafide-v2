@@ -95,6 +95,12 @@ forge — and the resulting reputation can't be traced back to any single client
 - **Deterministic indexer + independent watcher** — a real Base epoch (BROOMY/WETH)
   indexed end to end; the watcher rebuilds the attested root from published data,
   and a one-unit change to any metric is caught.
+- **Live Base/Ethereum archive-RPC reader** — the real `ChainProvider` is wired
+  behind the existing interface and the `pnpm --filter @mmr/indexer run epoch:live`
+  runner drives the full pipeline against live archive RPC, building the epoch twice
+  over independent publishers and asserting a byte-identical root. Re-run live from
+  this cloud session (2026-11-05, Base BROOMY/WETH 0.3%, 2026-10-21) →
+  root-of-roots `0x5a3a6373…d04461`, matching the committed fixture exactly.
 - **Real data adapters** — IPFS publisher (Pinata v3) and Postgres repository
   (`@mmr/db`), both behind clean interfaces.
 - **Public reputation UI** — landing, profile, and tear-sheet; `next build` passes.
@@ -110,8 +116,6 @@ integration work remains, and one item is an external ecosystem issue:
   local node accepts the same calls**, so it is not our contract or client — it is
   isolated to the wallet's DUST and reported to Midnight. Full write-up and
   reproduction: [`specs/CALL_SUBMISSION_BLOCKER.md`](./specs/CALL_SUBMISSION_BLOCKER.md).
-- **Live Base/Ethereum archive-RPC reader** — the decoding engine is built and
-  tested; the live `ChainProvider` behind the existing interface is still to wire.
 - **Market-maker witness capture** — the tool that records the MM's own private
   depth/uptime/flow during an epoch.
 - **Real attester operations** — the on-chain 2-of-3 threshold is enforced; a live
