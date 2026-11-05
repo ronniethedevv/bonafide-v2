@@ -35,3 +35,4 @@ prisma/*.db
 
 # local caches (rebuildable from chain state)
 .cache/
+.rpc-cache/

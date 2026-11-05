@@ -24,6 +24,7 @@ import { buildEpoch, InMemoryPublisher, type EpochManifest } from "../epoch.js";
 import { DEFAULT_CONFIG, type IndexerConfig } from "../config.js";
 import type { ChainProvider, EpochRange } from "../provider.js";
 import { rpcFetch } from "./proxy-fetch.js";
+import { cachingFetch } from "./rpc-cache.js";
 
 export interface RunResult {
   /** The root-of-roots, as published on-chain by the attester committee. */
@@ -63,6 +64,10 @@ export interface LiveEpochOptions {
   readonly configOverrides?: Partial<IndexerConfig>;
   readonly env?: Record<string, string | undefined>;
   readonly timeoutMs?: number;
+  /** Persistent RPC cache directory; set to make a dropped run resumable. */
+  readonly cacheDir?: string;
+  /** Per-call retry budget for transient failures (default 10). */
+  readonly retries?: number;
 }
 
 /**
@@ -74,9 +79,12 @@ export async function runLiveEpoch(opts: LiveEpochOptions): Promise<RunResult> {
   const env = opts.env ?? process.env;
   const url = env[cfg.rpcEnvVar];
   if (!url) throw new Error(`${cfg.rpcEnvVar} is not set (archive RPC url for ${cfg.name})`);
+  const baseFetch = rpcFetch(env);
+  const fetchImpl = opts.cacheDir ? cachingFetch(baseFetch, opts.cacheDir) : baseFetch;
   const rpc = new JsonRpcClient({
     url,
-    fetchImpl: rpcFetch(env),
+    fetchImpl,
+    retries: opts.retries ?? 10,
     ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
   });
   const provider = new UniswapV3ChainProvider(cfg, rpc);
@@ -139,11 +147,16 @@ function optionsFromEnv(env: Record<string, string | undefined>): LiveEpochOptio
 
 async function main(): Promise<void> {
   const env = process.env;
-  const opts = optionsFromEnv(env);
+  const cacheDir = env.MMR_CACHE_DIR ?? ".rpc-cache";
+  const opts: LiveEpochOptions = { ...optionsFromEnv(env), cacheDir };
   const cfg = resolveChain(opts.chainId);
   process.stdout.write(
     `Running epoch ${opts.epoch} on ${cfg.name} (chain ${opts.chainId}), ` +
       `window [${opts.startTs}, ${opts.endTs}], base ${opts.baseTokens.join(", ")}\n`,
+  );
+  process.stdout.write(
+    `RPC cache: ${cacheDir} (re-run to resume after a dropped connection; ` +
+      `delete the dir for a clean run)\n\n`,
   );
   const res = await runLiveEpoch(opts);
 
