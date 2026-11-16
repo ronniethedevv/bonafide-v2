@@ -1,0 +1,23 @@
+{
+  "name": "@mmr/witness",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Market-maker witness-capture tool: the MM's local, private per-epoch witness store. Captures each epoch's I1-I8 verdict over the MM's own wallets, chains the carry-forward (lifetime budget) commitment, and holds the full set so the MM can prove a claim across the contract — the private-input producer the proving pipeline assumes.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/indexer": "workspace:*",
+    "@mmr/merkle": "workspace:*",
+    "@mmr/prover": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

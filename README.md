@@ -106,6 +106,14 @@ forge — and the resulting reputation can't be traced back to any single client
   committed as offline KAT fixtures (`packages/watcher/fixtures/`).
 - **Real data adapters** — IPFS publisher (Pinata v3) and Postgres repository
   (`@mmr/db`), both behind clean interfaces.
+- **Market-maker witness-capture tool** — `@mmr/witness`: the MM's local, private
+  per-epoch witness store. Each epoch it runs the I1–I8 oracle over the MM's own
+  committed wallets, chains the carry-forward (lifetime-budget) commitment from the
+  previous epoch, and persists the record so the full set is in hand at claim time —
+  resumable, in-order-enforced, with coverage reporting.
+- **Portable attestation + client verifier** — `@mmr/attest`: an EAS-style typed,
+  revocable, time-stamped epoch attestation and a verifier (plus CLI) a client runs
+  themselves to re-derive the root from the published tree.
 - **Public reputation UI** — landing, profile, and tear-sheet; `next build` passes.
 
 ## Scope & honest status (what's next)
@@ -119,8 +127,10 @@ integration work remains, and one item is an external ecosystem issue:
   local node accepts the same calls**, so it is not our contract or client — it is
   isolated to the wallet's DUST and reported to Midnight. Full write-up and
   reproduction: [`specs/CALL_SUBMISSION_BLOCKER.md`](./specs/CALL_SUBMISSION_BLOCKER.md).
-- **Market-maker witness capture** — the tool that records the MM's own private
-  depth/uptime/flow during an epoch.
+- **Witness capture — live wiring & off-chain scope.** The `@mmr/witness` tool exists
+  (per-epoch capture + carry chaining + store); what remains is feeding it live activity
+  from the archive-RPC reader filtered to the MM's wallets, and extending capture to
+  off-chain / CEX venues (zkTLS).
 - **Real attester operations** — the on-chain 2-of-3 threshold is enforced; a live
   3-operator fleet with Jubjub-Schnorr signing is the operational piece.
 - **Fee-sponsor** (DUST self-relay) and the live frontend API/DB path.
