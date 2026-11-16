@@ -14,12 +14,12 @@ export default async function HomePage() {
           Prove your track record.{" "}
           <span className="gradient-text">Keep your books private.</span>
         </h1>
-        <p className="muted" style={{ margin: 0, maxWidth: 560, fontSize: 16 }}>
+        <p className="lead" style={{ margin: 0, maxWidth: 600 }}>
           A public reputation record for crypto market makers. Show clients and
           partners that you met your commitments, without handing over your wallets,
           balances, or strategy.
         </p>
-        <div className="row" style={{ marginTop: 28 }}>
+        <div className="row" style={{ marginTop: 32 }}>
           {sampleHandle && (
             <Link href={`/mm/${sampleHandle}`} className="btn btn-primary">
               See a sample profile
@@ -33,8 +33,8 @@ export default async function HomePage() {
 
       {/* Value props */}
       <div
-        className="grid"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", marginTop: 20 }}
+        className="feature-grid"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", marginTop: 24 }}
       >
         <ValueCard
           title="Private by default"
@@ -51,7 +51,7 @@ export default async function HomePage() {
       </div>
 
       {/* How it works */}
-      <section id="how" style={{ marginTop: 56, scrollMarginTop: 80 }}>
+      <section id="how" style={{ marginTop: "var(--section-gap)", scrollMarginTop: 80 }}>
         <div className="eyebrow">How it works</div>
         <h2 style={{ margin: "8px 0 0" }}>Three simple steps</h2>
         <div
@@ -77,7 +77,7 @@ export default async function HomePage() {
       </section>
 
       {/* Profiles */}
-      <section style={{ marginTop: 56 }}>
+      <section style={{ marginTop: "var(--section-gap)" }}>
         <div
           className="row"
           style={{ justifyContent: "space-between", alignItems: "baseline" }}
@@ -141,9 +141,9 @@ export default async function HomePage() {
 
 function ValueCard({ title, body }: { title: string; body: string }) {
   return (
-    <div className="card">
-      <h3 style={{ margin: "0 0 8px" }}>{title}</h3>
-      <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+    <div className="feature-cell">
+      <h4 style={{ margin: "0 0 10px" }}>{title}</h4>
+      <p className="muted" style={{ margin: 0 }}>
         {body}
       </p>
     </div>

@@ -1,8 +1,8 @@
 function fillFor(pct: number): string {
   // Semantic tone, but as a gentle gradient so the meters read as one system.
-  if (pct >= 95) return "linear-gradient(90deg, #2fb87d, var(--pos))";
-  if (pct >= 80) return "linear-gradient(90deg, #d8911e, var(--warn))";
-  return "linear-gradient(90deg, #e05656, var(--neg))";
+  if (pct >= 95) return "linear-gradient(90deg, color-mix(in srgb, var(--pos) 70%, var(--surface)), var(--pos))";
+  if (pct >= 80) return "linear-gradient(90deg, color-mix(in srgb, var(--warn) 70%, var(--surface)), var(--warn))";
+  return "linear-gradient(90deg, color-mix(in srgb, var(--neg) 70%, var(--surface)), var(--neg))";
 }
 
 export function KpiBar({ label, pct }: { label: string; pct: number }) {

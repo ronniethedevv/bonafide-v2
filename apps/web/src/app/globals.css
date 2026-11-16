@@ -1,39 +1,56 @@
-/* Design system — obsidian monochrome with a single electric-indigo accent.
-   Austere, developer-console aesthetic: near-black neutral surfaces, hairline
-   borders, flat depth (no heavy glows), small radii. Space Grotesk headings,
-   Geist body, JetBrains Mono for code and numbers. Token NAMES are preserved so
-   the existing components keep working; only the values changed. */
+/* Design system — "Saasbright, inverted": a light, editorial SaaS template adapted
+   to this product's dark-first surface. The source palette (see specs design tokens)
+   is light — #FFFFFF canvas, #15171C ink, #2B59FF accent, Inter / Inter Display,
+   generous 18px card radii and airy editorial spacing. Here the neutral luminance is
+   inverted into a cool dark ramp while the accent hue, typography, radii, and
+   component shapes are preserved, so the feel carries over to a dark console.
+   Token NAMES are unchanged, so existing components keep working; values changed. */
 :root {
-  --bg: #0b0b0e;
-  --bg-elev: #0e0e12;
-  --surface: #141418;
-  --surface-2: #181920;
+  /* Neutrals — inverted from the light ramp (#FFFFFF / #F4F5F7 / #E3E6EB / #15171C),
+     kept cool to echo the source ink hue. */
+  --bg: #0b0c0f;
+  --bg-elev: #0f1115;
+  --surface: #14161b;
+  --surface-2: #181b22;
   --code: #090a0d;
-  --border: #23242c;
-  --border-strong: #2d3039;
-  --text: #ffffff;
-  --text-high: #f4f4f5;
-  --text-muted: #a1a1aa;
-  --text-dim: #71717a;
-  --accent: #6366f1;
-  --accent-2: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.12);
-  --grad: linear-gradient(180deg, #a5b4fc 0%, #6366f1 100%);
-  --grad-dim: linear-gradient(180deg, rgba(99, 102, 241, 0.06), transparent);
-  /* Restrained status tones — used only in meters and status text, never chrome. */
-  --pos: #4ade80;
-  --neg: #f87171;
-  --warn: #fbbf24;
-  --radius: 8px;
-  --radius-sm: 6px;
-  --radius-pill: 6px;
+  --border: #262a32;
+  --border-strong: #333845;
+  --text: #f5f7fa;
+  --text-high: #ffffff;
+  --text-muted: #9aa2b1; /* source secondaryText #6B7382, lifted for dark */
+  --text-dim: #6b7382;
+
+  /* Accent — source #2B59FF kept; a brighter tint for links/hover on dark. */
+  --accent: #2b59ff;
+  --accent-2: #5c82ff;
+  --accent-soft: rgba(43, 89, 255, 0.14);
+  --focus: #0099ff; /* source inputFocus */
+  --grad: linear-gradient(135deg, #5c82ff 0%, #2b59ff 100%);
+  --grad-dim: linear-gradient(180deg, rgba(43, 89, 255, 0.07), transparent);
+
+  /* Status — source danger #E5484D; green/amber kept for this product's KPI semantics. */
+  --pos: #3ecf8e;
+  --neg: #e5484d;
+  --warn: #f5a623;
+
+  /* Shape & spacing — straight from the source (18px cards, 10px buttons, pill 999). */
+  --radius: 18px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
   --gap: 16px;
-  --tier-a: #a5b4fc;
-  --tier-b: #c6c5cf;
-  --tier-c: #71717a;
-  /* Chart series: indigo + warm amber, distinguished by shape + legend too. */
-  --series-uptime: #818cf8;
-  --series-depth: #fbbf24;
+  --maxw: 1200px;
+  --section-gap: 88px;
+
+  --tier-a: #5c82ff;
+  --tier-b: #c3c9d4;
+  --tier-c: #6b7382;
+  /* Chart series: blue + amber, distinguished by shape + legend too (CVD-safe). */
+  --series-uptime: #5c82ff;
+  --series-depth: #f5a623;
+
+  --font-head: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -49,34 +66,50 @@ body {
 body {
   min-height: 100vh;
   background: var(--bg);
-  color: var(--text-high);
-  font-family:
-    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 450;
   line-height: 1.55;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.006em;
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+/* Editorial display type — Inter with tight tracking to emulate "Inter Display". */
 h1,
 h2,
-h3 {
-  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  color: var(--text);
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  font-weight: 600;
+h3,
+h4 {
+  font-family: var(--font-head);
+  color: var(--text-high);
+  font-optical-sizing: auto;
+  margin: 0;
 }
 h1 {
-  font-size: clamp(30px, 4.6vw, 44px);
-  line-height: 1.08;
+  font-size: clamp(42px, 6vw, 72px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-weight: 600;
 }
 h2 {
-  font-size: 24px;
+  font-size: clamp(34px, 4.6vw, 52px);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  font-weight: 500;
 }
 h3 {
-  font-size: 18px;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+h4 {
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 500;
 }
 
 a {
@@ -84,14 +117,19 @@ a {
   text-decoration: none;
 }
 a:hover {
-  color: var(--text);
+  color: var(--text-high);
 }
 
 /* --- Layout --- */
 .container {
-  max-width: 1080px;
+  max-width: var(--maxw);
   margin: 0 auto;
-  padding: 44px 20px 72px;
+  padding: 64px 24px 96px;
+}
+@media (max-width: 640px) {
+  .container {
+    padding: 44px 16px 72px;
+  }
 }
 
 .topbar {
@@ -101,23 +139,30 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 20px;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: saturate(140%) blur(10px);
+  height: 64px;
+  padding: 0 32px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
   border-bottom: 1px solid var(--border);
 }
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 16px;
+  }
+}
 .brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   background: var(--accent);
   display: inline-block;
 }
 .brand-name {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: var(--font-head);
   font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: var(--text-high);
 }
 
 .row {
@@ -133,8 +178,14 @@ a:hover {
 /* --- Type helpers --- */
 .mono {
   font-variant-numeric: tabular-nums;
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0;
+}
+.lead {
+  font-size: 18px;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  color: var(--text-muted);
 }
 .muted {
   color: var(--text-muted);
@@ -149,26 +200,25 @@ a:hover {
   color: transparent;
 }
 .eyebrow {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  letter-spacing: 0.01em;
+  color: var(--accent-2);
 }
 
-/* --- Cards --- */
+/* --- Cards (source: #FFFFFF fill, 1px #E3E6EB border, 18px radius) --- */
 .card {
   position: relative;
   display: block;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 24px;
   color: inherit;
   transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
 }
 a.card:hover,
 .card.interactive:hover {
@@ -177,14 +227,42 @@ a.card:hover,
   text-decoration: none;
 }
 
-/* --- Hero: flat, with a faint masked grid (no gradient glow) --- */
+/* Feature grid — the source's hairline-joined tiles (1px gaps, 18px outer radius). */
+.feature-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.feature-grid > .feature-cell {
+  background: var(--surface);
+  padding: 32px;
+  transition: background 0.16s ease;
+}
+.feature-grid > .feature-cell:hover {
+  background: var(--surface-2);
+}
+@media (max-width: 640px) {
+  .feature-grid > .feature-cell {
+    padding: 24px 20px;
+  }
+}
+
+/* --- Hero: flat editorial surface with a faint masked grid --- */
 .hero {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 40px 32px;
+  padding: 72px 48px;
   background: var(--surface);
+}
+@media (max-width: 640px) {
+  .hero {
+    padding: 44px 24px;
+  }
 }
 .hero::after {
   content: "";
@@ -193,79 +271,81 @@ a.card:hover,
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 30px 30px;
-  mask-image: radial-gradient(500px 240px at 15% 0%, black, transparent 72%);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(540px 280px at 12% 0%, black, transparent 72%);
   pointer-events: none;
 }
 .hero > * {
   position: relative;
 }
 
-/* --- Pills / badges --- */
+/* --- Pills / badges (source pill: solid #2B59FF, white, 999px) --- */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-pill);
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 .badge-new {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  padding: 4px 12px;
   border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: var(--accent);
   border: 1px solid var(--accent);
-  color: var(--text);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-/* --- Buttons --- */
+/* --- Buttons (source primary: #15171C fill → #2B59FF on hover; inverted here) --- */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 9px 16px;
+  height: 44px;
+  padding: 0 20px;
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 15px;
   font-weight: 500;
   border: 1px solid transparent;
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
 }
 .btn:hover {
   text-decoration: none;
 }
+/* Inverted: the source's near-black solid becomes near-white on dark, blue on hover. */
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--text-high);
+  color: #0b0c0f;
 }
 .btn-primary:hover {
-  background: #5558e6;
+  background: var(--accent);
   color: #fff;
 }
 .btn-ghost {
   background: var(--surface);
   border-color: var(--border);
-  color: var(--text-high);
+  color: var(--text);
 }
 .btn-ghost:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
-  color: var(--text);
+  color: var(--text-high);
 }
 
 /* --- Meters (KPI bars) --- */
@@ -292,7 +372,7 @@ a.card:hover,
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 10px 14px;
+  padding: 11px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -304,8 +384,8 @@ a.card:hover,
 }
 .terminal pre {
   margin: 0;
-  padding: 16px;
-  font-family: "JetBrains Mono", monospace;
+  padding: 18px;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.7;
   color: var(--text-muted);
