@@ -19,28 +19,48 @@ export default async function TearSheetPage({
   const all = [...profile.engagements, ...profile.sandbox];
 
   return (
-    <main className="container" style={{ maxWidth: 760 }}>
+    <main className="container" style={{ maxWidth: 820 }}>
       <Link href={`/mm/${profile.handle}`} className="muted" style={{ fontSize: 13 }}>
         ← Back to profile
       </Link>
 
-      <div className="card" style={{ marginTop: 16 }}>
+      {/* Letterhead */}
+      <div className="card" style={{ marginTop: 16, padding: 32 }}>
         <div
           className="row"
-          style={{ justifyContent: "space-between", alignItems: "baseline" }}
+          style={{ alignItems: "center", gap: 10, marginBottom: 20 }}
+        >
+          <span className="brand-mark" aria-hidden="true" />
+          <span className="eyebrow" style={{ letterSpacing: "0.04em" }}>
+            Reputation tear sheet
+          </span>
+        </div>
+
+        <div
+          className="row"
+          style={{ justifyContent: "space-between", alignItems: "flex-end", gap: 24 }}
         >
           <div>
-            <h1 style={{ margin: 0 }}>{profile.displayName}</h1>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(30px, 5vw, 44px)",
+                lineHeight: 1.05,
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {profile.displayName}
+            </h1>
             <span className="muted mono" style={{ fontSize: 13 }}>
-              @{profile.handle} · tear sheet
+              @{profile.handle}
             </span>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div className="mono" style={{ fontSize: 28 }}>
+            <div className="mono gradient-text" style={{ fontSize: 40, fontWeight: 600, lineHeight: 1 }}>
               {profile.headlineUptime}%
             </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              headline uptime
+            <div className="eyebrow" style={{ marginTop: 4 }}>
+              Headline uptime
             </div>
           </div>
         </div>
@@ -48,9 +68,9 @@ export default async function TearSheetPage({
         <div
           className="row"
           style={{
-            gap: 24,
-            marginTop: 16,
-            paddingTop: 16,
+            gap: 40,
+            marginTop: 24,
+            paddingTop: 24,
             borderTop: "1px solid var(--border)",
           }}
         >
@@ -61,51 +81,63 @@ export default async function TearSheetPage({
         </div>
       </div>
 
-      <table
-        className="card"
-        style={{ width: "100%", marginTop: 16, borderCollapse: "collapse" }}
-      >
-        <thead>
-          <tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 12 }}>
-            <th style={{ padding: "6px 8px" }}>Engagement</th>
-            <th style={{ padding: "6px 8px" }}>Tier</th>
-            <th style={{ padding: "6px 8px" }}>Epochs</th>
-            <th style={{ padding: "6px 8px" }}>KPI</th>
-            <th style={{ padding: "6px 8px" }}>Custody</th>
-            <th style={{ padding: "6px 8px" }}>Bond</th>
-            <th style={{ padding: "6px 8px" }}>Completed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {all.map((e) => (
-            <tr key={e.id} style={{ borderTop: "1px solid var(--border)", fontSize: 13 }}>
-              <td className="mono" style={{ padding: "8px" }}>
-                {e.id}
-              </td>
-              <td style={{ padding: "8px" }}>
-                <TierBadge tier={e.tier} />
-              </td>
-              <td className="mono" style={{ padding: "8px" }}>
-                {e.epochsPassed}/{e.epochsTotal}
-              </td>
-              <td className="mono" style={{ padding: "8px" }}>
-                {overallKpiHitRate(e)}%
-              </td>
-              <td style={{ padding: "8px", color: e.custodyIntact ? "var(--pos)" : "var(--neg)" }}>
-                {e.custodyIntact ? "intact" : "breached"}
-              </td>
-              <td className="mono" style={{ padding: "8px" }}>
-                {e.bond.status}
-              </td>
-              <td className="mono muted" style={{ padding: "8px" }}>
-                {e.completedAt}
-              </td>
+      {/* Record table */}
+      <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "var(--surface-2)" }}>
+              {["Engagement", "Tier", "Epochs", "KPI", "Custody", "Bond", "Completed"].map(
+                (h) => (
+                  <th
+                    key={h}
+                    className="eyebrow"
+                    style={{
+                      textAlign: "left",
+                      padding: "12px 16px",
+                      color: "var(--text-muted)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {all.map((e) => (
+              <tr key={e.id} style={{ borderTop: "1px solid var(--border)", fontSize: 14 }}>
+                <td className="mono" style={{ padding: "12px 16px", color: "var(--text)" }}>
+                  {e.id}
+                </td>
+                <td style={{ padding: "12px 16px" }}>
+                  <TierBadge tier={e.tier} />
+                </td>
+                <td className="mono" style={{ padding: "12px 16px" }}>
+                  {e.epochsPassed}/{e.epochsTotal}
+                </td>
+                <td className="mono" style={{ padding: "12px 16px" }}>
+                  {overallKpiHitRate(e)}%
+                </td>
+                <td
+                  className="mono"
+                  style={{ padding: "12px 16px", color: e.custodyIntact ? "var(--pos)" : "var(--neg)" }}
+                >
+                  {e.custodyIntact ? "intact" : "breached"}
+                </td>
+                <td className="mono" style={{ padding: "12px 16px" }}>
+                  {e.bond.status}
+                </td>
+                <td className="mono muted" style={{ padding: "12px 16px" }}>
+                  {e.completedAt}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <p className="muted" style={{ fontSize: 12, marginTop: 16 }}>
+      <p className="muted" style={{ fontSize: 13, marginTop: 20, maxWidth: 620 }}>
         Every result here is checked against public on-chain activity. No account
         access and no private books were shared to produce this record.
       </p>
@@ -116,10 +148,8 @@ export default async function TearSheetPage({
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-      <div className="mono" style={{ fontSize: 18 }}>
+      <div className="eyebrow">{label}</div>
+      <div className="mono" style={{ fontSize: 22, marginTop: 4, color: "var(--text)" }}>
         {value}
       </div>
     </div>
