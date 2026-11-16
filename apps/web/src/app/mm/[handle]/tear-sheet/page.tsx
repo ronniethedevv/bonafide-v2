@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchProfile } from "@/lib/data";
-import { totalCompleted, overallKpiHitRate } from "@/lib/read-model";
+import {
+  totalCompleted,
+  overallKpiHitRate,
+  liveEngagements,
+  coverageOf,
+  profileFreshness,
+  lastActivityAt,
+} from "@/lib/read-model";
 import { TierBadge } from "@/components/tier-badge";
 
 // A compact, shareable/printable summary of the public record. In production
@@ -16,7 +23,10 @@ export default async function TearSheetPage({
   const profile = await fetchProfile(handle);
   if (!profile) notFound();
 
-  const all = [...profile.engagements, ...profile.sandbox];
+  const all = [...liveEngagements(profile.engagements), ...liveEngagements(profile.sandbox)];
+  const coverage = coverageOf(profile);
+  const freshness = profileFreshness(profile);
+  const lastAt = lastActivityAt(profile);
 
   return (
     <main className="container" style={{ maxWidth: 820 }}>
@@ -53,6 +63,7 @@ export default async function TearSheetPage({
             </h1>
             <span className="muted mono" style={{ fontSize: 13 }}>
               @{profile.handle}
+              {freshness && lastAt ? ` · updated ${lastAt} · ${freshness}` : ""}
             </span>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -137,9 +148,14 @@ export default async function TearSheetPage({
         </table>
       </div>
 
-      <p className="muted" style={{ fontSize: 13, marginTop: 20, maxWidth: 620 }}>
+      <p className="muted" style={{ fontSize: 13, marginTop: 20, maxWidth: 640 }}>
         Every result here is checked against public on-chain activity. No account
         access and no private books were shared to produce this record.
+      </p>
+      <p className="dim" style={{ fontSize: 12, marginTop: 8, maxWidth: 640, lineHeight: 1.6 }}>
+        Scope: {coverage.venues.join(", ")} on{" "}
+        {coverage.chains.map((c) => (c === 1 ? "Ethereum" : c === 8453 ? "Base" : `chain ${c}`)).join(" · ")}.{" "}
+        {coverage.note}
       </p>
     </main>
   );
