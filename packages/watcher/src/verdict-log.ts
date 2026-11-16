@@ -158,6 +158,36 @@ export function deriveClaimFromRecords(
   return { engagementId, tier, epochsPassed, epochsTotal };
 }
 
+/** Completeness of an engagement's record set over its contracted range. */
+export interface EpochCoverage {
+  readonly epochsTotal: number;
+  /** Epochs (1..epochsTotal) that have at least one record. */
+  readonly present: number;
+  /** Epoch numbers in range with NO record — withheld or unproven epochs, made visible. */
+  readonly missing: number[];
+  /** No gaps: every contracted epoch has a record. */
+  readonly contiguous: boolean;
+}
+
+/**
+ * Report which contracted epochs have on-chain records and which are missing. A
+ * missing epoch already lowers the derived pass-rate (deriveClaimFromRecords counts it
+ * toward the total but not toward passed), so withholding can't inflate a claim — but
+ * this surfaces the gaps so a client SEES an incomplete record instead of reading a
+ * silently-penalised rate as if it were complete (the completeness / cherry-pick
+ * concern, see specs/COMPETITIVE_LANDSCAPE.md §3 C3).
+ */
+export function epochCoverageOfRecords(
+  records: readonly EpochRecord[],
+  epochsTotal: number,
+): EpochCoverage {
+  const seen = new Set<number>();
+  for (const r of records) if (r.epoch >= 1 && r.epoch <= epochsTotal) seen.add(r.epoch);
+  const missing: number[] = [];
+  for (let e = 1; e <= epochsTotal; e++) if (!seen.has(e)) missing.push(e);
+  return { epochsTotal, present: seen.size, missing, contiguous: missing.length === 0 };
+}
+
 /**
  * H4: verify a claim's counters against the on-chain records and the committed
  * contract length. The claim's `epochsTotal` must equal the committed value (the

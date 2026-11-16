@@ -1,0 +1,22 @@
+{
+  "name": "@mmr/attest",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Portable epoch attestation + client-side verification kit: a typed, revocable, time-stamped attestation of an epoch root-of-roots, and a verifier a client runs themselves (recomputes the root from the published tree, rejects revoked/expired/mismatched).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/merkle": "workspace:*",
+    "@mmr/watcher": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

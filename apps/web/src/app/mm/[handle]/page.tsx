@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchProfile } from "@/lib/data";
-import { totalCompleted } from "@/lib/read-model";
+import {
+  totalCompleted,
+  liveEngagements,
+  coverageOf,
+  profileFreshness,
+  lastActivityAt,
+  type Freshness,
+} from "@/lib/read-model";
 import { TierBadge } from "@/components/tier-badge";
 import { EngagementCard } from "@/components/engagement-card";
 import { EpochChart } from "@/components/epoch-chart";
 import { PrivacyNote } from "@/components/privacy-note";
+import { FreshnessChip } from "@/components/freshness-chip";
+import { CoverageNote } from "@/components/coverage-note";
 
 export default async function ProfilePage({
   params,
@@ -15,6 +24,14 @@ export default async function ProfilePage({
   const { handle } = await params;
   const profile = await fetchProfile(handle);
   if (!profile) notFound();
+
+  const now = Date.now();
+  const freshness: Freshness | null = profileFreshness(profile, now);
+  const lastAt = lastActivityAt(profile);
+  const coverage = coverageOf(profile);
+  const engagements = liveEngagements(profile.engagements);
+  const sandbox = liveEngagements(profile.sandbox);
+  const revoked = [...profile.engagements, ...profile.sandbox].filter((e) => e.revoked);
 
   return (
     <main className="container">
@@ -29,8 +46,11 @@ export default async function ProfilePage({
         >
           <div>
             <h1 style={{ margin: 0 }}>{profile.displayName}</h1>
-            <div className="muted mono" style={{ fontSize: 13, marginTop: 4 }}>
-              @{profile.handle}
+            <div className="row" style={{ alignItems: "center", gap: 10, marginTop: 8 }}>
+              <span className="muted mono" style={{ fontSize: 13 }}>
+                @{profile.handle}
+              </span>
+              {freshness && lastAt && <FreshnessChip freshness={freshness} lastAt={lastAt} />}
             </div>
           </div>
           <Link href={`/mm/${profile.handle}/tear-sheet`} className="btn btn-ghost">
@@ -56,6 +76,10 @@ export default async function ProfilePage({
         </PrivacyNote>
       </div>
 
+      <div style={{ marginTop: 14 }}>
+        <CoverageNote coverage={coverage} />
+      </div>
+
       {profile.epochSeries.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <EpochChart series={profile.epochSeries} />
@@ -64,12 +88,12 @@ export default async function ProfilePage({
 
       <h2 style={{ marginTop: 32 }}>Completed engagements</h2>
       <div className="grid" style={{ gridTemplateColumns: "1fr", marginTop: 14 }}>
-        {profile.engagements.map((e) => (
+        {engagements.map((e) => (
           <EngagementCard key={e.id} e={e} />
         ))}
       </div>
 
-      {profile.sandbox.length > 0 && (
+      {sandbox.length > 0 && (
         <>
           <div className="row" style={{ alignItems: "center", gap: 12, marginTop: 32 }}>
             <h2 style={{ margin: 0 }}>Sandbox</h2>
@@ -79,8 +103,24 @@ export default async function ProfilePage({
             Shown separately from the headline record.
           </p>
           <div className="grid" style={{ gridTemplateColumns: "1fr", marginTop: 14 }}>
-            {profile.sandbox.map((e) => (
+            {sandbox.map((e) => (
               <EngagementCard key={e.id} e={e} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {revoked.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 32 }}>Revoked</h2>
+          <p className="muted" style={{ marginTop: 6, marginBottom: 0, fontSize: 13 }}>
+            These attestations were revoked and are excluded from the headline record.
+          </p>
+          <div className="grid" style={{ gridTemplateColumns: "1fr", marginTop: 14 }}>
+            {revoked.map((e) => (
+              <div key={e.id} style={{ opacity: 0.6 }}>
+                <EngagementCard e={e} />
+              </div>
             ))}
           </div>
         </>
