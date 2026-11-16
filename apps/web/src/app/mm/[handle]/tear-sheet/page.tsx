@@ -10,6 +10,7 @@ import {
   lastActivityAt,
 } from "@/lib/read-model";
 import { TierBadge } from "@/components/tier-badge";
+import { TrustPanel } from "@/components/trust-panel";
 
 // A compact, shareable/printable summary of the public record. In production
 // this view is rendered to PDF/PNG in a background worker and stored in Blob;
@@ -146,6 +147,10 @@ export default async function TearSheetPage({
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <TrustPanel compact />
       </div>
 
       <p className="muted" style={{ fontSize: 13, marginTop: 20, maxWidth: 640 }}>
