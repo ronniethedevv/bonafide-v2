@@ -95,12 +95,15 @@ forge — and the resulting reputation can't be traced back to any single client
 - **Deterministic indexer + independent watcher** — a real Base epoch (BROOMY/WETH)
   indexed end to end; the watcher rebuilds the attested root from published data,
   and a one-unit change to any metric is caught.
-- **Live Base/Ethereum archive-RPC reader** — the real `ChainProvider` is wired
-  behind the existing interface and the `pnpm --filter @mmr/indexer run epoch:live`
-  runner drives the full pipeline against live archive RPC, building the epoch twice
-  over independent publishers and asserting a byte-identical root. Re-run live from
-  this cloud session (2026-11-05, Base BROOMY/WETH 0.3%, 2026-10-21) →
-  root-of-roots `0x5a3a6373…d04461`, matching the committed fixture exactly.
+- **Live Base _and_ Ethereum archive-RPC reader** — the real `ChainProvider` is wired
+  behind the existing interface and drives the full pipeline against live archive RPC,
+  building each epoch twice over independent publishers and asserting a byte-identical
+  root that the independent watcher then recomputes. Both chains run live from this
+  cloud session (proxy-aware transport, resumable RPC cache):
+  **Base** (2026-10-21, BROOMY/WETH 0.3%) → root `0x5a3a6373…d04461`, matching the
+  committed fixture; **Ethereum mainnet** (2026-11-10, a freshly-created Uniswap v3
+  pool / USDT) → root `0xc4f5ae0e…2c34`, 2126 leaves, watcher-verified. Both are
+  committed as offline KAT fixtures (`packages/watcher/fixtures/`).
 - **Real data adapters** — IPFS publisher (Pinata v3) and Postgres repository
   (`@mmr/db`), both behind clean interfaces.
 - **Public reputation UI** — landing, profile, and tear-sheet; `next build` passes.
