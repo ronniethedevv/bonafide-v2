@@ -1,0 +1,23 @@
+{
+  "name": "@mmr/merkle",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Leaf schema, address-sorted indexed Merkle tree (depth 16), epoch root-of-roots, and the Poseidon (Compact transientHash) tree hasher.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./poseidon": "./src/poseidon.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0"
+  },
+  "devDependencies": {
+    "fast-check": "3.23.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

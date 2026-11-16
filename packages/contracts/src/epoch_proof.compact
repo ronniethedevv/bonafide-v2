@@ -1,0 +1,1163 @@
+// epoch_proof.compact — per-epoch delivery proof, enforces I1-I8 (build-order #4)
+//
+// UNVERIFIED SKELETON. Follows INVARIANTS.md exactly. All wallet addresses,
+// metrics, Merkle paths, salts, and deal terms are PRIVATE witnesses; the only
+// disclosed outputs are the epoch verdict (no revert), the public uptime count,
+// and the wallet / terms commitments (already public at registration; C2).
+// Which pool and which wallets belong to the engagement are never disclosed.
+//
+// The leaf schema, indexed-tree opening, pool inclusion proof, and band opening
+// mirror @mmr/merkle / @mmr/indexer. Merkle hashing (slot leaves, pool leaves,
+// internal nodes) is transientHash: Poseidon over the BLS12-381 scalar field, so every
+// tree digest is a Field. @mmr/merkle's PoseidonHasher reproduces it exactly by
+// calling compact-runtime's own transientHash over the same types (KAT in
+// packages/contracts/test). The public rootOfRoots stays Bytes<32>: the computed
+// Field root is cast to Bytes<32> (little-endian, canonical) once, at the boundary.
+// Commitments (persistentCommit, C2) stay SHA-256: they are ledger state (DD-8).
+//
+// Compact 0.31.x constraints applied in this file:
+//   - No top-level const (SLOTS=16, BUCKETS=48 are inlined as literals).
+//   - No let / mutable scalar bindings; accumulators use helper circuits.
+//   - Max Uint width is 248; floor_price_P is bounded to Uint<64> so that
+//     16 slots × (quote_end + lp_quote) × P ≤ 16 × 2^128 × 2^64 = 2^196 < 2^248.
+
+pragma language_version 0.23.0;
+
+import CompactStandardLibrary;
+
+// Per-slot opened leaf (membership) or low-leaf (non-membership). Metrics match
+// the @mmr/merkle leaf schema; signed quantities are split in/out.
+struct SlotLeaf {
+  addr: Uint<160>,
+  next_addr: Uint<160>,
+  is_protocol: Boolean,
+  base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
+  lp_base: Uint<128>, lp_quote: Uint<128>,
+  xfer_in: Uint<128>, xfer_out: Uint<128>, from_treasury: Uint<128>,
+  swap_base_in: Uint<128>, swap_base_out: Uint<128>,
+  swap_quote_in: Uint<128>, swap_quote_out: Uint<128>,
+  depth_root: Bytes<32>, flow_root: Bytes<32>,
+  present: Boolean            // true = membership, false = non-membership
+}
+
+// Private deal terms (committed at registration; opened here as a witness).
+// floor_price_P is Uint<64> (not Uint<128>) to bound quote-valued sums within
+// Uint<248>: max sum = 16 × 2^128 × 2^64 = 2^196 < 2^248.
+struct Terms {
+  floor_price_P: Uint<64>, loan_L0: Uint<128>, quote_start_Q0: Uint<128>,
+  disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
+  roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>,
+  // H4 (DD-12): I6 pass threshold (bucket count) and committed contract length in epochs.
+  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
+}
+
+// C2: proveEpoch's public output. Both commitments are now checked on-chain: the
+// wallet half by proveEpoch itself (walletCommit[id]), the terms half by settleEpoch
+// (termsCommit[id], H3b) — a caller may still compare them. Both values are already
+// public on the registration ledger under the same id, so disclosing them leaks nothing.
+struct EpochResult { uptime: Uint<8>, walletCommit: Bytes<32>, termsCommit: Bytes<32> }
+
+// Key for the per-epoch uptime record written to the public ledger.
+struct EpochRef { id: Bytes<32>, epoch: Uint<64> }
+
+// C1 — Merkle path step: sibling digest + left/right flag (mirrors PathStep in @mmr/merkle;
+// the TS 32-byte digest is the little-endian image of this Field).
+struct PathStep { sibling: Field, weAreRight: Boolean }
+
+// C1 — Hashable leaf core (all SlotLeaf fields except the circuit-only `present` flag).
+//
+// The leaf digest is transientHash<SlotLeafCore>(core). @mmr/merkle encodeLeaf is this
+// struct's byte image (addr(20 LE) | next_addr(20 LE) | is_protocol(1) | 12×metric(16 LE) |
+// depth_root(32) | flow_root(32)); PoseidonHasher decodes it back to the struct and
+// hashes it with the runtime's transientHash. Field order is protocol.
+struct SlotLeafCore {
+  addr: Uint<160>, next_addr: Uint<160>, is_protocol: Boolean,
+  base_start: Uint<128>, base_end: Uint<128>, quote_end: Uint<128>,
+  lp_base: Uint<128>, lp_quote: Uint<128>,
+  xfer_in: Uint<128>, xfer_out: Uint<128>, from_treasury: Uint<128>,
+  swap_base_in: Uint<128>, swap_base_out: Uint<128>,
+  swap_quote_in: Uint<128>, swap_quote_out: Uint<128>,
+  depth_root: Bytes<32>, flow_root: Bytes<32>
+}
+
+// C1 — Pool-inclusion leaf, hashed as transientHash<PoolEntry>(pe). poolRoot is the pool
+// tree's Field root; encodePoolLeaf's image is poolAddr(20 LE) | poolRoot(32 LE).
+struct PoolEntry { poolAddr: Uint<160>, poolRoot: Field }
+
+// H1 — depth_root band leaf, hashed as transientHash<BandSeries>. One leaf per
+// configured band; bid/ask are DENSE per-bucket minimum depths (0 = no sample).
+// Byte image (@mmr/indexer commit.ts): band_bps(8 LE) | bid[0..48](16 LE each) |
+// ask[0..48](16 LE each) = 1544 B; PoseidonHasher decodes it back to this struct.
+struct BandSeries { band_bps: Uint<64>, bid: Vector<48, Uint<128>>, ask: Vector<48, Uint<128>> }
+
+// M1 — flow_root is transientHash<FlowSeries> over the wallet's WHOLE dense per-window
+// (buy, sell) series (one window per 30-min bucket; no tree, DD-14), so every window is
+// in the I7 sum and none can be omitted. Byte image (@mmr/indexer commit.ts):
+// buy[0..48] | sell[0..48], 16 LE each = 1536 B.
+struct FlowSeries { buy: Vector<48, Uint<128>>, sell: Vector<48, Uint<128>> }
+
+// M2(b) — I5 carry-forward: running member transfer totals across the engagement's
+// proven epochs, committed as persistentCommit<CarryTotals>(totals, salt) (same family
+// as walletCommit/termsCommit; @mmr/prover carryCommit with CompactHasher is
+// byte-identical: SHA-256(salt ‖ 3 × 24 B LE)). Uint<192>: 2^64 epochs of Uint<128> headroom.
+struct CarryTotals { xfer_in: Uint<192>, xfer_out: Uint<192>, from_treasury: Uint<192> }
+
+// H4 — one proven epoch, appended by proveEpoch to the epochRecords tree. Every field is
+// already public (epochUptime key/value, the disclosed termsCommit); the tree lets claim
+// prove a record PRIVATELY (Merkle path to a historic root), so a claim never reveals
+// which engagement it credits. termsCommit ties the record to the accepted terms, so the
+// claim's threshold and contract length are the committed ones.
+struct EpochRecord { id: Bytes<32>, epoch: Uint<64>, uptime: Uint<32>, termsCommit: Bytes<32> }
+
+export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
+// M2(b): engagement id -> salted commitment to its cumulative CarryTotals. Absent = genesis
+// (zero totals). The salt keeps the low-entropy totals hidden on the public ledger.
+export ledger carryCommitment: Map<Bytes<32>, Bytes<32>>;
+// H4: append-only record of every proven epoch (2^20 records), read by claim privately.
+export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
+
+// Seed epochRecords with an all-zero genesis record so a valid path always exists for
+// claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
+// I8 (DD-26): the attester committee is fixed at deploy — three member ids
+// attesterId(secret_i); there is no circuit that changes it.
+constructor(members: Vector<3, Bytes<32>>) {
+  epochRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
+                                    termsCommit: default<Bytes<32>> });
+  assert(members[0] != members[1] && members[0] != members[2] && members[1] != members[2],
+         "committee members must be distinct (I8)");
+  for (const i of 0..3) {
+    committee.insert(disclose(members[i]));
+  }
+}
+
+// I10 (moved from claim.compact, which could not read epochRecords: Compact contracts
+// cannot read another contract's ledger). Public, append-only profile counters, keyed
+// by the MM's public profile id.
+export ledger profileNullifiers: Set<Bytes<32>>;
+export ledger completedCount: Map<Bytes<32>, Counter>;
+export ledger kpiHits: Map<Bytes<32>, Counter>;
+export ledger kpiTotal: Map<Bytes<32>, Counter>;
+
+witness committedWallets(): Vector<16, Uint<160>>;
+// H2: number of active wallets; they occupy slots [0, activeCount). Never disclosed.
+// Not a free choice: assertWalletLayout forces it to equal the count of non-zero
+// wallets, and the wallet vector itself is bound to the registration commitment.
+witness activeCount(): Uint<8>;
+witness walletSalt(): Bytes<32>;
+witness slotLeaves(): Vector<16, SlotLeaf>;
+witness terms(): Terms;
+witness termsSalt(): Bytes<32>;
+// H1: per-slot contracted-band minimum depths per bucket (dense), plus the path that
+// opens BandSeries { t.band_bps, bidMin[j], askMin[j] } against leaves[j].depth_root.
+// Checked for member slots only; other slots' depth is masked out of I6 and unchecked.
+// depthPaths: depth-2 band tree (BAND_TREE_DEPTH in @mmr/indexer; ≤ 4 bands).
+witness bidMin(): Vector<16, Vector<48, Uint<128>>>;
+witness askMin(): Vector<16, Vector<48, Uint<128>>>;
+witness depthPaths(): Vector<16, Vector<2, PathStep>>;
+// M1: per-slot dense flow series; for member slots, FlowSeries { flowBuy[j], flowSell[j] }
+// must hash to leaves[j].flow_root. Other slots' flow is masked out of I7 and unchecked.
+witness flowBuy(): Vector<16, Vector<48, Uint<128>>>;
+witness flowSell(): Vector<16, Vector<48, Uint<128>>>;
+// M2(b): the previous cumulative totals opened with their salt, and a fresh salt for
+// the new commitment. Never disclosed.
+witness carryPrev(): CarryTotals;
+witness carryPrevSalt(): Bytes<32>;
+witness carryNewSalt(): Bytes<32>;
+
+// claim (H4 / I10) witnesses. Slot e (0..89) is epoch e + 1: whether the MM presents its
+// record, and the record's path in epochRecords. Never disclosed.
+witness engagementSecret(): Bytes<32>;
+witness profileSecret(): Bytes<32>;
+witness claimRecordPresent(): Vector<90, Boolean>;
+witness claimRecordPaths(): Vector<90, MerkleTreePath<20, EpochRecord>>;
+
+// C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
+// slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
+witness slotPaths(): Vector<16, Vector<16, PathStep>>;
+// poolEntry: the pool's (addr, treeRoot) pair; poolRoot is the indexed-tree root.
+witness poolEntry(): PoolEntry;
+// poolPath: depth-10 path from hashPoolEntry to rootOfRoots (POOL_TREE_DEPTH=10 in @mmr/merkle).
+witness poolPath(): Vector<10, PathStep>;
+
+// --- Helper: accumulate a single Uint<128> field across 16 present-only slots ---
+// Returns the sum for a vector of 16 (present, value) pairs.
+
+circuit sumSlots16(v: Vector<16, Uint<128>>, present: Vector<16, Boolean>): Uint<132> {
+  const s0 = present[0] ? (v[0] as Uint<132>) : 0;
+  const s1 = present[1] ? (v[1] as Uint<132>) : 0;
+  const s2 = present[2] ? (v[2] as Uint<132>) : 0;
+  const s3 = present[3] ? (v[3] as Uint<132>) : 0;
+  const s4 = present[4] ? (v[4] as Uint<132>) : 0;
+  const s5 = present[5] ? (v[5] as Uint<132>) : 0;
+  const s6 = present[6] ? (v[6] as Uint<132>) : 0;
+  const s7 = present[7] ? (v[7] as Uint<132>) : 0;
+  const s8 = present[8] ? (v[8] as Uint<132>) : 0;
+  const s9 = present[9] ? (v[9] as Uint<132>) : 0;
+  const s10 = present[10] ? (v[10] as Uint<132>) : 0;
+  const s11 = present[11] ? (v[11] as Uint<132>) : 0;
+  const s12 = present[12] ? (v[12] as Uint<132>) : 0;
+  const s13 = present[13] ? (v[13] as Uint<132>) : 0;
+  const s14 = present[14] ? (v[14] as Uint<132>) : 0;
+  const s15 = present[15] ? (v[15] as Uint<132>) : 0;
+  const a = ((s0 + s1) as Uint<133>) + ((s2 + s3) as Uint<133>);
+  const b = ((s4 + s5) as Uint<133>) + ((s6 + s7) as Uint<133>);
+  const c = ((s8 + s9) as Uint<133>) + ((s10 + s11) as Uint<133>);
+  const d = ((s12 + s13) as Uint<133>) + ((s14 + s15) as Uint<133>);
+  return (((a + b) as Uint<135>) + ((c + d) as Uint<135>)) as Uint<132>;
+}
+
+// Sum (quote_end + lp_quote) * P for 16 slots.
+// Tight bound: each term ≤ (2^128 + 2^128) × (2^64 - 1) < 2^129 × 2^64 = 2^193.
+// 16 terms ≤ 16 × 2^193 = 2^197.
+circuit sumQuoteAtP(L: Vector<16, SlotLeaf>, P: Uint<64>): Uint<197> {
+  const q0 = L[0].present ? ((L[0].quote_end as Uint<129>) + (L[0].lp_quote as Uint<129>)) * P : 0;
+  const q1 = L[1].present ? ((L[1].quote_end as Uint<129>) + (L[1].lp_quote as Uint<129>)) * P : 0;
+  const q2 = L[2].present ? ((L[2].quote_end as Uint<129>) + (L[2].lp_quote as Uint<129>)) * P : 0;
+  const q3 = L[3].present ? ((L[3].quote_end as Uint<129>) + (L[3].lp_quote as Uint<129>)) * P : 0;
+  const q4 = L[4].present ? ((L[4].quote_end as Uint<129>) + (L[4].lp_quote as Uint<129>)) * P : 0;
+  const q5 = L[5].present ? ((L[5].quote_end as Uint<129>) + (L[5].lp_quote as Uint<129>)) * P : 0;
+  const q6 = L[6].present ? ((L[6].quote_end as Uint<129>) + (L[6].lp_quote as Uint<129>)) * P : 0;
+  const q7 = L[7].present ? ((L[7].quote_end as Uint<129>) + (L[7].lp_quote as Uint<129>)) * P : 0;
+  const q8 = L[8].present ? ((L[8].quote_end as Uint<129>) + (L[8].lp_quote as Uint<129>)) * P : 0;
+  const q9 = L[9].present ? ((L[9].quote_end as Uint<129>) + (L[9].lp_quote as Uint<129>)) * P : 0;
+  const q10 = L[10].present ? ((L[10].quote_end as Uint<129>) + (L[10].lp_quote as Uint<129>)) * P : 0;
+  const q11 = L[11].present ? ((L[11].quote_end as Uint<129>) + (L[11].lp_quote as Uint<129>)) * P : 0;
+  const q12 = L[12].present ? ((L[12].quote_end as Uint<129>) + (L[12].lp_quote as Uint<129>)) * P : 0;
+  const q13 = L[13].present ? ((L[13].quote_end as Uint<129>) + (L[13].lp_quote as Uint<129>)) * P : 0;
+  const q14 = L[14].present ? ((L[14].quote_end as Uint<129>) + (L[14].lp_quote as Uint<129>)) * P : 0;
+  const q15 = L[15].present ? ((L[15].quote_end as Uint<129>) + (L[15].lp_quote as Uint<129>)) * P : 0;
+  const a = ((q0 + q1) as Uint<194>) + ((q2 + q3) as Uint<194>);
+  const b = ((q4 + q5) as Uint<194>) + ((q6 + q7) as Uint<194>);
+  const c = ((q8 + q9) as Uint<194>) + ((q10 + q11) as Uint<194>);
+  const d = ((q12 + q13) as Uint<194>) + ((q14 + q15) as Uint<194>);
+  return (((a + b) as Uint<196>) + ((c + d) as Uint<196>)) as Uint<197>;
+}
+
+// Extract 16 presence flags from the leaf vector.
+circuit presentFlags(L: Vector<16, SlotLeaf>): Vector<16, Boolean> {
+  return [L[0].present, L[1].present, L[2].present, L[3].present,
+          L[4].present, L[5].present, L[6].present, L[7].present,
+          L[8].present, L[9].present, L[10].present, L[11].present,
+          L[12].present, L[13].present, L[14].present, L[15].present];
+}
+
+// Sum per-slot depths for bucket b over member slots only (H2: padding and
+// non-membership slots contribute nothing, matching the oracle's `members`).
+circuit bidSum(bid: Vector<16, Vector<48, Uint<128>>>, b: Uint<6>, m: Vector<16, Boolean>): Uint<132> {
+  const s0 = m[0] ? (bid[0][b] as Uint<132>) : 0;
+  const s1 = m[1] ? (bid[1][b] as Uint<132>) : 0;
+  const s2 = m[2] ? (bid[2][b] as Uint<132>) : 0;
+  const s3 = m[3] ? (bid[3][b] as Uint<132>) : 0;
+  const s4 = m[4] ? (bid[4][b] as Uint<132>) : 0;
+  const s5 = m[5] ? (bid[5][b] as Uint<132>) : 0;
+  const s6 = m[6] ? (bid[6][b] as Uint<132>) : 0;
+  const s7 = m[7] ? (bid[7][b] as Uint<132>) : 0;
+  const s8 = m[8] ? (bid[8][b] as Uint<132>) : 0;
+  const s9 = m[9] ? (bid[9][b] as Uint<132>) : 0;
+  const s10 = m[10] ? (bid[10][b] as Uint<132>) : 0;
+  const s11 = m[11] ? (bid[11][b] as Uint<132>) : 0;
+  const s12 = m[12] ? (bid[12][b] as Uint<132>) : 0;
+  const s13 = m[13] ? (bid[13][b] as Uint<132>) : 0;
+  const s14 = m[14] ? (bid[14][b] as Uint<132>) : 0;
+  const s15 = m[15] ? (bid[15][b] as Uint<132>) : 0;
+  const a = ((s0 + s1) as Uint<133>) + ((s2 + s3) as Uint<133>);
+  const c = ((s8 + s9) as Uint<133>) + ((s10 + s11) as Uint<133>);
+  const e = ((s4 + s5) as Uint<133>) + ((s6 + s7) as Uint<133>);
+  const g = ((s12 + s13) as Uint<133>) + ((s14 + s15) as Uint<133>);
+  return (((a + e) as Uint<135>) + ((c + g) as Uint<135>)) as Uint<132>;
+}
+
+// I6: count passing buckets across all 48 buckets.
+// A bucket passes when sumBid[b] >= target AND sumAsk[b] >= target.
+circuit uptimeCount(bid: Vector<16, Vector<48, Uint<128>>>,
+                    ask: Vector<16, Vector<48, Uint<128>>>,
+                    target: Uint<128>,
+                    m: Vector<16, Boolean>): Uint<8> {
+  const u0 = (bidSum(bid, 0 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 0 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u1 = (bidSum(bid, 1 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 1 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u2 = (bidSum(bid, 2 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 2 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u3 = (bidSum(bid, 3 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 3 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u4 = (bidSum(bid, 4 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 4 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u5 = (bidSum(bid, 5 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 5 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u6 = (bidSum(bid, 6 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 6 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u7 = (bidSum(bid, 7 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 7 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u8 = (bidSum(bid, 8 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 8 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u9 = (bidSum(bid, 9 as Uint<6>, m) >= (target as Uint<132>)
+              && bidSum(ask, 9 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u10 = (bidSum(bid, 10 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 10 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u11 = (bidSum(bid, 11 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 11 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u12 = (bidSum(bid, 12 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 12 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u13 = (bidSum(bid, 13 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 13 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u14 = (bidSum(bid, 14 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 14 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u15 = (bidSum(bid, 15 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 15 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u16 = (bidSum(bid, 16 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 16 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u17 = (bidSum(bid, 17 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 17 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u18 = (bidSum(bid, 18 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 18 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u19 = (bidSum(bid, 19 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 19 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u20 = (bidSum(bid, 20 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 20 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u21 = (bidSum(bid, 21 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 21 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u22 = (bidSum(bid, 22 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 22 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u23 = (bidSum(bid, 23 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 23 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u24 = (bidSum(bid, 24 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 24 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u25 = (bidSum(bid, 25 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 25 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u26 = (bidSum(bid, 26 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 26 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u27 = (bidSum(bid, 27 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 27 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u28 = (bidSum(bid, 28 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 28 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u29 = (bidSum(bid, 29 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 29 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u30 = (bidSum(bid, 30 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 30 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u31 = (bidSum(bid, 31 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 31 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u32 = (bidSum(bid, 32 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 32 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u33 = (bidSum(bid, 33 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 33 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u34 = (bidSum(bid, 34 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 34 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u35 = (bidSum(bid, 35 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 35 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u36 = (bidSum(bid, 36 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 36 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u37 = (bidSum(bid, 37 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 37 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u38 = (bidSum(bid, 38 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 38 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u39 = (bidSum(bid, 39 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 39 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u40 = (bidSum(bid, 40 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 40 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u41 = (bidSum(bid, 41 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 41 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u42 = (bidSum(bid, 42 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 42 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u43 = (bidSum(bid, 43 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 43 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u44 = (bidSum(bid, 44 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 44 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u45 = (bidSum(bid, 45 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 45 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u46 = (bidSum(bid, 46 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 46 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const u47 = (bidSum(bid, 47 as Uint<6>, m) >= (target as Uint<132>)
+               && bidSum(ask, 47 as Uint<6>, m) >= (target as Uint<132>)) ? 1 : 0;
+  const a = ((u0 + u1) as Uint<2>) + ((u2 + u3) as Uint<2>);
+  const b = ((u4 + u5) as Uint<2>) + ((u6 + u7) as Uint<2>);
+  const c = ((u8 + u9) as Uint<2>) + ((u10 + u11) as Uint<2>);
+  const d = ((u12 + u13) as Uint<2>) + ((u14 + u15) as Uint<2>);
+  const e = ((u16 + u17) as Uint<2>) + ((u18 + u19) as Uint<2>);
+  const f = ((u20 + u21) as Uint<2>) + ((u22 + u23) as Uint<2>);
+  const g = ((u24 + u25) as Uint<2>) + ((u26 + u27) as Uint<2>);
+  const h = ((u28 + u29) as Uint<2>) + ((u30 + u31) as Uint<2>);
+  const i = ((u32 + u33) as Uint<2>) + ((u34 + u35) as Uint<2>);
+  const j = ((u36 + u37) as Uint<2>) + ((u38 + u39) as Uint<2>);
+  const k = ((u40 + u41) as Uint<2>) + ((u42 + u43) as Uint<2>);
+  const l = ((u44 + u45) as Uint<2>) + ((u46 + u47) as Uint<2>);
+  const row0 = ((a + b) as Uint<4>) + ((c + d) as Uint<4>);
+  const row1 = ((e + f) as Uint<4>) + ((g + h) as Uint<4>);
+  const row2 = ((i + j) as Uint<4>) + ((k + l) as Uint<4>);
+  return (((row0 + row1) as Uint<6>) + (row2 as Uint<6>)) as Uint<8>;
+}
+
+// C1: extract the hashable core of a slot leaf, dropping the circuit-only `present` flag.
+circuit slotLeafCore(L: SlotLeaf): SlotLeafCore {
+  return SlotLeafCore {
+    addr: L.addr, next_addr: L.next_addr, is_protocol: L.is_protocol,
+    base_start: L.base_start, base_end: L.base_end, quote_end: L.quote_end,
+    lp_base: L.lp_base, lp_quote: L.lp_quote,
+    xfer_in: L.xfer_in, xfer_out: L.xfer_out, from_treasury: L.from_treasury,
+    swap_base_in: L.swap_base_in, swap_base_out: L.swap_base_out,
+    swap_quote_in: L.swap_quote_in, swap_quote_out: L.swap_quote_out,
+    depth_root: L.depth_root, flow_root: L.flow_root
+  };
+}
+
+// C1: internal Merkle node hash H(left, right) = transientHash<Vector<2, Field>>,
+// matching PoseidonHasher.hashNode. No domain tag. A slot leaf (17 fields) cannot
+// collide with a node (2). A pool leaf (Uint<160>, Field) hashes like a node, but
+// every path has a fixed length (16 / 10), so a node at level k >= 1 opened as a
+// leaf would need a path of the wrong length (KAT-checked).
+circuit hashNode(left: Field, right: Field): Field {
+  return transientHash<Vector<2, Field>>([left, right]);
+}
+
+// C1: apply one Merkle path step.
+circuit stepUp(h: Field, step: PathStep): Field {
+  return step.weAreRight ? hashNode(step.sibling, h) : hashNode(h, step.sibling);
+}
+
+// C1: verify a depth-16 indexed-Merkle path from leafHash to root.
+// Mirrors IndexedMerkleTree.verifyPath (depth 16) in @mmr/merkle.
+circuit verifyPath16(leafHash: Field, path: Vector<16, PathStep>, root: Field): [] {
+  const h1  = stepUp(leafHash, path[0]);
+  const h2  = stepUp(h1,  path[1]);
+  const h3  = stepUp(h2,  path[2]);
+  const h4  = stepUp(h3,  path[3]);
+  const h5  = stepUp(h4,  path[4]);
+  const h6  = stepUp(h5,  path[5]);
+  const h7  = stepUp(h6,  path[6]);
+  const h8  = stepUp(h7,  path[7]);
+  const h9  = stepUp(h8,  path[8]);
+  const h10 = stepUp(h9,  path[9]);
+  const h11 = stepUp(h10, path[10]);
+  const h12 = stepUp(h11, path[11]);
+  const h13 = stepUp(h12, path[12]);
+  const h14 = stepUp(h13, path[13]);
+  const h15 = stepUp(h14, path[14]);
+  const h16 = stepUp(h15, path[15]);
+  assert(h16 == root, "slot Merkle path mismatch (C1)");
+}
+
+// C1: verify a depth-10 pool-tree path from poolLeafHash to rootOfRoots.
+// Mirrors RootOfRoots.verifyPoolProof with POOL_TREE_DEPTH=10 in @mmr/merkle.
+// root is the public Bytes<32>; the Field result is cast once (LE; Field -> Bytes is
+// injective, so the byte comparison is exactly the Field comparison).
+circuit verifyPoolPath(leafHash: Field, path: Vector<10, PathStep>, root: Bytes<32>): [] {
+  const h1  = stepUp(leafHash, path[0]);
+  const h2  = stepUp(h1,  path[1]);
+  const h3  = stepUp(h2,  path[2]);
+  const h4  = stepUp(h3,  path[3]);
+  const h5  = stepUp(h4,  path[4]);
+  const h6  = stepUp(h5,  path[5]);
+  const h7  = stepUp(h6,  path[6]);
+  const h8  = stepUp(h7,  path[7]);
+  const h9  = stepUp(h8,  path[8]);
+  const h10 = stepUp(h9,  path[9]);
+  assert((h10 as Bytes<32>) == root, "pool inclusion path mismatch (C1)");
+}
+
+// H1: verify a depth-2 band-tree path from bandLeafHash to a slot leaf's depth_root.
+// Mirrors verifyBandOpening in @mmr/indexer. Like the pool root, depth_root is the
+// Field root's LE image, so the byte comparison is exactly the Field comparison.
+// The opened leaf carries t.band_bps, so only the contracted band can open.
+circuit verifyBandPath(leafHash: Field, path: Vector<2, PathStep>, root: Bytes<32>): [] {
+  const h1 = stepUp(leafHash, path[0]);
+  const h2 = stepUp(h1, path[1]);
+  assert((h2 as Bytes<32>) == root, "depth_root opening mismatch (H1)");
+}
+
+// I7: window w's round-trip volume min(Σbuy, Σsell) over member slots (bidSum masks
+// to members, as for depth).
+circuit windowRoundTrip(buy: Vector<16, Vector<48, Uint<128>>>,
+                        sell: Vector<16, Vector<48, Uint<128>>>,
+                        w: Uint<6>, m: Vector<16, Boolean>): Uint<132> {
+  const b = bidSum(buy, w, m);
+  const s = bidSum(sell, w, m);
+  return b < s ? b : s;
+}
+
+// I7: window w's gross volume Σbuy + Σsell over member slots.
+circuit windowGross(buy: Vector<16, Vector<48, Uint<128>>>,
+                    sell: Vector<16, Vector<48, Uint<128>>>,
+                    w: Uint<6>, m: Vector<16, Boolean>): Uint<133> {
+  return bidSum(buy, w, m) + bidSum(sell, w, m);
+}
+
+// I1 + H2 (closes L1): active wallets fill slots [0, n), are non-zero and strictly
+// increasing; every padding slot [n, 16) is exactly 0. Mirrors the oracle's
+// sortedAppendOnly. Interior zeros ([a, 0, b]) are rejected.
+circuit assertWalletLayout(w: Vector<16, Uint<160>>, n: Uint<8>): [] {
+  assert(n <= 16, "activeCount out of range (H2)");
+  for (const i of 0..16) {
+    if (i < n) {
+      assert(w[i] != 0, "active wallet is zero (I1)");
+    } else {
+      assert(w[i] == 0, "padding slot not zero (I1)");
+    }
+  }
+  for (const i of 1..16) {
+    if (i < n) {
+      assert(w[i - 1] < w[i], "wallets not sorted/unique (I1)");
+    }
+  }
+}
+
+// C1 + I2 + H2, shared by proveEpoch and proveFunding: each active slot's opened leaf
+// (membership or low-leaf) is in poolRoot, and it accounts for that wallet exactly once;
+// padding slots open nothing and are forced non-present, so they add to no sum.
+// Compact ranges are half-open: 0..16 is j = 0..15 (all 16 slots).
+// slotLeafCore strips `present` before hashing (its byte image == encodeLeaf).
+circuit openSlotLeaves(w: Vector<16, Uint<160>>, act: Vector<16, Boolean>,
+                       leaves: Vector<16, SlotLeaf>, sp: Vector<16, Vector<16, PathStep>>,
+                       poolRoot: Field): [] {
+  for (const j of 0..16) {
+    const L = leaves[j];
+    if (act[j]) {
+      verifyPath16(transientHash<SlotLeafCore>(slotLeafCore(L)), sp[j], poolRoot);
+      if (L.present) {
+        assert(L.addr == w[j], "membership slot mismatch (I2)");
+        assert(!L.is_protocol, "wallet is a protocol contract (I2)");
+      } else {
+        assert(L.addr < w[j] && (w[j] < L.next_addr || L.next_addr == 0),
+               "non-membership low-leaf does not bracket (I2)");
+      }
+    } else {
+      assert(!L.present, "padding slot opened as present (H2)");
+    }
+  }
+}
+
+// H2: slot j is active iff j < n.
+circuit activeFlags(n: Uint<8>): Vector<16, Boolean> {
+  return [0 < n, 1 < n, 2 < n, 3 < n, 4 < n, 5 < n, 6 < n, 7 < n,
+          8 < n, 9 < n, 10 < n, 11 < n, 12 < n, 13 < n, 14 < n, 15 < n];
+}
+
+export circuit proveEpoch(
+  id: Bytes<32>,
+  rootOfRoots: Bytes<32>,
+  epoch: Uint<64>
+): EpochResult {
+  const w = committedWallets();
+  const n = activeCount();
+  assertWalletLayout(w, n);
+  const act = activeFlags(n);
+
+  // C2: recompute the registration commitments over the opened wallets and terms
+  // (same schemes as registration.register). Disclosed in the result; the caller
+  // checks them against registration.walletCommit[id] / termsCommit[id].
+  const wc = persistentCommit<Vector<16, Uint<160>>>(w, walletSalt());
+  // C2, wallet half on-chain (DD-17 put registration in this contract): the opened
+  // wallet vector must be the one registered for this engagement, so a wallet cannot
+  // be swapped or dropped for an epoch. The terms half is checked by settleEpoch.
+  assert(status.member(disclose(id)), "engagement not registered (C2)");
+  assert(disclose(wc) == walletCommit.lookup(disclose(id)), "wallet commitment does not match registration (C2)");
+  const leaves = slotLeaves();
+  const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
+  // Member flags: present => active (padding is forced !present below), so pf
+  // selects exactly the oracle's `members` for the I3/I4/I5 sums and I6 depth.
+  const pf = presentFlags(leaves);
+
+  // C1: bind every witness to rootOfRoots via Merkle inclusion proofs.
+  const pe = poolEntry();
+  const pp = poolPath();
+  const sp = slotPaths();
+  const bid = bidMin();
+  const ask = askMin();
+  const dp = depthPaths();
+  const fb = flowBuy();
+  const fs = flowSell();
+
+  // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
+  verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
+
+  // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
+  // (C1), and it accounts for that wallet exactly once (I2); padding slots (H2) are
+  // forced empty (openSlotLeaves, shared with proveFunding).
+  openSlotLeaves(w, act, leaves, sp, pe.poolRoot);
+  // Per member slot (present => active, enforced above):
+  for (const j of 0..16) {
+    const L = leaves[j];
+    if (L.present) {
+      // H1: this member's depth witness is the contracted band committed in depth_root.
+      verifyBandPath(transientHash<BandSeries>(BandSeries {
+                       band_bps: t.band_bps, bid: bid[j], ask: ask[j] }),
+                     dp[j], L.depth_root);
+      // M1: this member's flow witness is the whole series committed in flow_root.
+      assert((transientHash<FlowSeries>(FlowSeries { buy: fb[j], sell: fs[j] }) as Bytes<32>)
+               == L.flow_root, "flow_root opening mismatch (M1)");
+    }
+  }
+
+  // I3: custody floor — held value + allowed disposal covers the loan + starting quote.
+  // heldBase = Σ (base_end + lp_base) for present slots, ≤ Uint<132>
+  const baseEndVec: Vector<16, Uint<128>> = [
+    leaves[0].base_end, leaves[1].base_end, leaves[2].base_end, leaves[3].base_end,
+    leaves[4].base_end, leaves[5].base_end, leaves[6].base_end, leaves[7].base_end,
+    leaves[8].base_end, leaves[9].base_end, leaves[10].base_end, leaves[11].base_end,
+    leaves[12].base_end, leaves[13].base_end, leaves[14].base_end, leaves[15].base_end];
+  const lpBaseVec: Vector<16, Uint<128>> = [
+    leaves[0].lp_base, leaves[1].lp_base, leaves[2].lp_base, leaves[3].lp_base,
+    leaves[4].lp_base, leaves[5].lp_base, leaves[6].lp_base, leaves[7].lp_base,
+    leaves[8].lp_base, leaves[9].lp_base, leaves[10].lp_base, leaves[11].lp_base,
+    leaves[12].lp_base, leaves[13].lp_base, leaves[14].lp_base, leaves[15].lp_base];
+  // heldBase: two Uint<132> sums → at most 2^133. heldQuoteAtP: at most 2^197.
+  const heldBase = (sumSlots16(baseEndVec, pf) as Uint<133>)
+                    + (sumSlots16(lpBaseVec, pf) as Uint<133>);
+  const heldQuoteAtP = sumQuoteAtP(leaves, t.floor_price_P);
+  // RHS: loan_L0 + quote_start_Q0 × P; P is Uint<64> → product ≤ 2^128 × 2^64 = 2^192.
+  const rhsQuote = t.quote_start_Q0 * t.floor_price_P;
+  // Step-by-step to stay within Uint<248>; >= handles mixed-width operands.
+  const lhsI3 = heldBase + heldQuoteAtP + t.disposal_D;
+  const rhsI3 = t.loan_L0 + rhsQuote;
+  assert(lhsI3 >= rhsI3, "custody floor breached (I3)");
+
+  // I4: net selling capped.
+  const swapInVec: Vector<16, Uint<128>> = [
+    leaves[0].swap_base_in, leaves[1].swap_base_in, leaves[2].swap_base_in, leaves[3].swap_base_in,
+    leaves[4].swap_base_in, leaves[5].swap_base_in, leaves[6].swap_base_in, leaves[7].swap_base_in,
+    leaves[8].swap_base_in, leaves[9].swap_base_in, leaves[10].swap_base_in, leaves[11].swap_base_in,
+    leaves[12].swap_base_in, leaves[13].swap_base_in, leaves[14].swap_base_in, leaves[15].swap_base_in];
+  const swapOutVec: Vector<16, Uint<128>> = [
+    leaves[0].swap_base_out, leaves[1].swap_base_out, leaves[2].swap_base_out, leaves[3].swap_base_out,
+    leaves[4].swap_base_out, leaves[5].swap_base_out, leaves[6].swap_base_out, leaves[7].swap_base_out,
+    leaves[8].swap_base_out, leaves[9].swap_base_out, leaves[10].swap_base_out, leaves[11].swap_base_out,
+    leaves[12].swap_base_out, leaves[13].swap_base_out, leaves[14].swap_base_out, leaves[15].swap_base_out];
+  const swapIn = sumSlots16(swapInVec, pf);
+  const swapOut = sumSlots16(swapOutVec, pf);
+  assert(swapOut <= swapIn + t.net_sell_S, "net selling cap (I4)");
+
+  // I5: outflows capped, excluding the treasury loan: from_treasury ⊆ xfer_in, so
+  // xfer_out ≤ xfer_in − from_treasury + D, written underflow-safe (DD-11).
+  const xferInVec: Vector<16, Uint<128>> = [
+    leaves[0].xfer_in, leaves[1].xfer_in, leaves[2].xfer_in, leaves[3].xfer_in,
+    leaves[4].xfer_in, leaves[5].xfer_in, leaves[6].xfer_in, leaves[7].xfer_in,
+    leaves[8].xfer_in, leaves[9].xfer_in, leaves[10].xfer_in, leaves[11].xfer_in,
+    leaves[12].xfer_in, leaves[13].xfer_in, leaves[14].xfer_in, leaves[15].xfer_in];
+  const xferOutVec: Vector<16, Uint<128>> = [
+    leaves[0].xfer_out, leaves[1].xfer_out, leaves[2].xfer_out, leaves[3].xfer_out,
+    leaves[4].xfer_out, leaves[5].xfer_out, leaves[6].xfer_out, leaves[7].xfer_out,
+    leaves[8].xfer_out, leaves[9].xfer_out, leaves[10].xfer_out, leaves[11].xfer_out,
+    leaves[12].xfer_out, leaves[13].xfer_out, leaves[14].xfer_out, leaves[15].xfer_out];
+  const fromTreasuryVec: Vector<16, Uint<128>> = [
+    leaves[0].from_treasury, leaves[1].from_treasury, leaves[2].from_treasury, leaves[3].from_treasury,
+    leaves[4].from_treasury, leaves[5].from_treasury, leaves[6].from_treasury, leaves[7].from_treasury,
+    leaves[8].from_treasury, leaves[9].from_treasury, leaves[10].from_treasury, leaves[11].from_treasury,
+    leaves[12].from_treasury, leaves[13].from_treasury, leaves[14].from_treasury, leaves[15].from_treasury];
+  const xferIn = sumSlots16(xferInVec, pf);
+  const xferOut = sumSlots16(xferOutVec, pf);
+  const fromTreasury = sumSlots16(fromTreasuryVec, pf);
+  assert(xferOut + fromTreasury <= xferIn + t.disposal_D, "outflow cap (I5)");
+
+  // M2(b): I5 across epochs — D is a lifetime budget. Mirrors @mmr/prover carryStep:
+  // open the prior commitment, add this epoch's member sums, check the cumulative cap,
+  // commit the new totals. Genesis (no entry) must open as zero, or a first epoch could
+  // claim phantom prior inflow as outflow budget.
+  const prev = carryPrev();
+  const key = disclose(id);
+  if (carryCommitment.member(key)) {
+    assert(persistentCommit<CarryTotals>(prev, carryPrevSalt()) == carryCommitment.lookup(key),
+           "carry-forward chain broken (M2)");
+  } else {
+    assert(prev.xfer_in == 0 && prev.xfer_out == 0 && prev.from_treasury == 0,
+           "carry-forward genesis not zero (M2)");
+  }
+  const cum = CarryTotals {
+    xfer_in: (prev.xfer_in + xferIn) as Uint<192>,
+    xfer_out: (prev.xfer_out + xferOut) as Uint<192>,
+    from_treasury: (prev.from_treasury + fromTreasury) as Uint<192>
+  };
+  assert(cum.xfer_out + cum.from_treasury <= cum.xfer_in + t.disposal_D,
+         "cumulative outflow cap (I5, M2)");
+  carryCommitment.insert(key, disclose(persistentCommit<CarryTotals>(cum, carryNewSalt())));
+
+  // I6: uptime — count buckets with summed per-slot minimum depth >= target on both sides.
+  // Member depth is bound to depth_root above (H1); non-member depth is masked by pf.
+  const uptime = uptimeCount(bid, ask, t.depth_target, pf);
+
+  // I7: round-trip cap — per window, rt_w = min(Σbuy, Σsell), gross_w = Σbuy + Σsell over
+  // member slots (flow bound to flow_root above, M1); then
+  // roundTrip / gross <= ppm / 1e6, written roundTrip * 1e6 <= ppm * gross (no division).
+  // Widths: rt_w <= 2^132, so Σ48 < 2^138; gross_w <= 2^133, so Σ48 < 2^139.
+  const windows: Vector<48, Uint<6>> = [
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47];
+  const rtVec = map((w: Uint<6>): Uint<132> => windowRoundTrip(fb, fs, w, pf), windows);
+  const grossVec = map((w: Uint<6>): Uint<133> => windowGross(fb, fs, w, pf), windows);
+  const roundTrip = fold((acc: Uint<138>, x: Uint<132>): Uint<138> => (acc + x) as Uint<138>,
+                         0 as Uint<138>, rtVec);
+  const gross = fold((acc: Uint<139>, x: Uint<133>): Uint<139> => (acc + x) as Uint<139>,
+                     0 as Uint<139>, grossVec);
+  assert(roundTrip * 1000000 <= t.roundtrip_share_ppm * gross, "round-trip cap (I7)");
+
+  // I8 (DD-26): the root every opening above was checked against must be the one the
+  // committee published for this epoch (2-of-3 votes, publishRoot). Without this, a
+  // prover could open against a self-made root and still settle once the real root is
+  // published. Proofs come after publication (attester window, then challenge/proving).
+  const pe8 = disclose(epoch);
+  assert(publishedRoot.member(pe8) && publishedRoot.lookup(pe8) == disclose(rootOfRoots),
+         "rootOfRoots is not the epoch's published root (I8)");
+
+  const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
+  epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
+  epochRecords.insert(disclose(EpochRecord {
+    id: id, epoch: epoch, uptime: uptime as Uint<32>, termsCommit: tc }));
+
+  // uptime bucket count + C2 commitments; verdict (all-pass) implied by no revert
+  return disclose(EpochResult { uptime: uptime, walletCommit: wc, termsCommit: tc });
+}
+
+// --- claim (I10 + H4) ---------------------------------------------------------
+//
+// A finished engagement is added to the MM's public profile exactly once. The claim
+// discloses only the counter updates, the nullifier and a historic epochRecords root —
+// never which engagement it came from. Mirrors @mmr/watcher deriveClaimFromRecords
+// (DD-12): over epochs 1..epochs_total, an epoch passes when the MM presents its
+// on-ledger record and the recorded uptime >= min_uptime_buckets; a missing epoch counts
+// toward the total, never toward passed. The MM may withhold a record (only lowering
+// its own score) but cannot present one that is not on the ledger.
+
+// ν = H(engagement_secret ‖ engagement_id). Each finished engagement yields one.
+circuit nullifier(secret: Bytes<32>, id: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([secret, id]);
+}
+
+// Public profile id is derived from the profile secret so the MM controls it but
+// observers can't link it to any engagement.
+circuit profileId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+export circuit claim(
+  engagementId: Bytes<32>,
+  tier: Uint<8>,
+  epochsPassed: Uint<32>,
+  epochsTotal: Uint<32>
+): [] {
+  // H4: only the engagement's owner can claim it (registration derives the id the same
+  // way). Records are public, so without this anyone could claim another MM's epochs.
+  const secret = engagementSecret();
+  assert(persistentHash<Bytes<32>>(secret) == engagementId, "secret does not derive engagementId (H4)");
+
+  const nv = nullifier(secret, engagementId);
+  // I10: at most once — reject a repeat nullifier.
+  assert(!profileNullifiers.member(disclose(nv)), "engagement already claimed (I10)");
+  profileNullifiers.insert(disclose(nv));
+
+  // H4: the committed terms (opened privately; the commitment is in each record).
+  const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
+  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (H4)");
+
+  // Every slot's path must reach a historic epochRecords root, unconditionally: the ledger
+  // check is in the public transcript, so doing it only for presented epochs would leak
+  // which epochs exist and epochs_total. An unpresented slot carries any on-ledger path
+  // (the genesis record always exists). A PRESENTED slot's record must be this
+  // engagement's, for epoch e + 1, under these committed terms.
+  const present = claimRecordPresent();
+  const paths = claimRecordPaths();
+  for (const e of 0..90) {
+    assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(paths[e]))),
+           "epoch record not on the ledger (H4)");
+    if (e < t.epochs_total && present[e]) {
+      const rec = paths[e].leaf;
+      assert(rec.id == engagementId && rec.epoch == e + 1 && rec.termsCommit == tc,
+             "record is not this engagement's epoch (H4)");
+    }
+  }
+  const epochIdx: Vector<90, Uint<7>> = [
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+    36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+    72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89];
+  const hits = map((e: Uint<7>, pr: Boolean, p: MerkleTreePath<20, EpochRecord>): Uint<1> =>
+                     (e < t.epochs_total && pr && p.leaf.uptime >= t.min_uptime_buckets) ? 1 : 0,
+                   epochIdx, present, paths);
+  const passed = fold((acc: Uint<7>, h: Uint<1>): Uint<7> => (acc + h) as Uint<7>, 0 as Uint<7>, hits);
+  assert(epochsPassed == passed, "epochsPassed does not match the epoch records (H4)");
+  assert(epochsTotal == t.epochs_total, "epochsTotal is not the committed contract length (H4)");
+
+  const pid = disclose(profileId(profileSecret()));
+  if (!completedCount.member(pid)) {
+    completedCount.insertDefault(pid);
+    kpiHits.insertDefault(pid);
+    kpiTotal.insertDefault(pid);
+  }
+  // I10: counters only grow. Counter is monotonic by construction.
+  completedCount.lookup(pid).increment(1 as Uint<16>);
+  kpiHits.lookup(pid).increment(disclose(epochsPassed) as Uint<16>);
+  kpiTotal.lookup(pid).increment(disclose(epochsTotal) as Uint<16>);
+  // `tier` is a public argument so sandbox (C) engagements show separately from the
+  // headline record; the caller routes it to the right per-tier counter.
+}
+
+// --- Engagement lifecycle: registration + bond (H3b, DD-17) ----------------------
+//
+// Moved here from registration.compact and bond.compact. Compact 0.31.1 rejects
+// cross-contract calls ("cross-contract calls are not yet supported"), so a gate can
+// only read an anchor kept in its own contract's ledger. Every gate below reads its
+// anchor from this ledger; none takes one as an argument:
+//   - funding window:  registeredAt[id] (recorded by register)
+//   - epoch schedule:  activatedAt[id]  (recorded by activate; epoch e ends at
+//                      activatedAt + e * EPOCH)
+//   - challenge window: settledAt[epochKey(id, e)] (recorded by settleEpoch)
+// Compact exposes block time only through comparisons, so each anchor is a timestamp
+// argument CHECKED against the recording block's time when it is written:
+// block time - 600 s < ts <= block time (H3). A caller can shift an anchor by at most
+// that tolerance.
+//
+// Declared after every proveEpoch / claim ledger field so those circuits compile
+// unchanged (their ledger indices do not move).
+
+// Engagement lifecycle, keyed by the random engagement id.
+export enum Status { Registered, Funded, Active, Settled, Voided, Defaulted }
+
+export ledger status: Map<Bytes<32>, Status>;
+// Commitment over the 16-slot wallet vector (persistentCommit with a fresh salt).
+export ledger walletCommit: Map<Bytes<32>, Bytes<32>>;
+// Salted commitment persistentCommit<Terms>(terms, termsSalt) over the private
+// deal terms. Salted because terms are low-entropy (a bare hash could be
+// brute-forced). Opened only to the client off-chain.
+export ledger termsCommit: Map<Bytes<32>, Bytes<32>>;
+// Registration time: the funding-window anchor.
+export ledger registeredAt: Map<Bytes<32>, Uint<64>>;
+// Difficulty tier declared at registration (A/B/C). Public.
+export ledger tier: Map<Bytes<32>, Uint<8>>;
+// H3b: activation time: the epoch-schedule anchor (proving / default deadlines).
+export ledger activatedAt: Map<Bytes<32>, Uint<64>>;
+// H3b: epochKey(id, epoch) -> when that epoch was settled: the challenge-window anchor.
+export ledger settledAt: Map<Bytes<32>, Uint<64>>;
+
+// M3: engagement id -> the escrowed bond coin, held by this contract.
+export ledger escrowed: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+// Where a release / void returns value (the poster's coin key) and where a slash sends
+// it (the client, fixed at posting so the MM cannot redirect it; DD-16).
+export ledger bondOwner: Map<Bytes<32>, ZswapCoinPublicKey>;
+export ledger bondBeneficiary: Map<Bytes<32>, ZswapCoinPublicKey>;
+export ledger slashed: Map<Bytes<32>, Boolean>;
+// M3b (DD-18): the release schedule. contractEpochs is the committed epochs_total (E),
+// opened at registration; bondValue is the posted bond (B); releasedEpochs (k) and
+// releasedTotal track the tranches paid; epochReleased marks each epochKey paid once.
+export ledger contractEpochs: Map<Bytes<32>, Uint<64>>;
+export ledger bondValue: Map<Bytes<32>, Uint<128>>;
+export ledger releasedEpochs: Map<Bytes<32>, Uint<64>>;
+export ledger releasedTotal: Map<Bytes<32>, Uint<128>>;
+export ledger epochReleased: Set<Bytes<32>>;
+
+witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
+// H3b: the epochRecords path of the record being settled (public data: the record and
+// its tree are on the ledger; the path only proves it is there).
+witness settleRecordPath(): MerkleTreePath<20, EpochRecord>;
+
+// I9: reject the Jubjub identity point as a key. In 0.31.x the standard
+// signature check does not do this, so we check explicitly.
+// The Jubjub identity (0,1) compresses to LE bytes [0x01, 0x00, ..., 0x00],
+// which as a big-endian Compact Bytes<32> equals 2^248 cast via Field.
+circuit assertNotIdentity(pk: ZswapCoinPublicKey): [] {
+  const identityBytes = (452312848583266388373324160190187140051835877600158453279131187530910662656 as Field) as Bytes<32>;
+  assert(pk.bytes != identityBytes, "identity-point key rejected (I9)");
+}
+
+// Derive the public engagement id deterministically from the secret, so the MM
+// can recompute it but observers cannot link it to the MM.
+circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Bytes<32>>(secret);
+}
+
+// H3b: end of epoch `epoch` (1-based) on the engagement's schedule, and the last moment
+// it can still be settled: + attester timeout (6h; the latest a root can be published —
+// publishedRoot (I8) records that a root was published, not when, so the MM gets the
+// most lenient anchor) + challenge (12h) + proving (24h) + grace (24h). Timing from
+// specs/architecture.md.
+circuit epochEnd(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
+  const EPOCH: Uint<64> = 86400;   // 24h
+  return (activatedAt.lookup(id) + epoch * EPOCH) as Uint<64>;
+}
+circuit graceDeadline(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
+  const AFTER_END: Uint<64> = 237600;   // 6h + 12h + 24h + 24h
+  return (epochEnd(id, epoch) + AFTER_END) as Uint<64>;
+}
+
+// H3: Compact exposes block time only through comparisons, never as a value, so the
+// timestamp to record is an argument that is CHECKED against the block's own time:
+// block time - REG_TS_TOLERANCE < registeredTs <= block time. A caller can no longer
+// backdate (or postdate) registeredAt beyond the tolerance.
+export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32> {
+  const REG_TS_TOLERANCE: Uint<64> = 600;   // 10 min: proof build -> block inclusion
+  const ts = disclose(registeredTs);
+  assert(blockTimeGte(ts), "registeredTs is in the future (H3)");
+  assert(blockTimeLt((ts + REG_TS_TOLERANCE) as Uint<64>), "registeredTs too far in the past (H3)");
+  const secret = engagementSecret();
+  const id = deriveEngagementId(secret);
+  assert(!status.member(disclose(id)), "engagement id already registered");
+
+  // Commit the wallet vector over all 16 slots with a fresh salt. Unused slots
+  // hold dummy addresses so the active wallet count never shows.
+  const wc = persistentCommit<Vector<16, Uint<160>>>(committedWallets(), walletSalt());
+  const t = terms();
+  const tc = persistentCommit<Terms>(t, termsSalt());
+  // M3b (DD-18): the contract length is public from here on — it sets the bond's
+  // tranche size, which every release reveals anyway (bond value is public, M3).
+  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (M3b)");
+
+  status.insert(disclose(id), Status.Registered);
+  walletCommit.insert(disclose(id), disclose(wc));
+  termsCommit.insert(disclose(id), disclose(tc));
+  registeredAt.insert(disclose(id), ts);
+  tier.insert(disclose(id), disclose(declaredTier));
+  contractEpochs.insert(disclose(id), disclose(t.epochs_total));
+  return disclose(id);
+}
+
+// Activation: prove the loan reached the committed wallets, checked against the
+// epoch root-of-roots so the pool stays hidden. The membership proof inputs are
+// private; only the status transition is disclosed.
+// H3b: records activatedAt (block-time-checked like registeredAt), the anchor of the
+// epoch schedule; only inside the funding window, so activate and voidUnfunded are
+// mutually exclusive.
+export circuit activate(id: Bytes<32>, rootOfRoots: Bytes<32>, activatedTs: Uint<64>): [] {
+  const TS_TOLERANCE: Uint<64> = 600;
+  const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
+  const key = disclose(id);
+  const ts = disclose(activatedTs);
+  assert(blockTimeGte(ts), "activatedTs is in the future (H3b)");
+  assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "activatedTs too far in the past (H3b)");
+  assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
+  assert(blockTimeLt((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window closed (H3b)");
+  // The loan's arrival is evidenced by epoch-1 indexed data, which does not exist yet:
+  // it is proven later by proveFunding against epoch 1's published root (DD-27), and
+  // settleEpoch requires it. rootOfRoots is not read here.
+  status.insert(key, Status.Funded);
+  activatedAt.insert(key, ts);
+}
+
+// Pay `amount` out of id's escrowed coin to `to`; the change (if any) stays escrowed.
+circuit payOut(id: Bytes<32>, to: ZswapCoinPublicKey, amount: Uint<128>): [] {
+  const coin = escrowed.lookup(id);
+  assert(amount <= coin.value, "release exceeds escrow (M3)");
+  const sent = sendShielded(coin, left<ZswapCoinPublicKey, ContractAddress>(to), amount);
+  if (sent.change.is_some) {
+    escrowed.insertCoin(id, sent.change.value, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  } else {
+    escrowed.remove(id);
+  }
+}
+
+// Post a shielded bond for a registered engagement: the coin moves into this contract's
+// custody. `beneficiary` (the client) receives the bond if the engagement defaults.
+export circuit postBond(id: Bytes<32>, tierMin: Uint<128>, beneficiary: ZswapCoinPublicKey): [] {
+  const key = disclose(id);
+  assert(status.member(key) && (status.lookup(key) == Status.Registered || status.lookup(key) == Status.Funded),
+         "engagement not open for a bond");
+  assert(!escrowed.member(key), "bond already posted");
+  // Declared disclosure: a contract can only take custody of a coin it can see.
+  const coin = disclose(bondCoin());
+  assert(coin.value >= tierMin, "bond below tier minimum");
+  receiveShielded(coin);
+  escrowed.insertCoin(key, coin, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bondOwner.insert(key, ownPublicKey());
+  bondBeneficiary.insert(key, disclose(beneficiary));
+  bondValue.insert(key, coin.value);
+  releasedEpochs.insert(key, 0);
+  releasedTotal.insert(key, 0);
+}
+
+// H3b: settle a proven epoch, recording settledAt (block-time-checked) as the anchor of
+// its challenge window. Only an epoch with a record in epochRecords under the
+// engagement's REGISTERED terms (proveEpoch's termsCommit == termsCommit[id], the C2
+// check done on-chain), only after the epoch has ended, once, and no later than its
+// grace deadline (a later proof cannot settle; the epoch is defaultable instead).
+export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>): [] {
+  const TS_TOLERANCE: Uint<64> = 600;
+  const key = disclose(id);
+  const e = disclose(epoch);
+  const ts = disclose(settledTs);
+  assert(blockTimeGte(ts), "settledTs is in the future (H3b)");
+  assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "settledTs too far in the past (H3b)");
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
+  // I8 (DD-26): only an epoch whose root the committee published can be settled.
+  assert(publishedRoot.member(e), "epoch root not published (I8)");
+  // DD-27: no epoch settles (so no tranche releases) until the loan is proven landed.
+  assert(fundingProven.member(key), "funding not proven (DD-27)");
+  assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
+  assert(blockTimeLt(graceDeadline(key, e)), "settlement deadline passed (H3b)");
+  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
+  assert(!settledAt.member(ek), "epoch already settled");
+  const path = settleRecordPath();
+  assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(path))),
+         "epoch record not on the ledger (H3b)");
+  const rec = disclose(path.leaf);
+  assert(rec.id == key && rec.epoch == e, "record is not this engagement's epoch (H3b)");
+  assert(rec.termsCommit == termsCommit.lookup(key), "epoch proven under unregistered terms (H3b)");
+  settledAt.insert(ek, ts);
+}
+
+// Release one settled epoch's tranche once its challenge window has passed (anchor: the
+// stored settledAt). No client veto (I8 gates acceptance upstream).
+// M3b (DD-18): each settled epoch releases exactly one tranche, always to the bond's
+// owner. After k released epochs of E the cumulative release is exactly floor(B * k / E)
+// (B = the posted bond): `amount` must be that step — checked without division as
+// cum * E <= B * k < (cum + 1) * E — so the tranches sum to B and never exceed escrow.
+// The last tranche settles the engagement.
+export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): [] {
+  const CHALLENGE: Uint<64> = 43200;   // 12h
+  const key = disclose(id);
+  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: disclose(epoch) });
+  assert(settledAt.member(ek), "epoch not settled (H3b)");
+  assert(blockTimeGte((settledAt.lookup(ek) + CHALLENGE) as Uint<64>), "challenge window open");
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  assert(escrowed.member(key), "no bond escrowed (M3)");
+  assert(!epochReleased.member(ek), "epoch tranche already released (M3b)");
+  const a = disclose(amount);
+  const k = (releasedEpochs.lookup(key) + 1) as Uint<64>;
+  const total = contractEpochs.lookup(key);
+  const earned = bondValue.lookup(key) * k;
+  const cum = releasedTotal.lookup(key) + a;
+  assert(cum * total <= earned, "release exceeds the earned tranche (M3b)");
+  assert((cum + 1) * total > earned, "release below the earned tranche (M3b)");
+  epochReleased.insert(ek);
+  releasedEpochs.insert(key, k);
+  releasedTotal.insert(key, cum as Uint<128>);
+  if (a > 0) {
+    payOut(key, bondOwner.lookup(key), a);
+  }
+  if (k == total) {
+    status.insert(key, Status.Settled);
+  }
+}
+
+// Anyone can void an unfunded engagement after the funding window (anchor: the stored
+// registeredAt) — no penalty; any posted bond is returned in full.
+export circuit voidUnfunded(id: Bytes<32>): [] {
+  const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
+  const key = disclose(id);
+  assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
+  assert(blockTimeGte((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window open");
+  status.insert(key, Status.Voided);
+  if (escrowed.member(key)) {
+    payOut(key, bondOwner.lookup(key), escrowed.lookup(key).value);
+  }
+}
+
+// Default an epoch that was not settled by its grace deadline (anchor: the stored
+// activatedAt; a late proof is flagged by settling it in grace, not defaulted).
+// Slashes the bond. I8 (DD-26): an epoch whose root was never published is not
+// defaultable at all — the MM could not settle it, and attester failure never slashes
+// the MM (the product spec voids such an epoch: settlement.ts "voided-no-root").
+export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
+  const key = disclose(id);
+  const e = disclose(epoch);
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
+  assert(!settledAt.member(persistentHash<EpochRef>(EpochRef { id: key, epoch: e })), "epoch was settled");
+  assert(publishedRoot.member(e), "epoch root never published: not defaultable (I8)");
+  assert(blockTimeGte(graceDeadline(key, e)), "proving window open");
+  assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
+  slashed.insert(key, true);
+  status.insert(key, Status.Defaulted);
+  // M3: the whole escrowed bond goes to the beneficiary fixed at posting.
+  if (escrowed.member(key)) {
+    payOut(key, bondBeneficiary.lookup(key), escrowed.lookup(key).value);
+  }
+}
+
+// --- I8: attester-root registry (Option B, DD-26) --------------------------------
+//
+// Each committee member submits the (epoch, root, cid) it attests in its own publishRoot
+// transaction; the contract counts distinct members and publishes the root at 2 of 3.
+// Members authenticate by proving knowledge of their secret (I9: ownPublicKey() is chosen
+// by the prover, so it cannot authenticate). One vote per member per epoch: re-voting
+// the same (root, cid) is a no-op and a different one reverts, so a member cannot
+// equivocate and no two roots can both reach 2 of 3. Declared last so earlier ledger
+// indices do not move.
+
+// attesterId(secret) of each member, fixed by the constructor.
+export ledger committee: Set<Bytes<32>>;
+// persistentHash(MemberEpoch) -> persistentHash(RootVote) the member voted for.
+export ledger memberVote: Map<Bytes<32>, Bytes<32>>;
+// persistentHash(RootVote) -> distinct members that voted for exactly that triple.
+export ledger rootVoteCount: Map<Bytes<32>, Counter>;
+// epoch -> the root (and its tree's cid) that reached the threshold.
+export ledger publishedRoot: Map<Uint<64>, Bytes<32>>;
+export ledger publishedCid: Map<Uint<64>, Bytes<64>>;
+
+struct MemberEpoch { member: Bytes<32>, epoch: Uint<64> }
+struct RootVote { epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64> }
+
+// The submitting member's secret. Never disclosed; only attesterId(secret) is.
+witness attesterSecret(): Bytes<32>;
+
+// Domain-separated member id (distinct from engagement ids, which hash a bare secret).
+circuit attesterId(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "mmr:attester:v1"), secret]);
+}
+
+export circuit publishRoot(epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64>): [] {
+  const THRESHOLD: Uint<64> = 2;
+  const member = disclose(attesterId(attesterSecret()));
+  assert(committee.member(member), "not a committee attester (I8)");
+  const e = disclose(epoch);
+  const vk = persistentHash<MemberEpoch>(MemberEpoch { member: member, epoch: e });
+  const ck = persistentHash<RootVote>(RootVote { epoch: e, root: disclose(root), cid: disclose(cid) });
+  if (memberVote.member(vk)) {
+    assert(memberVote.lookup(vk) == ck, "attester already voted another root for this epoch (I8)");
+  } else {
+    memberVote.insert(vk, ck);
+    if (!rootVoteCount.member(ck)) {
+      rootVoteCount.insertDefault(ck);
+    }
+    rootVoteCount.lookup(ck).increment(1);
+    if (rootVoteCount.lookup(ck).read() >= THRESHOLD && !publishedRoot.member(e)) {
+      publishedRoot.insert(e, disclose(root));
+      publishedCid.insert(e, disclose(cid));
+    }
+  }
+}
+
+// --- Funding membership (DD-27) ----------------------------------------------------
+//
+// Proves the loan reached the committed wallets, against epoch 1's attested root (the
+// first indexed data after activation; I8 must publish it first, so the opening cannot
+// use a self-made root). Same openings as proveEpoch (C1 + I2 + H2 via openSlotLeaves)
+// and the same binding to the registration (C2: wallets and terms, so loan_L0 is the
+// registered one); then Σ from_treasury over member slots ≥ loan_L0. Once per
+// engagement; settleEpoch requires it. Nothing private is disclosed.
+
+export ledger fundingProven: Set<Bytes<32>>;
+
+export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
+  const key = disclose(id);
+  assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
+  assert(!fundingProven.member(key), "funding already proven (DD-27)");
+  assert(publishedRoot.member(1) && publishedRoot.lookup(1) == disclose(rootOfRoots),
+         "funding root is not epoch-1's attested root (DD-27)");
+
+  const w = committedWallets();
+  const n = activeCount();
+  assertWalletLayout(w, n);
+  const act = activeFlags(n);
+  // C2: the registered wallets and terms.
+  assert(disclose(persistentCommit<Vector<16, Uint<160>>>(w, walletSalt())) == walletCommit.lookup(key),
+         "wallet commitment does not match registration (C2)");
+  const t = terms();
+  assert(disclose(persistentCommit<Terms>(t, termsSalt())) == termsCommit.lookup(key),
+         "terms commitment does not match registration (C2)");
+
+  // C1: the pool is in epoch 1's root, and every slot's leaf is in the pool.
+  const leaves = slotLeaves();
+  const pe = poolEntry();
+  verifyPoolPath(transientHash<PoolEntry>(pe), poolPath(), rootOfRoots);
+  openSlotLeaves(w, act, leaves, slotPaths(), pe.poolRoot);
+
+  // The loan landed: treasury inflows to member wallets cover loan_L0.
+  const pf = presentFlags(leaves);
+  const fromTreasuryVec: Vector<16, Uint<128>> = [
+    leaves[0].from_treasury, leaves[1].from_treasury, leaves[2].from_treasury, leaves[3].from_treasury,
+    leaves[4].from_treasury, leaves[5].from_treasury, leaves[6].from_treasury, leaves[7].from_treasury,
+    leaves[8].from_treasury, leaves[9].from_treasury, leaves[10].from_treasury, leaves[11].from_treasury,
+    leaves[12].from_treasury, leaves[13].from_treasury, leaves[14].from_treasury, leaves[15].from_treasury];
+  assert(sumSlots16(fromTreasuryVec, pf) >= t.loan_L0, "loan not received by the committed wallets (DD-27)");
+  fundingProven.insert(key);
+}
