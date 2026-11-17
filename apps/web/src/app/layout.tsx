@@ -30,6 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <nav className="row" style={{ marginLeft: 28, gap: 20, alignItems: "center" }}>
             <Link href="/" className="muted" style={{ fontSize: 14 }}>Explore</Link>
             <Link href="/dashboard" className="muted" style={{ fontSize: 14 }}>Dashboard</Link>
+            <Link href="/client" className="muted" style={{ fontSize: 14 }}>Client</Link>
           </nav>
           <span className="pill" style={{ marginLeft: "auto" }}>
             Built on Midnight
