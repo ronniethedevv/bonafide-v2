@@ -89,9 +89,15 @@ export interface Registration {
   counterparty: string;
   /** Market maker's public handle (client-side listings). */
   mmHandle?: string;
+  /** Latest epoch the MM's agent reported, and its phase (null before any report). */
+  lastEpoch?: number | null;
+  lastPhase?: string | null;
 }
 
 const REG_COLS = `r.id, r.commitment, r."walletCommit", r."termsCommit", r.status, r."createdAt", r."respondedAt"`;
+const PROGRESS_COLS = `
+  (SELECT e.epoch FROM engagement_epoch e WHERE e."registrationId" = r.id ORDER BY e.epoch DESC LIMIT 1) AS "lastEpoch",
+  (SELECT e.phase FROM engagement_epoch e WHERE e."registrationId" = r.id ORDER BY e.epoch DESC LIMIT 1) AS "lastPhase"`;
 
 function toRegistration(r: Row): Registration {
   return {
@@ -104,6 +110,7 @@ function toRegistration(r: Row): Registration {
     respondedAt: r.respondedAt ? new Date(r.respondedAt as string).toISOString() : null,
     counterparty: String(r.counterparty),
     ...(r.mmHandle ? { mmHandle: String(r.mmHandle) } : {}),
+    ...(r.lastEpoch !== undefined ? { lastEpoch: r.lastEpoch === null ? null : Number(r.lastEpoch), lastPhase: (r.lastPhase as string | null) ?? null } : {}),
   };
 }
 
@@ -187,7 +194,7 @@ export async function registerEngagement(
 
 export async function registrationsForMm(pool: pg.Pool, mmAccountId: string): Promise<Registration[]> {
   const { rows } = await pool.query(
-    `SELECT ${REG_COLS}, c.name AS counterparty
+    `SELECT ${REG_COLS}, ${PROGRESS_COLS}, c.name AS counterparty
        FROM engagement_registration r JOIN account c ON c.id = r."clientAccountId"
       WHERE r."mmAccountId" = $1 ORDER BY r."createdAt" DESC LIMIT 100`,
     [mmAccountId],
@@ -197,7 +204,7 @@ export async function registrationsForMm(pool: pg.Pool, mmAccountId: string): Pr
 
 export async function registrationsForClient(pool: pg.Pool, clientAccountId: string): Promise<Registration[]> {
   const { rows } = await pool.query(
-    `SELECT ${REG_COLS}, m.name AS counterparty, m.handle AS "mmHandle"
+    `SELECT ${REG_COLS}, ${PROGRESS_COLS}, m.name AS counterparty, m.handle AS "mmHandle"
        FROM engagement_registration r JOIN account m ON m.id = r."mmAccountId"
       WHERE r."clientAccountId" = $1 ORDER BY r."createdAt" DESC LIMIT 100`,
     [clientAccountId],

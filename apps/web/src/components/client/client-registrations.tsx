@@ -5,6 +5,8 @@ import { useState } from "react";
 import {
   acceptanceMessage,
   contexts,
+  isEpochFigures,
+  type EpochFigures,
   hexToBytes,
   open,
   termsCommit,
@@ -30,6 +32,8 @@ export function ClientRegistrations({ items, address, inboxKey }: { items: Regis
         <RegistrationCard key={r.id} r={r} viewer="client">
           {r.status === "proposed" && r.walletCommit && r.termsCommit ? (
             <Proposal r={r} address={address} inboxKey={inboxKey} />
+          ) : r.status === "accepted" || r.status === "active" ? (
+            <DailyFigures r={r} address={address} inboxKey={inboxKey} />
           ) : undefined}
         </RegistrationCard>
       ))}
@@ -161,6 +165,90 @@ function TermsView({ payload, matches }: { payload: ClientTermsPayload; matches:
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+// Each epoch's figures arrive sealed to this client's inbox key; they're opened here, in
+// the browser. The server only ever relays ciphertext.
+function DailyFigures({ r, address, inboxKey }: { r: Registration; address: string; inboxKey: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [rows, setRows] = useState<EpochFigures[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!inboxKey) throw new Error("Set up your private inbox first.");
+      const key = await unlockInbox(address, inboxKey);
+      const res = await fetch(`/api/engagements/${encodeURIComponent(r.id)}/messages`, { cache: "no-store" });
+      const body = (await res.json()) as { messages?: Array<{ epoch: number; envelope: SealedEnvelope }>; error?: string };
+      if (!res.ok || !body.messages) throw new Error(body.error ?? "Couldn't load the figures.");
+      const out: EpochFigures[] = [];
+      for (const m of body.messages) {
+        const f: unknown = JSON.parse(await open(m.envelope, key.privateKey, contexts.epoch(r.id, m.epoch)));
+        // The envelope is bound to its epoch; the contents must say the same.
+        if (isEpochFigures(f) && f.epoch === m.epoch) out.push(f);
+      }
+      setRows(out.sort((a, b) => b.epoch - a.epoch));
+    } catch (e) {
+      setError(walletErrorText(e));
+    }
+    setBusy(false);
+  }
+
+  if (!rows) {
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={busy || !inboxKey}>
+            {busy ? "Check your wallet…" : "Open daily figures"}
+          </button>
+          <span className="dim" style={{ fontSize: 12.5 }}>
+            {r.lastEpoch ? `${r.lastEpoch} epoch${r.lastEpoch > 1 ? "s" : ""} reported so far.` : "No epochs reported yet."} Decrypted here with your inbox key.
+          </span>
+        </div>
+        {error && <div role="alert" className="field-err">{error}</div>}
+      </div>
+    );
+  }
+  if (rows.length === 0) return <p className="dim" style={{ fontSize: 13, marginTop: 14 }}>No figures shared yet.</p>;
+  const ok = (v: boolean) => <span style={{ color: v ? "var(--pos)" : "var(--neg)" }}>{v ? "ok" : "no"}</span>;
+  return (
+    <div className="scroll-x" style={{ marginTop: 14 }}>
+      <table className="figures-table">
+        <thead>
+          <tr>
+            <th>Epoch</th>
+            <th>Day (UTC)</th>
+            <th>Depth at target</th>
+            <th>Round-trips</th>
+            <th>Custody</th>
+            <th>Net selling</th>
+            <th>Outflow</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((f) => (
+            <tr key={f.epoch}>
+              <td className="mono">{f.epoch}</td>
+              <td className="mono dim">{new Date(f.range.startTs * 1000).toISOString().slice(0, 10)}</td>
+              <td className="mono" style={{ color: f.checks.uptime ? "var(--pos)" : "var(--neg)" }}>{f.bucketsAtTarget}/{f.totalBuckets}</td>
+              <td className="mono" style={{ color: f.checks.roundTrip ? "var(--pos)" : "var(--neg)" }}>{f.roundTripPct}%</td>
+              <td className="mono">{ok(f.checks.custody)}</td>
+              <td className="mono">{ok(f.checks.netSelling)}</td>
+              <td className="mono">{ok(f.checks.outflow)}</td>
+              <td>
+                <span className="pill" style={{ fontSize: 11, borderColor: "transparent", background: f.met ? "color-mix(in srgb, var(--pos) 16%, transparent)" : "color-mix(in srgb, var(--neg) 16%, transparent)", color: f.met ? "var(--pos)" : "var(--neg)" }}>
+                  {f.met ? "met" : "missed"}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -10,6 +10,9 @@ import { ArrowRight, ChevronRight, Globe, Plus } from "@/components/icons";
 import { RegistrationList } from "@/components/registrations";
 import { db } from "@/lib/db/pool";
 import { registrationsForMm, type Registration } from "@/lib/db/store";
+import { listAgentTokens, type AgentTokenInfo } from "@/lib/db/agent-store";
+import { AgentCard } from "@/components/mm/agent-card";
+import { headers } from "next/headers";
 
 export const metadata = { title: "Workspace · MM Reputation" };
 
@@ -26,10 +29,11 @@ export default async function DashboardPage() {
   // Engagements registered from this (database-backed) account.
   const pool = db();
   let registrations: Registration[] = [];
+  let agentTokens: AgentTokenInfo[] = [];
   let registryError = false;
   if (pool && session.accountId) {
     try {
-      registrations = await registrationsForMm(pool, session.accountId);
+      [registrations, agentTokens] = await Promise.all([registrationsForMm(pool, session.accountId), listAgentTokens(pool, session.accountId)]);
     } catch {
       registryError = true;
     }
@@ -70,6 +74,10 @@ export default async function DashboardPage() {
             <ChevronRight size={18} style={{ color: "var(--text-dim)" }} />
           </div>
         </Link>
+      )}
+
+      {pool && session.accountId && session.via === "wallet" && !registryError && (
+        <AgentCard tokens={agentTokens} server={await serverOrigin()} />
       )}
 
       {registrations.length > 0 && (
@@ -165,4 +173,12 @@ function EngagementRow({ e }: { e: MmEngagement }) {
       </div>
     </Link>
   );
+}
+
+/** This deployment's public origin, for the agent's connect command. */
+async function serverOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
 }
