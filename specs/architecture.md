@@ -102,10 +102,26 @@ Anyone can rebuild the roots from Base.
   cookie in the user's browser, moved into the database on the next sign-in once one is
   connected. Operators can link a wallet to a demo account with `DEMO_WALLET_LINKS`.
   Demo accounts remain for walkthroughs without a wallet.
-- **Engagement registry** (`EngagementRegistration`): when an MM registers an engagement,
-  the browser computes the commitment (SHA-256 over terms + quoting wallets + a fresh
-  salt) and the server stores only the parties, that commitment and the status. The
-  client is found by the wallet they sign in with, so MMs never browse a client list.
+- **Registering an engagement** (`@mmr/engagement-file`): the MM's browser generates
+  the engagement secret, wallet salt and terms salt, and computes the protocol's real
+  `walletCommit` and `termsCommit` (byte-exact with the contract's `register`, verified
+  against `@mmr/prover` + `CompactHasher`). Before Register unlocks, the MM must save a
+  **passphrase-encrypted engagement file** (PBKDF2-SHA256 600k → AES-256-GCM) holding
+  those secrets; the prover opens it (`pnpm --filter @mmr/engagement-file open <file>`).
+- **Engagement registry** (`EngagementRegistration`): stores the parties, both
+  commitments, their fingerprint and the status: `proposed` → `accepted` | `declined`.
+  The client is found by the wallet they sign in with, so MMs never browse a client list.
+- **Private MM → client channel** (`EngagementMessage`): the client's **inbox key**
+  (X25519) is derived in their browser from a wallet signature over a fixed message,
+  so the same wallet recreates it on any device and nothing secret is stored; only the
+  public half is on the account. The MM seals the full terms (minus the engagement
+  secret and private label) to it at registration, and later each epoch's figures.
+  Envelopes are bound to their commitments / engagement + epoch, so the server can't
+  move one onto another engagement. The server stores ciphertext only.
+- **Acceptance**: the client opens the terms, the browser recomputes both commitments
+  from them (the MM can't show one set of terms and commit to another), and the client
+  accepts by signing a message naming the engagement and both commitments. The server
+  verifies that signature against the client's signed-in wallet and keeps it.
 - **Migrations**: `packages/db/migrations/*.sql` (generated from `schema.prisma` with
   `prisma migrate diff`), applied by `packages/db/scripts/migrate.mjs` in a single
   transaction under an advisory lock. The web build runs it, but only for Vercel

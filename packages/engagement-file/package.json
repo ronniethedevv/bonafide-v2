@@ -1,0 +1,25 @@
+{
+  "name": "@mmr/engagement-file",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Engagement secrets the MM must keep (passphrase-encrypted file), protocol-exact registration commitments, and the sealed MM-to-client channel. Runs in browsers and Node (WebCrypto).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "open": "tsx scripts/open-engagement.mts"
+  },
+  "dependencies": {
+    "@noble/curves": "1.9.1"
+  },
+  "devDependencies": {
+    "@mmr/merkle": "workspace:*",
+    "@mmr/prover": "workspace:*",
+    "tsx": "4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

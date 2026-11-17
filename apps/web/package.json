@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@mmr/db": "workspace:*",
+    "@mmr/engagement-file": "workspace:*",
     "@mmr/read-model": "workspace:*",
     "jose": "6.2.14",
     "next": "15.5.29",

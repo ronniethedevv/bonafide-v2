@@ -4,9 +4,10 @@ import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { SignInGate } from "@/components/signin-gate";
 import { ChevronRight } from "@/components/icons";
-import { RegistrationList } from "@/components/registrations";
+import { ClientRegistrations } from "@/components/client/client-registrations";
+import { InboxSetup } from "@/components/client/inbox-setup";
 import { db } from "@/lib/db/pool";
-import { registrationsForClient, type Registration } from "@/lib/db/store";
+import { getInboxKey, registrationsForClient, type Registration } from "@/lib/db/store";
 
 export const metadata = { title: "My engagements · MM Reputation" };
 
@@ -22,10 +23,12 @@ export default async function ClientPage() {
   // Engagements market makers have registered with this (database-backed) account.
   const pool = db();
   let registrations: Registration[] = [];
+  let inboxKey: string | null = null;
   let registryError = false;
+  const walletAccount = Boolean(pool && session.accountId && session.via === "wallet" && session.address);
   if (pool && session.accountId) {
     try {
-      registrations = await registrationsForClient(pool, session.accountId);
+      [registrations, inboxKey] = await Promise.all([registrationsForClient(pool, session.accountId), getInboxKey(pool, session.accountId)]);
     } catch {
       registryError = true;
     }
@@ -40,13 +43,15 @@ export default async function ClientPage() {
         per-epoch figures each market maker proved; the public record shows only pass/fail.
       </div>
 
+      {walletAccount && !registryError && !inboxKey && <InboxSetup address={session.address!} />}
+
       {registrations.length > 0 && (
         <section style={{ marginTop: 28 }}>
           <h2 style={{ fontSize: 20, margin: "0 0 4px" }}>Registered with you</h2>
           <p className="dim" style={{ fontSize: 13, margin: "0 0 14px" }}>
-            Per-epoch figures appear here once capture starts.
+            Review each proposal&apos;s terms before accepting. Per-epoch figures appear here once capture starts.
           </p>
-          <RegistrationList items={registrations} viewer="client" />
+          <ClientRegistrations items={registrations} address={session.address ?? ""} inboxKey={inboxKey} />
         </section>
       )}
       {registryError && (

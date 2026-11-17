@@ -78,68 +78,116 @@ export async function createAccount(
 
 export interface Registration {
   id: string;
+  /** Registration fingerprint: SHA-256(walletCommit || termsCommit). */
   commitment: string;
+  walletCommit: string | null;
+  termsCommit: string | null;
   status: string;
   createdAt: string;
+  respondedAt: string | null;
   /** The other party's display name. */
   counterparty: string;
   /** Market maker's public handle (client-side listings). */
   mmHandle?: string;
 }
 
-export type RegisterResult =
-  | { ok: true; registration: Registration }
-  | { ok: false; error: "client-not-found" | "duplicate" };
-
-/** Record a newly registered engagement between a market maker and a client account. */
-export async function registerEngagement(
-  pool: pg.Pool,
-  input: { mmAccountId: string; clientAddress: string; commitment: string },
-): Promise<RegisterResult> {
-  const found = await pool.query(
-    `SELECT a.id, a.name FROM account_wallet w JOIN account a ON a.id = w."accountId"
-      WHERE w.address = $1 AND a.kind = 'client'`,
-    [input.clientAddress.toLowerCase()],
-  );
-  const client = found.rows[0];
-  if (!client) return { ok: false, error: "client-not-found" };
-  const id = newId("rec_", 6);
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO engagement_registration (id, "mmAccountId", "clientAccountId", commitment)
-       VALUES ($1, $2, $3, $4) RETURNING status, "createdAt"`,
-      [id, input.mmAccountId, client.id, input.commitment.toLowerCase()],
-    );
-    return {
-      ok: true,
-      registration: {
-        id,
-        commitment: input.commitment.toLowerCase(),
-        status: String(rows[0].status),
-        createdAt: new Date(rows[0].createdAt).toISOString(),
-        counterparty: String(client.name),
-      },
-    };
-  } catch (e) {
-    if (isUnique(e, "engagement_registration_commitment_key")) return { ok: false, error: "duplicate" };
-    throw e;
-  }
-}
+const REG_COLS = `r.id, r.commitment, r."walletCommit", r."termsCommit", r.status, r."createdAt", r."respondedAt"`;
 
 function toRegistration(r: Row): Registration {
   return {
     id: String(r.id),
     commitment: String(r.commitment),
+    walletCommit: r.walletCommit ? String(r.walletCommit) : null,
+    termsCommit: r.termsCommit ? String(r.termsCommit) : null,
     status: String(r.status),
     createdAt: new Date(r.createdAt as string).toISOString(),
+    respondedAt: r.respondedAt ? new Date(r.respondedAt as string).toISOString() : null,
     counterparty: String(r.counterparty),
     ...(r.mmHandle ? { mmHandle: String(r.mmHandle) } : {}),
   };
 }
 
+// --- private inbox keys --------------------------------------------------------------
+
+export async function getInboxKey(pool: pg.Pool, accountId: string): Promise<string | null> {
+  const { rows } = await pool.query(`SELECT "encryptionKey" FROM account WHERE id = $1`, [accountId]);
+  return rows[0]?.encryptionKey ?? null;
+}
+
+/**
+ * Set an account's inbox key once. Re-setting the same key is fine; a different key is
+ * refused, because envelopes already sealed to the old key would become unreadable.
+ */
+export async function setInboxKey(pool: pg.Pool, accountId: string, publicKey: string): Promise<"set" | "unchanged" | "conflict"> {
+  const { rows } = await pool.query(
+    `UPDATE account SET "encryptionKey" = $2 WHERE id = $1 AND "encryptionKey" IS NULL RETURNING id`,
+    [accountId, publicKey],
+  );
+  if (rows.length) return "set";
+  return (await getInboxKey(pool, accountId)) === publicKey ? "unchanged" : "conflict";
+}
+
+/** A client's inbox key, looked up by the wallet they sign in with. */
+export async function clientInboxKeyByAddress(pool: pg.Pool, address: string): Promise<{ found: boolean; encryptionKey: string | null }> {
+  const { rows } = await pool.query(
+    `SELECT a."encryptionKey" FROM account_wallet w JOIN account a ON a.id = w."accountId"
+      WHERE w.address = $1 AND a.kind = 'client'`,
+    [address.toLowerCase()],
+  );
+  return rows[0] ? { found: true, encryptionKey: rows[0].encryptionKey ?? null } : { found: false, encryptionKey: null };
+}
+
+// --- registration ---------------------------------------------------------------------
+
+export type RegisterResult =
+  | { ok: true; registration: Registration }
+  | { ok: false; error: "client-not-found" | "client-no-inbox" | "duplicate" };
+
+/**
+ * Record a proposed engagement and the terms sealed to the client, atomically. The
+ * server stores the two public commitments, their fingerprint, and an envelope it
+ * cannot open. The client then reviews the terms and accepts or declines.
+ */
+export async function registerEngagement(
+  pool: pg.Pool,
+  input: { mmAccountId: string; clientAddress: string; walletCommit: string; termsCommit: string; fingerprint: string; termsEnvelope: string },
+): Promise<RegisterResult> {
+  const found = await pool.query(
+    `SELECT a.id, a.name, a."encryptionKey" FROM account_wallet w JOIN account a ON a.id = w."accountId"
+      WHERE w.address = $1 AND a.kind = 'client'`,
+    [input.clientAddress.toLowerCase()],
+  );
+  const client = found.rows[0];
+  if (!client) return { ok: false, error: "client-not-found" };
+  if (!client.encryptionKey) return { ok: false, error: "client-no-inbox" };
+
+  const id = newId("rec_", 6);
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    const { rows } = await db.query(
+      `INSERT INTO engagement_registration (id, "mmAccountId", "clientAccountId", commitment, "walletCommit", "termsCommit")
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${REG_COLS.replace(/r\./g, "")}`,
+      [id, input.mmAccountId, client.id, input.fingerprint.toLowerCase(), input.walletCommit.toLowerCase(), input.termsCommit.toLowerCase()],
+    );
+    await db.query(
+      `INSERT INTO engagement_message (id, "registrationId", kind, epoch, envelope) VALUES ($1, $2, 'terms', 0, $3)`,
+      [newId("msg_", 8), id, input.termsEnvelope],
+    );
+    await db.query("COMMIT");
+    return { ok: true, registration: toRegistration({ ...rows[0], counterparty: client.name }) };
+  } catch (e) {
+    await db.query("ROLLBACK").catch(() => {});
+    if (isUnique(e, "engagement_registration_commitment_key")) return { ok: false, error: "duplicate" };
+    throw e;
+  } finally {
+    db.release();
+  }
+}
+
 export async function registrationsForMm(pool: pg.Pool, mmAccountId: string): Promise<Registration[]> {
   const { rows } = await pool.query(
-    `SELECT r.id, r.commitment, r.status, r."createdAt", c.name AS counterparty
+    `SELECT ${REG_COLS}, c.name AS counterparty
        FROM engagement_registration r JOIN account c ON c.id = r."clientAccountId"
       WHERE r."mmAccountId" = $1 ORDER BY r."createdAt" DESC LIMIT 100`,
     [mmAccountId],
@@ -149,12 +197,89 @@ export async function registrationsForMm(pool: pg.Pool, mmAccountId: string): Pr
 
 export async function registrationsForClient(pool: pg.Pool, clientAccountId: string): Promise<Registration[]> {
   const { rows } = await pool.query(
-    `SELECT r.id, r.commitment, r.status, r."createdAt", m.name AS counterparty, m.handle AS "mmHandle"
+    `SELECT ${REG_COLS}, m.name AS counterparty, m.handle AS "mmHandle"
        FROM engagement_registration r JOIN account m ON m.id = r."mmAccountId"
       WHERE r."clientAccountId" = $1 ORDER BY r."createdAt" DESC LIMIT 100`,
     [clientAccountId],
   );
   return rows.map(toRegistration);
+}
+
+export interface PartyView {
+  registration: Registration;
+  role: "mm" | "client";
+  termsEnvelope: string | null;
+}
+
+/** One registration as seen by one of its two parties (undefined for anyone else). */
+export async function registrationForParty(pool: pg.Pool, id: string, accountId: string): Promise<PartyView | undefined> {
+  const { rows } = await pool.query(
+    `SELECT ${REG_COLS}, r."mmAccountId", r."clientAccountId",
+            CASE WHEN r."mmAccountId" = $2 THEN c.name ELSE m.name END AS counterparty,
+            m.handle AS "mmHandle",
+            (SELECT envelope FROM engagement_message x WHERE x."registrationId" = r.id AND x.kind = 'terms' AND x.epoch = 0) AS "termsEnvelope"
+       FROM engagement_registration r
+       JOIN account m ON m.id = r."mmAccountId"
+       JOIN account c ON c.id = r."clientAccountId"
+      WHERE r.id = $1 AND (r."mmAccountId" = $2 OR r."clientAccountId" = $2)`,
+    [id, accountId],
+  );
+  const r = rows[0];
+  if (!r) return undefined;
+  return { registration: toRegistration(r), role: r.mmAccountId === accountId ? "mm" : "client", termsEnvelope: r.termsEnvelope ?? null };
+}
+
+/** The client accepts (with their wallet's signature) or declines a proposed engagement. */
+export async function respondToRegistration(
+  pool: pg.Pool,
+  input: { id: string; clientAccountId: string; decision: "accept" | "decline"; signature?: string; signer?: string },
+): Promise<boolean> {
+  const { rows } = await pool.query(
+    `UPDATE engagement_registration
+        SET status = $3, "respondedAt" = CURRENT_TIMESTAMP, "acceptSignature" = $4, "acceptedBy" = $5
+      WHERE id = $1 AND "clientAccountId" = $2 AND status = 'proposed'
+      RETURNING id`,
+    [input.id, input.clientAccountId, input.decision === "accept" ? "accepted" : "declined", input.signature ?? null, input.signer?.toLowerCase() ?? null],
+  );
+  return rows.length === 1;
+}
+
+export interface EpochMessage {
+  epoch: number;
+  envelope: string;
+  createdAt: string;
+}
+
+/** The MM shares one epoch's figures, sealed to the client. Accepted engagements only. */
+export async function addEpochMessage(
+  pool: pg.Pool,
+  input: { id: string; mmAccountId: string; epoch: number; envelope: string },
+): Promise<"ok" | "not-found" | "not-accepted" | "duplicate"> {
+  const { rows } = await pool.query(`SELECT status FROM engagement_registration WHERE id = $1 AND "mmAccountId" = $2`, [input.id, input.mmAccountId]);
+  if (!rows[0]) return "not-found";
+  if (!["accepted", "active", "completed"].includes(rows[0].status)) return "not-accepted";
+  try {
+    await pool.query(`INSERT INTO engagement_message (id, "registrationId", kind, epoch, envelope) VALUES ($1, $2, 'epoch', $3, $4)`, [
+      newId("msg_", 8),
+      input.id,
+      input.epoch,
+      input.envelope,
+    ]);
+    return "ok";
+  } catch (e) {
+    if (isUnique(e, "engagement_message_registrationId_kind_epoch_key")) return "duplicate";
+    throw e;
+  }
+}
+
+export async function epochMessages(pool: pg.Pool, id: string, accountId: string): Promise<EpochMessage[] | undefined> {
+  const party = await pool.query(`SELECT 1 FROM engagement_registration WHERE id = $1 AND ("mmAccountId" = $2 OR "clientAccountId" = $2)`, [id, accountId]);
+  if (!party.rows.length) return undefined;
+  const { rows } = await pool.query(
+    `SELECT epoch, envelope, "createdAt" FROM engagement_message WHERE "registrationId" = $1 AND kind = 'epoch' ORDER BY epoch`,
+    [id],
+  );
+  return rows.map((r) => ({ epoch: Number(r.epoch), envelope: String(r.envelope), createdAt: new Date(r.createdAt).toISOString() }));
 }
 
 export async function ping(pool: pg.Pool): Promise<boolean> {

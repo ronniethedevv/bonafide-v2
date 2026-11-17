@@ -79,6 +79,9 @@ model Account {
   name      String
   createdAt DateTime        @default(now())
   wallets   AccountWallet[]
+  // Public half of the account's private inbox (X25519, 0x-hex). Market makers seal
+  // terms and figures to it; only the account's own wallet can re-derive the private half.
+  encryptionKey String?
 
   mmRegistrations     EngagementRegistration[] @relation("MmRegistrations")
   clientRegistrations EngagementRegistration[] @relation("ClientRegistrations")
@@ -109,11 +112,33 @@ model EngagementRegistration {
   mm              Account  @relation("MmRegistrations", fields: [mmAccountId], references: [id], onDelete: Cascade)
   clientAccountId String
   client          Account  @relation("ClientRegistrations", fields: [clientAccountId], references: [id], onDelete: Cascade)
-  commitment      String   @unique // 0x + SHA-256 over terms + wallets + salt
-  status          String   @default("registered") // registered | active | completed | claimed | defaulted | void
+  commitment      String   @unique // registration fingerprint: SHA-256(walletCommit || termsCommit)
+  walletCommit    String? // as recorded by the contract's register circuit
+  termsCommit     String?
+  status          String   @default("proposed") // proposed | accepted | declined | active | completed | claimed | defaulted | void
   createdAt       DateTime @default(now())
+  respondedAt     DateTime? // when the client accepted or declined
+  acceptSignature String? // client's wallet signature over the acceptance message
+  acceptedBy      String? // the wallet that signed it
+  messages        EngagementMessage[]
 
   @@index([mmAccountId])
   @@index([clientAccountId])
   @@map("engagement_registration")
+}
+
+// Sealed messages from the market maker to the client (terms at registration, per-epoch
+// figures later). Each envelope is encrypted to the client's inbox key; the server
+// stores ciphertext it cannot read.
+model EngagementMessage {
+  id             String                 @id
+  registrationId String
+  registration   EngagementRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  kind           String // "terms" | "epoch"
+  epoch          Int                    @default(0) // 0 for terms
+  envelope       String // sealed JSON
+  createdAt      DateTime               @default(now())
+
+  @@unique([registrationId, kind, epoch])
+  @@map("engagement_message")
 }
