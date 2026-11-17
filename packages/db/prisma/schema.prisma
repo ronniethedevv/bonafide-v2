@@ -62,3 +62,34 @@ model EpochPoint {
   @@index([handle])
   @@map("epoch_point")
 }
+
+// --- Accounts (wallet sign-in) ------------------------------------------------
+//
+// Who a signed-in identity wallet acts for. The web app's AccountStore port
+// (apps/web/src/lib/auth/accounts.ts) is what an adapter over these tables implements;
+// until DATABASE_URL is configured, accounts live in a signed cookie in the browser.
+//
+// PRIVACY: these are IDENTITY wallets used to sign in, never quoting wallets. Quoting
+// wallets, KPI terms and salts stay on the MM's machine (committed by hash only).
+
+model Account {
+  id        String          @id @default(cuid())
+  kind      String // "mm" | "client"
+  handle    String?         @unique // public handle (market makers only)
+  name      String
+  createdAt DateTime        @default(now())
+  wallets   AccountWallet[]
+
+  @@map("account")
+}
+
+model AccountWallet {
+  address   String   @id // lowercase 0x… identity wallet
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  chainId   Int // chain the wallet signed in on (1 or 8453)
+  linkedAt  DateTime @default(now())
+
+  @@index([accountId])
+  @@map("account_wallet")
+}

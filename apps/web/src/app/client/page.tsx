@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { fetchPortal, clientSummary, type ClientEngagement } from "@/lib/client-portal";
 import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
@@ -14,8 +13,8 @@ export const metadata = { title: "My engagements · MM Reputation" };
 export default async function ClientPage() {
   const session = await getSession();
   if (session?.kind !== "client") return <SignInGate need="client" next="/client" current={session} />;
-  const p = fetchPortal(session.clientId);
-  if (!p) notFound();
+  // A new wallet account has no engagements yet: show its own empty portal.
+  const p = fetchPortal(session.clientId) ?? { clientId: session.clientId, clientName: session.name, engagements: [] };
 
   return (
     <main className="container">
@@ -27,7 +26,18 @@ export default async function ClientPage() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 14, marginTop: 28 }}>
-        {p.engagements.map((e) => <Row key={e.id} e={e} />)}
+        {p.engagements.length ? (
+          p.engagements.map((e) => <Row key={e.id} e={e} />)
+        ) : (
+          <div className="card" style={{ padding: "26px 24px", textAlign: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 18 }}>No engagements yet</h3>
+            <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 460, lineHeight: 1.6 }}>
+              When a market maker registers an engagement with you, it appears here with its
+              real per-epoch figures. Meanwhile, compare market makers&apos; public records.
+            </p>
+            <Link href="/explore" className="btn btn-ghost" style={{ marginTop: 16 }}>Browse market makers</Link>
+          </div>
+        )}
       </div>
     </main>
   );
