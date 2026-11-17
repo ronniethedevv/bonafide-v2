@@ -49,8 +49,8 @@ export default async function ClientEngagementPage({ params }: { params: Promise
           <h2 style={{ fontSize: 20, margin: 0 }}>Per-epoch figures</h2>
           <span className="dim" style={{ fontSize: 12 }}>{reached.length} of {e.epochsTotal} epochs so far</span>
         </div>
-        <div className="card" style={{ marginTop: 12, padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div className="card scroll-x" style={{ marginTop: 12, padding: 0 }}>
+          <table style={{ width: "100%", minWidth: 680, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--surface-2)" }}>
                 {["Epoch", "Status", "Depth", "Uptime", "Util.", "Custody", "No round-trips", "Result"].map((h) => (
@@ -70,7 +70,7 @@ export default async function ClientEngagementPage({ params }: { params: Promise
       </section>
 
       {/* Verify + challenge */}
-      <section className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 24 }}>
+      <section className="cols-2" style={{ marginTop: 24 }}>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Verify independently</div>
           <p className="muted" style={{ fontSize: 13, margin: "0 0 12px", lineHeight: 1.6 }}>
