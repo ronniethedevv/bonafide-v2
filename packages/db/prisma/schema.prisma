@@ -175,3 +175,34 @@ model EngagementEpoch {
   @@id([registrationId, epoch])
   @@map("engagement_epoch")
 }
+
+/// One indexed epoch per chain: the deterministic root-of-roots anyone with an archive
+/// RPC can recompute (invariant #4), with its IPFS manifest. Written by the daily
+/// indexer (apps/worker); public data only.
+model IndexedEpoch {
+  chainId      Int
+  epoch        Int // UTC day number: startTs / 86400 (DD-32)
+  startTs      Int
+  endTs        Int
+  startBlock   Int
+  endBlock     Int
+  endBlockHash String
+  rootHex      String
+  manifestCid  String
+  poolCount    Int
+  manifest     Json
+  indexedAt    DateTime @default(now())
+
+  @@id([chainId, epoch])
+  @@map("indexed_epoch")
+}
+
+/// Small resumable state for background workers, by key (e.g. the position registry
+/// cache, "registry:8453"), so a stateless worker machine continues where it left off.
+model WorkerState {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now())
+
+  @@map("worker_state")
+}

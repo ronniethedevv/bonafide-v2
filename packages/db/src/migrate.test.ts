@@ -30,10 +30,10 @@ describe.skipIf(!ADMIN)("migrations (real Postgres)", () => {
 
   it("applies every migration once, then is a no-op", async () => {
     const first = await migrate(url);
-    expect(first.applied).toEqual(["0001_init.sql", "0002_acceptance_inbox.sql", "0003_agent.sql"]);
+    expect(first.applied).toEqual(["0001_init.sql", "0002_acceptance_inbox.sql", "0003_agent.sql", "0004_indexer.sql"]);
     const second = await migrate(url);
     expect(second.applied).toEqual([]);
-    expect(second.total).toBe(3);
+    expect(second.total).toBe(4);
   });
 
   it("creates the account and registry tables with their constraints", async () => {

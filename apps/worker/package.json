@@ -1,0 +1,27 @@
+{
+  "name": "@mmr/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Durable background workers on Trigger.dev (invariant #1): the daily deterministic indexer.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@mmr/indexer": "workspace:*",
+    "@trigger.dev/sdk": "4.8.3",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@mmr/db": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@types/pg": "8.23.1",
+    "trigger.dev": "4.8.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

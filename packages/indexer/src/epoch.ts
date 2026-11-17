@@ -77,6 +77,8 @@ export interface EpochManifest {
 export interface EpochResult {
   rootOfRoots: RootOfRoots;
   manifest: EpochManifest;
+  /** Content id of the published manifest (the `cid` the committee signs with the root). */
+  manifestCid: string;
   trees: Map<bigint, IndexedMerkleTree>;
 }
 
@@ -192,6 +194,7 @@ export async function buildEpoch(
   return {
     rootOfRoots,
     manifest: { ...preManifest, votes },
+    manifestCid,
     trees,
   };
 }
