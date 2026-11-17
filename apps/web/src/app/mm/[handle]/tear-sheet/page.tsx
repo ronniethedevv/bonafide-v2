@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/icons";
 import { notFound } from "next/navigation";
 import { fetchProfile } from "@/lib/data";
 import {
@@ -31,9 +31,7 @@ export default async function TearSheetPage({
 
   return (
     <main className="container" style={{ maxWidth: 820 }}>
-      <Link href={`/mm/${profile.handle}`} className="muted" style={{ fontSize: 13 }}>
-        ← Back to profile
-      </Link>
+      <BackLink href={`/mm/${profile.handle}`}>Back to profile</BackLink>
 
       {/* Letterhead */}
       <div className="card" style={{ marginTop: 16, padding: 32 }}>

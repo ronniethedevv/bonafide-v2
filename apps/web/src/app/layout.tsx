@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { getSession } from "@/lib/session";
+import { User } from "@/components/icons";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +11,8 @@ export const metadata: Metadata = {
     "A private reputation record for crypto market makers. Prove you met your targets without revealing your books.",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const session = await getSession();
   return (
     <html lang="en">
       <head>
@@ -23,18 +26,34 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <header className="topbar">
-          <Link href="/" className="row" style={{ alignItems: "center", gap: 10 }}>
+          <Link href="/" className="brand">
             <span className="brand-mark" aria-hidden="true" />
             <span className="brand-name">MM Reputation</span>
           </Link>
-          <nav className="row topnav" style={{ marginLeft: 28, gap: 20, alignItems: "center" }}>
-            <Link href="/" className="muted" style={{ fontSize: 14 }}>Explore</Link>
-            <Link href="/dashboard" className="muted" style={{ fontSize: 14 }}>Dashboard</Link>
-            <Link href="/client" className="muted" style={{ fontSize: 14 }}>Client</Link>
+          <nav className="topnav" aria-label="Main">
+            <Link href="/explore">Explore</Link>
+            {session?.kind === "mm" && <Link href="/dashboard">My workspace</Link>}
+            {session?.kind === "client" && <Link href="/client">My engagements</Link>}
+            {!session && (
+              <>
+                <Link href="/#how">How it works</Link>
+                <Link href="/#who-sees-what">Privacy</Link>
+              </>
+            )}
           </nav>
-          <span className="pill topbar-pill" style={{ marginLeft: "auto" }}>
-            Built on Midnight
-          </span>
+          <div className="topbar-right">
+            {session ? (
+              <form action="/api/session" method="post" className="session-chip" title={`Signed in as ${session.name}`}>
+                <User size={14} style={{ color: "var(--text-dim)" }} />
+                <span className="session-name">{session.name}</span>
+                <span className="role">{session.kind === "mm" ? "Market maker" : "Client"}</span>
+                <input type="hidden" name="persona" value="signout" />
+                <button type="submit">Sign out</button>
+              </form>
+            ) : (
+              <Link href="/signin" className="btn btn-primary btn-sm">Sign in</Link>
+            )}
+          </div>
         </header>
         {children}
       </body>

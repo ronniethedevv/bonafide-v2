@@ -1,27 +1,32 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   fetchEngagement,
   claimProgress,
   nextAction,
   pipelineStage,
 } from "@/lib/mm-dashboard";
+import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { PipelineStepper } from "@/components/mm/pipeline-stepper";
 import { EpochGrid } from "@/components/mm/epoch-grid";
+import { ActionButton } from "@/components/mm/action-button";
+import { NotYours, SignInGate } from "@/components/signin-gate";
+import { BackLink, Flow } from "@/components/icons";
 
 export default async function EngagementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const found = fetchEngagement("vega-mm", id);
-  if (!found) notFound();
+  const session = await getSession();
+  if (session?.kind !== "mm") return <SignInGate need="mm" next={`/dashboard/${id}`} current={session} />;
+  // Scoped to the signed-in MM: another MM's engagement id simply isn't found here.
+  const found = fetchEngagement(session.handle, id);
+  if (!found) return <NotYours backHref="/dashboard" backLabel="Back to my workspace" />;
   const { engagement: e } = found;
   const cp = claimProgress(e);
   const action = nextAction(e);
-  const actionable = e.state === "active" || e.state === "at_risk" || e.state === "completed" || e.state === "registered";
+  const actionable = (e.state === "active" || e.state === "at_risk" || e.state === "completed" || e.state === "registered") && !action.startsWith("Awaiting");
 
   return (
     <main className="container" style={{ maxWidth: 1000 }}>
-      <Link href="/dashboard" className="muted" style={{ fontSize: 13 }}>← Workspace</Link>
+      <BackLink href="/dashboard">Workspace</BackLink>
 
       {/* Header */}
       <section className="hero" style={{ marginTop: 14, padding: "32px 32px" }}>
@@ -32,10 +37,10 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
               <StateBadge state={e.state} />
             </div>
             <div className="dim" style={{ fontSize: 13, marginTop: 6 }}>
-              {e.privateLabel} · <span className="mono">{e.id}</span> · <span className="dim">private to you</span>
+              {e.privateLabel} · <span className="mono">{e.id}</span> · <span className="dim">private to you and {e.clientName}</span>
             </div>
           </div>
-          {actionable && <button className="btn btn-primary">{action}</button>}
+          {actionable && <ActionButton action={action} />}
         </div>
 
         <div style={{ marginTop: 26 }}>
@@ -53,9 +58,11 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
 
       {/* Epoch grid */}
       <section style={{ marginTop: 24 }}>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <h2 style={{ fontSize: 20, margin: 0 }}>Epoch pipeline</h2>
-          <span className="dim" style={{ fontSize: 12 }}>capture → prove → attest → settle, per epoch</span>
+          <span className="dim" style={{ fontSize: 12 }}>
+            <Flow steps={["Capture", "Prove", "Attest", "Settle"]} />
+          </span>
         </div>
         <div className="card" style={{ marginTop: 12 }}>
           <EpochGrid epochs={e.epochs} />

@@ -1,4 +1,5 @@
 import type { Tier } from "@/lib/read-model";
+import { TierShape } from "@/components/icons";
 
 const COLOR: Record<Tier, string> = {
   A: "var(--tier-a)",
@@ -12,9 +13,7 @@ const LABEL: Record<Tier, string> = {
   C: "Sandbox · C",
 };
 
-// Shape glyph + label, never colour alone (colour-blind safe, per ui_context).
-const GLYPH: Record<Tier, string> = { A: "◆", B: "▲", C: "●" };
-
+// Shape + label, never colour alone (colour-blind safe, per ui_context).
 export function TierBadge({ tier }: { tier: Tier }) {
   const color = COLOR[tier];
   return (
@@ -27,7 +26,7 @@ export function TierBadge({ tier }: { tier: Tier }) {
         fontWeight: 550,
       }}
     >
-      <span aria-hidden="true">{GLYPH[tier]}</span>
+      <TierShape tier={tier} />
       {LABEL[tier]}
     </span>
   );

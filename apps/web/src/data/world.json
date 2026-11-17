@@ -1,0 +1,3552 @@
+{
+ "generatedAt": "2026-11-17T08:59:15.767Z",
+ "note": "Produced by packages/witness/scripts/seed-dashboard.mts — every witness is real @mmr/witness capture output.",
+ "clients": {
+  "orion": {
+   "name": "Orion Capital"
+  },
+  "tidal": {
+   "name": "Tidal Fund"
+  }
+ },
+ "workspaces": [
+  {
+   "handle": "vega-mm",
+   "displayName": "Vega Market Making",
+   "engagements": [
+    {
+     "id": "rec_07",
+     "clientId": "orion",
+     "pair": "WETH / USDC",
+     "privateLabel": "Orion Capital · WETH book",
+     "bond": {
+      "postedLabel": "$120k USDM",
+      "status": "intact",
+      "releasedEpochs": 0,
+      "totalEpochs": 30
+     },
+     "loanLabel": "$2.0M",
+     "depthTargetLabel": "$250k / side",
+     "bandBps": 100,
+     "minUptimePct": 90,
+     "minUptimeBuckets": 44,
+     "roundtripCapPct": 60,
+     "epochsTotal": 30,
+     "disposalD": "2000000",
+     "witnesses": [
+      {
+       "engagementId": "rec_07",
+       "epoch": 1,
+       "range": {
+        "startBlock": 30007200,
+        "endBlock": 30014400,
+        "startTs": 1790000000,
+        "endTs": 1790086400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000001"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "2000000",
+        "xferOut": "87000",
+        "fromTreasury": "2000000",
+        "roundTripVolume": "82",
+        "grossVolume": "182"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "0",
+         "xferOut": "0",
+         "fromTreasury": "0"
+        },
+        "newTotals": {
+         "xferIn": "2000000",
+         "xferOut": "87000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "19b320bf8e88854adaf0f71179c6e0894c83aa9abddd72882f98a0e1ae4eb982",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 2,
+       "range": {
+        "startBlock": 30014400,
+        "endBlock": 30021600,
+        "startTs": 1790086400,
+        "endTs": 1790172800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000002"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "92",
+        "grossVolume": "192"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2000000",
+         "xferOut": "87000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2087000",
+         "xferOut": "174000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "ea2328866944dad7e1eb42f12193a64b5556dda6d04fa16e4100863863f4458b",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 3,
+       "range": {
+        "startBlock": 30021600,
+        "endBlock": 30028800,
+        "startTs": 1790172800,
+        "endTs": 1790259200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000003"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "98",
+        "grossVolume": "198"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2087000",
+         "xferOut": "174000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2174000",
+         "xferOut": "261000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "158b1058608b737178af950378a5ff3d06b761f4374d4409ad89039271d5e671",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 4,
+       "range": {
+        "startBlock": 30028800,
+        "endBlock": 30036000,
+        "startTs": 1790259200,
+        "endTs": 1790345600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000004"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "94",
+        "grossVolume": "194"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2174000",
+         "xferOut": "261000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2261000",
+         "xferOut": "348000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "8186a029d02aa14508f8dede68492e013f0ac822dbd2a13c191548c94d7b81b9",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 5,
+       "range": {
+        "startBlock": 30036000,
+        "endBlock": 30043200,
+        "startTs": 1790345600,
+        "endTs": 1790432000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000005"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 38,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "96",
+        "grossVolume": "196"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2261000",
+         "xferOut": "348000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2348000",
+         "xferOut": "435000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "cc02fc9b99c93632b00d29fcf8da01eb090771279bc9d36982241b8f2f107277",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 6,
+       "range": {
+        "startBlock": 30043200,
+        "endBlock": 30050400,
+        "startTs": 1790432000,
+        "endTs": 1790518400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000006"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "68",
+        "grossVolume": "168"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2348000",
+         "xferOut": "435000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2435000",
+         "xferOut": "522000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "10715d14609db80e46a54c3182d1555570d4e04428883d39c62f4c9af7610f38",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 7,
+       "range": {
+        "startBlock": 30050400,
+        "endBlock": 30057600,
+        "startTs": 1790518400,
+        "endTs": 1790604800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000007"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "60",
+        "grossVolume": "160"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2435000",
+         "xferOut": "522000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2522000",
+         "xferOut": "609000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "cd3891e653604ea1107809e49bd90b9eb21ad3e89c5c62b4418ad3f5689acba1",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 8,
+       "range": {
+        "startBlock": 30057600,
+        "endBlock": 30064800,
+        "startTs": 1790604800,
+        "endTs": 1790691200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000008"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "240"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2522000",
+         "xferOut": "609000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2609000",
+         "xferOut": "696000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "7e69b15402d958800da4427eabfe5bdd7dd1917a1db546cf74cfa85b901cbabc",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 9,
+       "range": {
+        "startBlock": 30064800,
+        "endBlock": 30072000,
+        "startTs": 1790691200,
+        "endTs": 1790777600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000009"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "204"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2609000",
+         "xferOut": "696000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2696000",
+         "xferOut": "783000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "82511c7287ad8adc22a2b5f9794637623c6f8a4983378222ca6220e5e7d325b8",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 10,
+       "range": {
+        "startBlock": 30072000,
+        "endBlock": 30079200,
+        "startTs": 1790777600,
+        "endTs": 1790864000,
+        "endBlockHash": "0x000000000000000000000000000000000000000000000000000000000000000a"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "214"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2696000",
+         "xferOut": "783000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2783000",
+         "xferOut": "870000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "85e79cbad903245703ba8c1ac5cb43546e1fb8cbb84afc280ac812dc76c491c2",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 11,
+       "range": {
+        "startBlock": 30079200,
+        "endBlock": 30086400,
+        "startTs": 1790864000,
+        "endTs": 1790950400,
+        "endBlockHash": "0x000000000000000000000000000000000000000000000000000000000000000b"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "98",
+        "grossVolume": "198"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2783000",
+         "xferOut": "870000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2870000",
+         "xferOut": "957000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "c24f338e692b1e96b4fd64a6c8b467418f34ebf29021243cf383492d07acf3ce",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 12,
+       "range": {
+        "startBlock": 30086400,
+        "endBlock": 30093600,
+        "startTs": 1790950400,
+        "endTs": 1791036800,
+        "endBlockHash": "0x000000000000000000000000000000000000000000000000000000000000000c"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "216"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2870000",
+         "xferOut": "957000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "2957000",
+         "xferOut": "1044000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "11d9fc10f02b2299759da67dddcd6486189d899acad1d42e88ee7cd733edb01b",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 13,
+       "range": {
+        "startBlock": 30093600,
+        "endBlock": 30100800,
+        "startTs": 1791036800,
+        "endTs": 1791123200,
+        "endBlockHash": "0x000000000000000000000000000000000000000000000000000000000000000d"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "218"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2957000",
+         "xferOut": "1044000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "3044000",
+         "xferOut": "1131000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "c80990d0d330c10014df82459ecc0ed108616c71b5ca65754266e5fc55b2923f",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_07",
+       "epoch": 14,
+       "range": {
+        "startBlock": 30100800,
+        "endBlock": 30108000,
+        "startTs": 1791123200,
+        "endTs": 1791209600,
+        "endBlockHash": "0x000000000000000000000000000000000000000000000000000000000000000e"
+       },
+       "settled": false,
+       "pass": false,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": false
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "87000",
+        "xferOut": "87000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "240"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "3044000",
+         "xferOut": "1131000",
+         "fromTreasury": "2000000"
+        },
+        "newTotals": {
+         "xferIn": "3131000",
+         "xferOut": "1218000",
+         "fromTreasury": "2000000"
+        },
+        "newCommitment": "4e4ed4da4247e8c45e989cb1baebde752f863564175d03fbfa2ec5d3e076a668",
+        "ok": true,
+        "capHolds": true
+       }
+      }
+     ]
+    },
+    {
+     "id": "rec_06",
+     "clientId": "orion",
+     "pair": "cbBTC / USDC",
+     "privateLabel": "Orion Capital · cbBTC book",
+     "bond": {
+      "postedLabel": "$90k USDM",
+      "status": "intact",
+      "releasedEpochs": 0,
+      "totalEpochs": 30
+     },
+     "loanLabel": "$1.5M",
+     "depthTargetLabel": "$180k / side",
+     "bandBps": 100,
+     "minUptimePct": 90,
+     "minUptimeBuckets": 44,
+     "roundtripCapPct": 60,
+     "epochsTotal": 30,
+     "disposalD": "1600000",
+     "witnesses": [
+      {
+       "engagementId": "rec_06",
+       "epoch": 1,
+       "range": {
+        "startBlock": 30307200,
+        "endBlock": 30314400,
+        "startTs": 1793456000,
+        "endTs": 1793542400,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003e9"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "1500000",
+        "xferOut": "46000",
+        "fromTreasury": "1500000",
+        "roundTripVolume": "100",
+        "grossVolume": "228"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "0",
+         "xferOut": "0",
+         "fromTreasury": "0"
+        },
+        "newTotals": {
+         "xferIn": "1500000",
+         "xferOut": "46000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "1875baf6672e632c2498481effe77c6a52125cb34e3e22f178e849a5fd19fc66",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 2,
+       "range": {
+        "startBlock": 30314400,
+        "endBlock": 30321600,
+        "startTs": 1793542400,
+        "endTs": 1793628800,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ea"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "230"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1500000",
+         "xferOut": "46000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1546000",
+         "xferOut": "92000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "7bccd115f41530a932c1d34d03f4a1493f16eee8b7ed1d11fe94daba3b6f65ee",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 3,
+       "range": {
+        "startBlock": 30321600,
+        "endBlock": 30328800,
+        "startTs": 1793628800,
+        "endTs": 1793715200,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003eb"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "78",
+        "grossVolume": "178"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1546000",
+         "xferOut": "92000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1592000",
+         "xferOut": "138000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "47a89dbd9f77d646aa6460959c29106ee0eb8fc512b06ff43d269f8271dc6305",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 4,
+       "range": {
+        "startBlock": 30328800,
+        "endBlock": 30336000,
+        "startTs": 1793715200,
+        "endTs": 1793801600,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ec"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "214"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1592000",
+         "xferOut": "138000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1638000",
+         "xferOut": "184000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "3f12d757bae97ecc85dadfd039d0ce4d32ea54ffa665b738386984b7aea33a45",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 5,
+       "range": {
+        "startBlock": 30336000,
+        "endBlock": 30343200,
+        "startTs": 1793801600,
+        "endTs": 1793888000,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ed"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "72",
+        "grossVolume": "172"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1638000",
+         "xferOut": "184000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1684000",
+         "xferOut": "230000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "39b3c352e942ed99b3a255c053ba8b6e2d9b624f4bc16accc0b653baa57573c6",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 6,
+       "range": {
+        "startBlock": 30343200,
+        "endBlock": 30350400,
+        "startTs": 1793888000,
+        "endTs": 1793974400,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ee"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "70",
+        "grossVolume": "170"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1684000",
+         "xferOut": "230000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1730000",
+         "xferOut": "276000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "2c4d36baf2948fdae37f1bc54d5a509b0075d712a374b0de740f16cef87e35bf",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 7,
+       "range": {
+        "startBlock": 30350400,
+        "endBlock": 30357600,
+        "startTs": 1793974400,
+        "endTs": 1794060800,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ef"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "90",
+        "grossVolume": "190"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1730000",
+         "xferOut": "276000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1776000",
+         "xferOut": "322000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "2e53abb5d1839c1ca53aa188fdaeff759204247792a03d7ce17b615ea6f2abdc",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 8,
+       "range": {
+        "startBlock": 30357600,
+        "endBlock": 30364800,
+        "startTs": 1794060800,
+        "endTs": 1794147200,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f0"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "84",
+        "grossVolume": "184"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1776000",
+         "xferOut": "322000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1822000",
+         "xferOut": "368000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "61d98550e93580b5b77b2f47a961688a51e05d3f759e3ef54a74fda7775b0661",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 9,
+       "range": {
+        "startBlock": 30364800,
+        "endBlock": 30372000,
+        "startTs": 1794147200,
+        "endTs": 1794233600,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f1"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 35,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "60",
+        "grossVolume": "160"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1822000",
+         "xferOut": "368000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1868000",
+         "xferOut": "414000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "9b7a7b51fa0f171a26517cd31959239cf0e95edf2b2d37395f64ce1c2c756f93",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 10,
+       "range": {
+        "startBlock": 30372000,
+        "endBlock": 30379200,
+        "startTs": 1794233600,
+        "endTs": 1794320000,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f2"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "206"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1868000",
+         "xferOut": "414000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1914000",
+         "xferOut": "460000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "3589e3a670290aba0feff2e2fd7e19f9cb2ea8fb70b1696e94b0f5af6ee14d87",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 11,
+       "range": {
+        "startBlock": 30379200,
+        "endBlock": 30386400,
+        "startTs": 1794320000,
+        "endTs": 1794406400,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f3"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "222"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1914000",
+         "xferOut": "460000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "1960000",
+         "xferOut": "506000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "a5a71c89569aa54f27016c568ea2823996e95b9e5d48e04ecf0ff66edde037c2",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 12,
+       "range": {
+        "startBlock": 30386400,
+        "endBlock": 30393600,
+        "startTs": 1794406400,
+        "endTs": 1794492800,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f4"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "78",
+        "grossVolume": "178"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1960000",
+         "xferOut": "506000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2006000",
+         "xferOut": "552000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "a8181ece978e16abd951358c98d0aa48e7d00fa0dacf81d55cf8dd9adf2669f0",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 13,
+       "range": {
+        "startBlock": 30393600,
+        "endBlock": 30400800,
+        "startTs": 1794492800,
+        "endTs": 1794579200,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f5"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "208"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2006000",
+         "xferOut": "552000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2052000",
+         "xferOut": "598000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "4a94674d67be4e788b4b0119e397a091877bc8f2ef0ab7af91fbfbce6acd9b6b",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 14,
+       "range": {
+        "startBlock": 30400800,
+        "endBlock": 30408000,
+        "startTs": 1794579200,
+        "endTs": 1794665600,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f6"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "232"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2052000",
+         "xferOut": "598000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2098000",
+         "xferOut": "644000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "b37200441b36b85cc3d2ddb9d51999f9764d183860727d4da4e3907d7fde1984",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 15,
+       "range": {
+        "startBlock": 30408000,
+        "endBlock": 30415200,
+        "startTs": 1794665600,
+        "endTs": 1794752000,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f7"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "210"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2098000",
+         "xferOut": "644000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2144000",
+         "xferOut": "690000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "9fa8c02ef1bcd7f9a4c12029c8ea6d78bf8a96224026e89f9a6ab0b3e3564eaa",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 16,
+       "range": {
+        "startBlock": 30415200,
+        "endBlock": 30422400,
+        "startTs": 1794752000,
+        "endTs": 1794838400,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f8"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "210"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2144000",
+         "xferOut": "690000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2190000",
+         "xferOut": "736000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "3c39d6bfdee1831aa05f0c71597a3d7910d451d2927540688088f020913cdc84",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 17,
+       "range": {
+        "startBlock": 30422400,
+        "endBlock": 30429600,
+        "startTs": 1794838400,
+        "endTs": 1794924800,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003f9"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "84",
+        "grossVolume": "184"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2190000",
+         "xferOut": "736000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2236000",
+         "xferOut": "782000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "b1a95a95c2d2ffc4977cb2c0fe5b70710bb08f40f9a2bd7d8d6d3cc4351ebda7",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 18,
+       "range": {
+        "startBlock": 30429600,
+        "endBlock": 30436800,
+        "startTs": 1794924800,
+        "endTs": 1795011200,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003fa"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "86",
+        "grossVolume": "186"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2236000",
+         "xferOut": "782000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2282000",
+         "xferOut": "828000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "7819a4cf1041b1fb214d1cfbd3ef2389950c8a5607bccce47020b210f6accd9f",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 19,
+       "range": {
+        "startBlock": 30436800,
+        "endBlock": 30444000,
+        "startTs": 1795011200,
+        "endTs": 1795097600,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003fb"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "86",
+        "grossVolume": "186"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2282000",
+         "xferOut": "828000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2328000",
+         "xferOut": "874000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "bb03d19af3d907df7ed3bc483baeb9c98d97a0d2beae8ce8c0358b10dce37665",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 20,
+       "range": {
+        "startBlock": 30444000,
+        "endBlock": 30451200,
+        "startTs": 1795097600,
+        "endTs": 1795184000,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003fc"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "202"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2328000",
+         "xferOut": "874000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2374000",
+         "xferOut": "920000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "2c25a1d240fd8b137ddcf541b2454239c87b5bebd8ced9ecea8134758535aa01",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 21,
+       "range": {
+        "startBlock": 30451200,
+        "endBlock": 30458400,
+        "startTs": 1795184000,
+        "endTs": 1795270400,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003fd"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "216"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2374000",
+         "xferOut": "920000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2420000",
+         "xferOut": "966000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "0d673573a80ce766c6dfff10e0e2ac919eed3641e875a3cda7585803c0669038",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 22,
+       "range": {
+        "startBlock": 30458400,
+        "endBlock": 30465600,
+        "startTs": 1795270400,
+        "endTs": 1795356800,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003fe"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 36,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "218"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2420000",
+         "xferOut": "966000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2466000",
+         "xferOut": "1012000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "64e4461f3b0564b8f0214c75f3c47fa9b2eba649a9e774a762eed8505ce21fa5",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 23,
+       "range": {
+        "startBlock": 30465600,
+        "endBlock": 30472800,
+        "startTs": 1795356800,
+        "endTs": 1795443200,
+        "endBlockHash": "0x00000000000000000000000000000000000000000000000000000000000003ff"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "204"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2466000",
+         "xferOut": "1012000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2512000",
+         "xferOut": "1058000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "e3bee1db508b4d344c111d731c32d0ee6c53cd49e4d47c437e3819b242602083",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 24,
+       "range": {
+        "startBlock": 30472800,
+        "endBlock": 30480000,
+        "startTs": 1795443200,
+        "endTs": 1795529600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000400"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "240"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2512000",
+         "xferOut": "1058000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2558000",
+         "xferOut": "1104000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "ae449d60ea252fd33365f0149d07335b35dffebd4dc36d8bc17e0787115accf1",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 25,
+       "range": {
+        "startBlock": 30480000,
+        "endBlock": 30487200,
+        "startTs": 1795529600,
+        "endTs": 1795616000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000401"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "68",
+        "grossVolume": "168"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2558000",
+         "xferOut": "1104000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2604000",
+         "xferOut": "1150000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "a851a7c159af53d4a8a2361b35d84f78d05d24176cf852dcdc68c7f712be8c36",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 26,
+       "range": {
+        "startBlock": 30487200,
+        "endBlock": 30494400,
+        "startTs": 1795616000,
+        "endTs": 1795702400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000402"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "74",
+        "grossVolume": "174"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2604000",
+         "xferOut": "1150000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2650000",
+         "xferOut": "1196000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "55246e5af168022db7dffb79730677a08bdc2e8b4402d7ccd780b954a9160658",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 27,
+       "range": {
+        "startBlock": 30494400,
+        "endBlock": 30501600,
+        "startTs": 1795702400,
+        "endTs": 1795788800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000403"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "74",
+        "grossVolume": "174"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2650000",
+         "xferOut": "1196000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2696000",
+         "xferOut": "1242000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "c9fc33708293fe001f706bc49202b11d10d4940a714e7e5e55fb8e674d83eba3",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 28,
+       "range": {
+        "startBlock": 30501600,
+        "endBlock": 30508800,
+        "startTs": 1795788800,
+        "endTs": 1795875200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000404"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "90",
+        "grossVolume": "190"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2696000",
+         "xferOut": "1242000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2742000",
+         "xferOut": "1288000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "b641bd05a5f6a587c2a8ea491784250848b30c53267d692deb0b3c1e14002b32",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 29,
+       "range": {
+        "startBlock": 30508800,
+        "endBlock": 30516000,
+        "startTs": 1795875200,
+        "endTs": 1795961600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000405"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "226"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2742000",
+         "xferOut": "1288000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2788000",
+         "xferOut": "1334000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "138a571b1af796fc7b3257d3adb266b1dbfac3cf43ef494ffc8685cbc1f07528",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_06",
+       "epoch": 30,
+       "range": {
+        "startBlock": 30516000,
+        "endBlock": 30523200,
+        "startTs": 1795961600,
+        "endTs": 1796048000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000406"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "46000",
+        "xferOut": "46000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "228"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "2788000",
+         "xferOut": "1334000",
+         "fromTreasury": "1500000"
+        },
+        "newTotals": {
+         "xferIn": "2834000",
+         "xferOut": "1380000",
+         "fromTreasury": "1500000"
+        },
+        "newCommitment": "a38094ba0ea8095c8a3f2285fdf745000eca404fde9ef68be5f4a01a80405b1c",
+        "ok": true,
+        "capHolds": true
+       }
+      }
+     ]
+    },
+    {
+     "id": "rec_08",
+     "clientId": "tidal",
+     "pair": "DEGEN / WETH",
+     "privateLabel": "Tidal Fund · DEGEN launch",
+     "bond": {
+      "postedLabel": "$30k USDM",
+      "status": "intact",
+      "releasedEpochs": 0,
+      "totalEpochs": 14
+     },
+     "loanLabel": "$300k",
+     "depthTargetLabel": "$60k / side",
+     "bandBps": 200,
+     "minUptimePct": 80,
+     "minUptimeBuckets": 39,
+     "roundtripCapPct": 70,
+     "epochsTotal": 14,
+     "disposalD": "300000",
+     "witnesses": []
+    }
+   ]
+  },
+  {
+   "handle": "helix-lq",
+   "displayName": "Helix Liquidity",
+   "engagements": [
+    {
+     "id": "rec_h4",
+     "clientId": "tidal",
+     "pair": "AERO / USDC",
+     "privateLabel": "Tidal Fund · AERO book",
+     "bond": {
+      "postedLabel": "$75k USDM",
+      "status": "intact",
+      "releasedEpochs": 0,
+      "totalEpochs": 21
+     },
+     "loanLabel": "$1.0M",
+     "depthTargetLabel": "$120k / side",
+     "bandBps": 100,
+     "minUptimePct": 85,
+     "minUptimeBuckets": 41,
+     "roundtripCapPct": 65,
+     "epochsTotal": 21,
+     "disposalD": "1200000",
+     "witnesses": [
+      {
+       "engagementId": "rec_h4",
+       "epoch": 1,
+       "range": {
+        "startBlock": 30907200,
+        "endBlock": 30914400,
+        "startTs": 1800368000,
+        "endTs": 1800454400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bb9"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "1000000",
+        "xferOut": "52000",
+        "fromTreasury": "1000000",
+        "roundTripVolume": "100",
+        "grossVolume": "216"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "0",
+         "xferOut": "0",
+         "fromTreasury": "0"
+        },
+        "newTotals": {
+         "xferIn": "1000000",
+         "xferOut": "52000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "1d69da49a733e3618b31962f5ea809666096b544b0089b4f049e37e5f3322080",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 2,
+       "range": {
+        "startBlock": 30914400,
+        "endBlock": 30921600,
+        "startTs": 1800454400,
+        "endTs": 1800540800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bba"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "214"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1000000",
+         "xferOut": "52000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1052000",
+         "xferOut": "104000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "672e6a2eab9b8803ad1f319dcb1d48662eecdd3ce4256ac80ce4c76d014ee446",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 3,
+       "range": {
+        "startBlock": 30921600,
+        "endBlock": 30928800,
+        "startTs": 1800540800,
+        "endTs": 1800627200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bbb"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 30,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "98",
+        "grossVolume": "198"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1052000",
+         "xferOut": "104000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1104000",
+         "xferOut": "156000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "b383f45769a576b3559f4e9620463b7fa0e54b95a8d24479b742b382c2768663",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 4,
+       "range": {
+        "startBlock": 30928800,
+        "endBlock": 30936000,
+        "startTs": 1800627200,
+        "endTs": 1800713600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bbc"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "218"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1104000",
+         "xferOut": "156000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1156000",
+         "xferOut": "208000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "4b50cff261ed846a207586db096c2727234aacc7b2efa949ad7419ec42e7fd3e",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 5,
+       "range": {
+        "startBlock": 30936000,
+        "endBlock": 30943200,
+        "startTs": 1800713600,
+        "endTs": 1800800000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bbd"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "62",
+        "grossVolume": "162"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1156000",
+         "xferOut": "208000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1208000",
+         "xferOut": "260000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "fba4e25df6af2f679d11a65fdab43e54e4116864cebcacf6b5c85d8ac513d1e2",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 6,
+       "range": {
+        "startBlock": 30943200,
+        "endBlock": 30950400,
+        "startTs": 1800800000,
+        "endTs": 1800886400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bbe"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "238"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1208000",
+         "xferOut": "260000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1260000",
+         "xferOut": "312000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "42bbd0773485b7a650042b788c84fce2f448d44961b24d70547213dbc2c47747",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 7,
+       "range": {
+        "startBlock": 30950400,
+        "endBlock": 30957600,
+        "startTs": 1800886400,
+        "endTs": 1800972800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bbf"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 29,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "214"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1260000",
+         "xferOut": "312000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1312000",
+         "xferOut": "364000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "aa8dccccb4482b16b3a397ae69a4cd138b0e56e78228bed91dfdad9c3908db05",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 8,
+       "range": {
+        "startBlock": 30957600,
+        "endBlock": 30964800,
+        "startTs": 1800972800,
+        "endTs": 1801059200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bc0"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "216"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1312000",
+         "xferOut": "364000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1364000",
+         "xferOut": "416000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "01563a14b264c41b487b6fe95ae4dfb050b9312d1180db201d71152109f7da0b",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h4",
+       "epoch": 9,
+       "range": {
+        "startBlock": 30964800,
+        "endBlock": 30972000,
+        "startTs": 1801059200,
+        "endTs": 1801145600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000bc1"
+       },
+       "settled": false,
+       "pass": false,
+       "uptimeBuckets": 43,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": false
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "52000",
+        "xferOut": "52000",
+        "fromTreasury": "0",
+        "roundTripVolume": "80",
+        "grossVolume": "180"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1364000",
+         "xferOut": "416000",
+         "fromTreasury": "1000000"
+        },
+        "newTotals": {
+         "xferIn": "1416000",
+         "xferOut": "468000",
+         "fromTreasury": "1000000"
+        },
+        "newCommitment": "bfe54478eec8df93077b28e3a6da6daf924ea003aedfb493e2e0dec3a590a94e",
+        "ok": true,
+        "capHolds": true
+       }
+      }
+     ]
+    },
+    {
+     "id": "rec_h5",
+     "clientId": "orion",
+     "pair": "cbBTC / WETH",
+     "privateLabel": "Orion Capital · cbBTC/WETH book",
+     "bond": {
+      "postedLabel": "$60k USDM",
+      "status": "intact",
+      "releasedEpochs": 0,
+      "totalEpochs": 14
+     },
+     "loanLabel": "$800k",
+     "depthTargetLabel": "$90k / side",
+     "bandBps": 100,
+     "minUptimePct": 85,
+     "minUptimeBuckets": 41,
+     "roundtripCapPct": 60,
+     "epochsTotal": 14,
+     "disposalD": "900000",
+     "witnesses": [
+      {
+       "engagementId": "rec_h5",
+       "epoch": 1,
+       "range": {
+        "startBlock": 31207200,
+        "endBlock": 31214400,
+        "startTs": 1803824000,
+        "endTs": 1803910400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa1"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "800000",
+        "xferOut": "38000",
+        "fromTreasury": "800000",
+        "roundTripVolume": "64",
+        "grossVolume": "164"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "0",
+         "xferOut": "0",
+         "fromTreasury": "0"
+        },
+        "newTotals": {
+         "xferIn": "800000",
+         "xferOut": "38000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "32d0727be190b787af36b56a6f5dc9ab377e9f14e29520b7aa14370df910183f",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 2,
+       "range": {
+        "startBlock": 31214400,
+        "endBlock": 31221600,
+        "startTs": 1803910400,
+        "endTs": 1803996800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa2"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 45,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "236"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "800000",
+         "xferOut": "38000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "838000",
+         "xferOut": "76000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "d6cc19e130b07faf9459c064dfdf6e4fb8c9259557f38f4effa601ae88fc9906",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 3,
+       "range": {
+        "startBlock": 31221600,
+        "endBlock": 31228800,
+        "startTs": 1803996800,
+        "endTs": 1804083200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa3"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "238"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "838000",
+         "xferOut": "76000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "876000",
+         "xferOut": "114000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "44463b1f758d31617dbefa134bf23deb557853ee1e2e93252c6a7913d544d471",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 4,
+       "range": {
+        "startBlock": 31228800,
+        "endBlock": 31236000,
+        "startTs": 1804083200,
+        "endTs": 1804169600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa4"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 47,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "212"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "876000",
+         "xferOut": "114000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "914000",
+         "xferOut": "152000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "a6fd8215f4ac7e623e4b4eb9c30f2b3b6175458b5d19305c06788b68b2cbe130",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 5,
+       "range": {
+        "startBlock": 31236000,
+        "endBlock": 31243200,
+        "startTs": 1804169600,
+        "endTs": 1804256000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa5"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "214"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "914000",
+         "xferOut": "152000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "952000",
+         "xferOut": "190000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "4e2a5d0b734cdf69ffc07489e0a5214b85a0d8a2814bfc8f239f4478b9958687",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 6,
+       "range": {
+        "startBlock": 31243200,
+        "endBlock": 31250400,
+        "startTs": 1804256000,
+        "endTs": 1804342400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa6"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "204"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "952000",
+         "xferOut": "190000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "990000",
+         "xferOut": "228000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "34a1a59385a1c44fb179602ba255825cf1c275da5932d2a9bab9cc801984a63f",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 7,
+       "range": {
+        "startBlock": 31250400,
+        "endBlock": 31257600,
+        "startTs": 1804342400,
+        "endTs": 1804428800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa7"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "222"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "990000",
+         "xferOut": "228000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1028000",
+         "xferOut": "266000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "693079fee2727aab00cd732a28f62910c826468b0cb3d7914be33905f744739a",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 8,
+       "range": {
+        "startBlock": 31257600,
+        "endBlock": 31264800,
+        "startTs": 1804428800,
+        "endTs": 1804515200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa8"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 41,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "98",
+        "grossVolume": "198"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1028000",
+         "xferOut": "266000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1066000",
+         "xferOut": "304000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "a27dfa5f1c9b3927177ba6cb077c5e3398bb5769c536daef2eb6ffb74674cda1",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 9,
+       "range": {
+        "startBlock": 31264800,
+        "endBlock": 31272000,
+        "startTs": 1804515200,
+        "endTs": 1804601600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fa9"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 48,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "200"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1066000",
+         "xferOut": "304000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1104000",
+         "xferOut": "342000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "df8d20bb17d3bf845770c3f69532545364582267e7cafe8a4b6b77cd0db10bbd",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 10,
+       "range": {
+        "startBlock": 31272000,
+        "endBlock": 31279200,
+        "startTs": 1804601600,
+        "endTs": 1804688000,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000faa"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 42,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "90",
+        "grossVolume": "190"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1104000",
+         "xferOut": "342000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1142000",
+         "xferOut": "380000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "8a60588f4904607f252e86606f43c2321385ce4f4768a364d79056c32e114548",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 11,
+       "range": {
+        "startBlock": 31279200,
+        "endBlock": 31286400,
+        "startTs": 1804688000,
+        "endTs": 1804774400,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fab"
+       },
+       "settled": true,
+       "pass": false,
+       "uptimeBuckets": 29,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": false,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "70",
+        "grossVolume": "170"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1142000",
+         "xferOut": "380000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1180000",
+         "xferOut": "418000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "29ef60e303401df2333503205f89405b1bd78d03b15e51e7a185db86a6b04702",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 12,
+       "range": {
+        "startBlock": 31286400,
+        "endBlock": 31293600,
+        "startTs": 1804774400,
+        "endTs": 1804860800,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fac"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "226"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1180000",
+         "xferOut": "418000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1218000",
+         "xferOut": "456000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "b1eeacf6d2128ed96aee28caa40d23fbe29b183497ac26ca7cdc9e6e7822c84e",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 13,
+       "range": {
+        "startBlock": 31293600,
+        "endBlock": 31300800,
+        "startTs": 1804860800,
+        "endTs": 1804947200,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fad"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 46,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "228"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1218000",
+         "xferOut": "456000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1256000",
+         "xferOut": "494000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "64db115edc135be817ff14b7166a2e8e7efb5e649ae95b951a16035b5a67cabe",
+        "ok": true,
+        "capHolds": true
+       }
+      },
+      {
+       "engagementId": "rec_h5",
+       "epoch": 14,
+       "range": {
+        "startBlock": 31300800,
+        "endBlock": 31308000,
+        "startTs": 1804947200,
+        "endTs": 1805033600,
+        "endBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000fae"
+       },
+       "settled": true,
+       "pass": true,
+       "uptimeBuckets": 44,
+       "totalBuckets": 48,
+       "invariants": {
+        "I1_sortedAppendOnly": true,
+        "I2_accountedOnce": true,
+        "I3_custodyFloor": true,
+        "I4_netSellingCap": true,
+        "I5_outflowCap": true,
+        "I6_uptime": true,
+        "I7_roundTripCap": true,
+        "I8_settled": true
+       },
+       "sums": {
+        "heldBase": "2200",
+        "heldQuoteAtP": "0",
+        "swapBaseIn": "100",
+        "swapBaseOut": "100",
+        "xferIn": "38000",
+        "xferOut": "38000",
+        "fromTreasury": "0",
+        "roundTripVolume": "100",
+        "grossVolume": "240"
+       },
+       "carry": {
+        "prevTotals": {
+         "xferIn": "1256000",
+         "xferOut": "494000",
+         "fromTreasury": "800000"
+        },
+        "newTotals": {
+         "xferIn": "1294000",
+         "xferOut": "532000",
+         "fromTreasury": "800000"
+        },
+        "newCommitment": "6ec23ae6db8e6bf682c3794b993b154405f7c2d77b46c56cadbd81bfdad7302e",
+        "ok": true,
+        "capHolds": true
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

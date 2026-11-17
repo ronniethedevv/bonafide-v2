@@ -1,14 +1,11 @@
 // MM-side dashboard projection — the market maker's private workspace view.
 //
-// This is driven by REAL @mmr/witness capture output: `witness-store.json` is produced
-// by running the actual capture (I1–I8 oracle + carry-forward chaining) over the MM's
-// engagements (see packages/witness/scripts/seed-dashboard.mts), and the per-epoch
-// pass/uptime and the running budget shown here are projected from those records. The
-// engagement metadata the witnesses don't carry (pair, label, bond, formatted targets)
-// sits alongside as a descriptor — the stand-in for the on-chain engagement registry.
-// In production the JSON is replaced by the MM's live witness store read at request time.
+// Driven by REAL @mmr/witness capture output (see lib/world.ts): the per-epoch verdicts,
+// uptime and the running outflow budget are projected from the captured records. The
+// client portal projects from the same records, so both sides always agree. In
+// production the dataset is replaced by the MM's live witness store read at request time.
 
-import witnessStoreJson from "@/data/witness-store.json";
+import { WORLD, fmtUsd, metKpis, type EngagementRecord } from "./world";
 
 export type EngagementState =
   | "registered" // committed on-chain, awaiting first epoch
@@ -62,6 +59,7 @@ export interface BondView {
 export interface MmEngagement {
   id: string; // public record id
   privateLabel: string; // the MM's own label for the deal (never published)
+  clientName: string; // the counterparty (private to the two parties)
   state: EngagementState;
   terms: EngagementTermsView;
   currentEpoch: number; // 0 before the first epoch
@@ -145,47 +143,13 @@ export const STATE_LABEL: Record<EngagementState, string> = {
 
 // --- projection from real @mmr/witness capture output --------------------------------
 
-interface WitnessJson {
-  epoch: number;
-  settled: boolean;
-  uptimeBuckets: number;
-  totalBuckets: number;
-  invariants: Record<string, boolean>;
-  carry: { newTotals: { xferIn: string; xferOut: string; fromTreasury: string }; capHolds: boolean };
-}
-interface EngagementJson {
-  id: string;
-  pair: string;
-  privateLabel: string;
-  bond: { postedLabel: string; status: BondView["status"]; releasedEpochs: number; totalEpochs: number };
-  loanLabel: string;
-  depthTargetLabel: string;
-  bandBps: number;
-  minUptimePct: number;
-  roundtripCapPct: number;
-  epochsTotal: number;
-  disposalD: string;
-  witnesses: WitnessJson[];
-}
-interface StoreJson {
-  handle: string;
-  displayName: string;
-  engagements: EngagementJson[];
+/** Engagement lifecycle state from how far capture has got. Shared with the client view. */
+export function stateOf(e: EngagementRecord): EngagementState {
+  const captured = e.witnesses.length;
+  return captured === 0 ? "registered" : captured < e.epochsTotal ? "active" : "completed";
 }
 
-function fmtUsd(raw: bigint): string {
-  const n = Number(raw);
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
-  return `$${n}`;
-}
-
-/** Did the MM meet the KPI targets this epoch — I1–I7, independent of settlement (I8). */
-function metKpis(inv: Record<string, boolean>): boolean {
-  return Object.entries(inv).every(([k, v]) => k === "I8_settled" || v === true);
-}
-
-function projectEngagement(e: EngagementJson): MmEngagement {
+function projectEngagement(e: EngagementRecord): MmEngagement {
   const byEpoch = new Map(e.witnesses.map((w) => [w.epoch, w] as const));
   const epochs: EpochStatus[] = [];
   for (let n = 1; n <= e.epochsTotal; n++) {
@@ -208,7 +172,7 @@ function projectEngagement(e: EngagementJson): MmEngagement {
 
   const captured = e.witnesses.length;
   const currentEpoch = captured ? Math.max(...e.witnesses.map((w) => w.epoch)) : 0;
-  const state: EngagementState = captured === 0 ? "registered" : captured < e.epochsTotal ? "active" : "completed";
+  const state = stateOf(e);
 
   const last = captured ? e.witnesses.reduce((a, b) => (b.epoch > a.epoch ? b : a)) : undefined;
   const capRaw = BigInt(e.disposalD);
@@ -223,6 +187,7 @@ function projectEngagement(e: EngagementJson): MmEngagement {
   return {
     id: e.id,
     privateLabel: e.privateLabel,
+    clientName: WORLD.clients[e.clientId]?.name ?? e.clientId,
     state,
     terms: {
       pair: e.pair,
@@ -240,15 +205,20 @@ function projectEngagement(e: EngagementJson): MmEngagement {
   };
 }
 
-const STORE = witnessStoreJson as unknown as StoreJson;
-const WORKSPACE: MmWorkspace = {
-  handle: STORE.handle,
-  displayName: STORE.displayName,
-  engagements: STORE.engagements.map(projectEngagement),
-};
+const WORKSPACES: MmWorkspace[] = WORLD.workspaces.map((ws) => ({
+  handle: ws.handle,
+  displayName: ws.displayName,
+  engagements: ws.engagements.map(projectEngagement),
+}));
 
+/** One MM's private workspace. Callers must check the signed-in MM owns `handle`. */
 export function fetchWorkspace(handle: string): MmWorkspace | undefined {
-  return handle === WORKSPACE.handle ? WORKSPACE : undefined;
+  return WORKSPACES.find((w) => w.handle === handle);
+}
+
+/** Which MM workspace an engagement id belongs to (for ownership checks). */
+export function ownerOf(id: string): string | undefined {
+  return WORKSPACES.find((w) => w.engagements.some((e) => e.id === id))?.handle;
 }
 
 export function fetchEngagement(handle: string, id: string): { workspace: MmWorkspace; engagement: MmEngagement } | undefined {

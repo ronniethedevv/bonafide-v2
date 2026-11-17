@@ -1,5 +1,6 @@
 import type { PipelineStage } from "@/lib/mm-dashboard";
 import { PIPELINE } from "@/lib/mm-dashboard";
+import { Check } from "@/components/icons";
 
 const LABEL: Record<PipelineStage, string> = {
   register: "Register",
@@ -10,41 +11,37 @@ const LABEL: Record<PipelineStage, string> = {
   done: "Done",
 };
 
-// Register → Capture → Prove → Attest → Claim, with the current stage lit and prior
-// stages marked done. Makes the async lifecycle legible (where is this epoch/engagement?).
+// Register, Capture, Prove, Attest, Claim: the current stage lit and prior stages marked
+// done. On phones the per-step labels give way to one caption under the dots, so the row
+// never clips and the spacing stays even.
 export function PipelineStepper({ stage }: { stage: PipelineStage }) {
   const idx = stage === "done" ? PIPELINE.length : PIPELINE.indexOf(stage);
   return (
-    <div className="row" style={{ gap: 0, alignItems: "center", flexWrap: "nowrap", overflowX: "auto" }}>
-      {PIPELINE.map((s, i) => {
-        const done = i < idx;
-        const active = i === idx;
-        const color = done ? "var(--pos)" : active ? "var(--accent)" : "var(--border-strong)";
-        const text = done ? "var(--text-muted)" : active ? "var(--text-high)" : "var(--text-dim)";
-        return (
-          <div key={s} className="row" style={{ gap: 0, alignItems: "center", flex: i < PIPELINE.length - 1 ? 1 : "0 0 auto" }}>
-            <div className="row" style={{ gap: 8, alignItems: "center", flexShrink: 0 }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 22, height: 22, borderRadius: 999, flexShrink: 0,
-                  background: done ? "var(--pos)" : active ? "var(--accent)" : "transparent",
-                  border: `1.5px solid ${color}`, color: done || active ? "#06281c" : "var(--text-dim)",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600,
-                }}
-              >
-                {done ? "✓" : i + 1}
+    <div>
+      <div className="stepper" role="list" aria-label="Engagement stage">
+        {PIPELINE.map((s, i) => {
+          const done = i < idx;
+          const active = i === idx;
+          return (
+            <div key={s} className="stepper-item" role="listitem" aria-current={active ? "step" : undefined}>
+              <span className={`stepper-dot${done ? " is-done" : active ? " is-active" : ""}`}>
+                {done ? <Check size={12} /> : i + 1}
               </span>
-              <span className="step-label" style={{ color: text, fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: "nowrap" }}>
-                {LABEL[s]}
-              </span>
+              <span className={`step-label${active ? " is-active" : ""}${done ? " is-done" : ""}`}>{LABEL[s]}</span>
+              {i < PIPELINE.length - 1 && <span className={`stepper-line${done ? " is-done" : ""}`} />}
             </div>
-            {i < PIPELINE.length - 1 && (
-              <span style={{ flex: 1, height: 1.5, minWidth: 16, margin: "0 10px", background: done ? "var(--pos)" : "var(--border)" }} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <div className="stepper-caption" aria-hidden="true">
+        {stage === "done" ? (
+          <strong>All stages complete</strong>
+        ) : (
+          <>
+            Step {idx + 1} of {PIPELINE.length} · <strong>{LABEL[stage]}</strong>
+          </>
+        )}
+      </div>
     </div>
   );
 }

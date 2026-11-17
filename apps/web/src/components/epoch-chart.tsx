@@ -61,10 +61,9 @@ export function EpochChart({ series }: { series: EpochPoint[] }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
-        height="auto"
         role="img"
         aria-label={`Depth and uptime per epoch, epochs ${series[0]!.epoch} to ${last.epoch}. Latest uptime ${last.uptime} percent, depth ${last.depth} percent.`}
-        style={{ display: "block" }}
+        style={{ display: "block", height: "auto" }}
       >
         {/* recessive grid + y labels */}
         {Y_TICKS.map((t) => {

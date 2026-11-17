@@ -1,3 +1,5 @@
+import { Check } from "@/components/icons";
+
 // "How to trust this record" — the single most consistent trust pattern across
 // comparable products (EAScan, Credora, proof-of-reserves, fintech): don't ask for
 // trust, show who stands behind the record and how anyone can check it themselves.
@@ -19,11 +21,10 @@ function Point({ title, children }: { title: string; children: React.ReactNode }
           alignItems: "center",
           justifyContent: "center",
           color: "var(--accent-2)",
-          fontSize: 12,
           marginTop: 1,
         }}
       >
-        ✓
+        <Check size={13} />
       </span>
       <div>
         <div style={{ color: "var(--text-high)", fontSize: 14, fontWeight: 500 }}>{title}</div>

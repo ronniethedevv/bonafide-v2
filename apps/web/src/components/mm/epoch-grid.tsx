@@ -21,11 +21,11 @@ function cellColor(ep: EpochStatus): { bg: string; border: string } {
 }
 
 const LEGEND: Array<{ label: string; color: string }> = [
-  { label: "Settled ✓", color: "color-mix(in srgb, var(--pos) 70%, var(--surface))" },
+  { label: "Settled · met", color: "color-mix(in srgb, var(--pos) 70%, var(--surface))" },
   { label: "Attested", color: "color-mix(in srgb, var(--accent) 75%, var(--surface))" },
   { label: "Proven", color: "color-mix(in srgb, var(--accent) 45%, var(--surface))" },
   { label: "Captured", color: "color-mix(in srgb, var(--warn) 55%, var(--surface))" },
-  { label: "Failed", color: "color-mix(in srgb, var(--neg) 70%, var(--surface))" },
+  { label: "Missed", color: "color-mix(in srgb, var(--neg) 70%, var(--surface))" },
   { label: "Pending", color: "transparent" },
 ];
 

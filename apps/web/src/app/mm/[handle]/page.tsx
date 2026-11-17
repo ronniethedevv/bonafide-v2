@@ -16,6 +16,9 @@ import { PrivacyNote } from "@/components/privacy-note";
 import { FreshnessChip } from "@/components/freshness-chip";
 import { CoverageNote } from "@/components/coverage-note";
 import { TrustPanel } from "@/components/trust-panel";
+import { ArrowRight, BackLink, Eye, Lock } from "@/components/icons";
+import { getSession } from "@/lib/session";
+import { fetchPortal } from "@/lib/client-portal";
 
 export default async function ProfilePage({
   params,
@@ -34,11 +37,44 @@ export default async function ProfilePage({
   const sandbox = liveEngagements(profile.sandbox);
   const revoked = [...profile.engagements, ...profile.sandbox].filter((e) => e.revoked);
 
+  // Bridge from the public record to the viewer's own private view, if they have one.
+  const session = await getSession();
+  const isOwner = session?.kind === "mm" && session.handle === profile.handle;
+  const withThisMm =
+    session?.kind === "client"
+      ? (fetchPortal(session.clientId)?.engagements ?? []).filter((e) => e.mmHandle === profile.handle)
+      : [];
+
   return (
     <main className="container">
-      <Link href="/" className="muted" style={{ fontSize: 13 }}>
-        ← All market makers
-      </Link>
+      <BackLink href="/explore">All market makers</BackLink>
+
+      {isOwner && (
+        <div className="mine-banner" style={{ marginTop: 14 }}>
+          <span className="link-arrow muted">
+            <Eye size={15} style={{ color: "var(--accent-2)" }} />
+            <span>This is your public record: exactly what clients and the public see.</span>
+          </span>
+          <Link href="/dashboard" className="btn btn-primary btn-sm link-arrow">
+            <span>Open my workspace</span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
+      )}
+      {withThisMm.length > 0 && (
+        <div className="mine-banner" style={{ marginTop: 14 }}>
+          <span className="link-arrow muted">
+            <Lock size={15} style={{ color: "var(--accent-2)" }} />
+            <span>
+              You have {withThisMm.length} engagement{withThisMm.length > 1 ? "s" : ""} with {profile.displayName}. Their full figures are in your portal.
+            </span>
+          </span>
+          <Link href="/client" className="btn btn-primary btn-sm link-arrow">
+            <span>My engagements</span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
+      )}
 
       <section className="hero" style={{ marginTop: 14 }}>
         <div
@@ -54,8 +90,9 @@ export default async function ProfilePage({
               {freshness && lastAt && <FreshnessChip freshness={freshness} lastAt={lastAt} />}
             </div>
           </div>
-          <Link href={`/mm/${profile.handle}/tear-sheet`} className="btn btn-ghost">
-            Export tear sheet →
+          <Link href={`/mm/${profile.handle}/tear-sheet`} className="btn btn-ghost link-arrow">
+            <span>Export tear sheet</span>
+            <ArrowRight size={15} />
           </Link>
         </div>
 
