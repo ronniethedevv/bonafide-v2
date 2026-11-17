@@ -265,7 +265,7 @@ function Steps({ step }: { step: number }) {
             <span style={{ width: 22, height: 22, borderRadius: 999, flexShrink: 0, background: i < step ? "var(--pos)" : i === step ? "var(--accent)" : "transparent", border: `1.5px solid ${i < step ? "var(--pos)" : i === step ? "var(--accent)" : "var(--border-strong)"}`, color: i <= step ? "#06281c" : "var(--text-dim)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600 }}>
               {i < step ? "✓" : i + 1}
             </span>
-            <span style={{ fontSize: 13, fontWeight: i === step ? 600 : 500, color: i === step ? "var(--text-high)" : "var(--text-dim)", whiteSpace: "nowrap" }}>{s}</span>
+            <span className="step-label" style={{ fontSize: 13, fontWeight: i === step ? 600 : 500, color: i === step ? "var(--text-high)" : "var(--text-dim)", whiteSpace: "nowrap" }}>{s}</span>
           </span>
           {i < STEPS.length - 1 && <span style={{ flex: 1, height: 1.5, minWidth: 14, margin: "0 10px", background: i < step ? "var(--pos)" : "var(--border)" }} />}
         </div>

@@ -94,8 +94,8 @@ export default async function TearSheetPage({
       </div>
 
       {/* Record table */}
-      <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="card scroll-x" style={{ marginTop: 16, padding: 0 }}>
+        <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--surface-2)" }}>
               {["Engagement", "Tier", "Epochs", "KPI", "Custody", "Bond", "Completed"].map(

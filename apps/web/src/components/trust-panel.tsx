@@ -44,7 +44,7 @@ export function TrustPanel({ compact = false }: { compact?: boolean }) {
           trust by proof, not by exposure
         </span>
       </div>
-      <div className="grid" style={{ gap: 14, gridTemplateColumns: compact ? "1fr" : "1fr 1fr" }}>
+      <div className={compact ? "grid" : "cols-2"} style={{ gap: 14, ...(compact ? { gridTemplateColumns: "1fr" } : {}) }}>
         <Point title="Attested by a 2-of-3 committee">
           Each epoch&apos;s result is signed by at least two of three independent attesters —
           no single party, including the market maker, can forge it.

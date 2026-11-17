@@ -35,7 +35,7 @@ export function PipelineStepper({ stage }: { stage: PipelineStage }) {
               >
                 {done ? "✓" : i + 1}
               </span>
-              <span style={{ color: text, fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: "nowrap" }}>
+              <span className="step-label" style={{ color: text, fontSize: 13, fontWeight: active ? 600 : 500, whiteSpace: "nowrap" }}>
                 {LABEL[s]}
               </span>
             </div>

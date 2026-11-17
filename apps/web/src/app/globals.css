@@ -391,3 +391,51 @@ a.card:hover,
   color: var(--text-muted);
   overflow-x: auto;
 }
+
+/* --- Responsive helpers & mobile fixes --- */
+.brand-name {
+  white-space: nowrap;
+}
+/* horizontal-scroll wrapper for wide tables (reachable columns instead of clipped) */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* two-up that stacks on phones */
+.cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+
+@media (max-width: 680px) {
+  .cols-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: 8px;
+  }
+  .brand-name {
+    font-size: 14px;
+  }
+  .topnav {
+    margin-left: 14px !important;
+    gap: 15px !important;
+  }
+  .topnav a {
+    font-size: 13px;
+  }
+  .topbar-pill {
+    display: none;
+  }
+}
+
+/* compact steppers on phones: keep the numbered circles, drop the labels */
+@media (max-width: 500px) {
+  .step-label {
+    display: none;
+  }
+}
