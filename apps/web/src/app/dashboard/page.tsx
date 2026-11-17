@@ -28,7 +28,7 @@ export default function DashboardPage() {
         </div>
         <div className="row" style={{ gap: 10 }}>
           <Link href={`/mm/${ws.handle}`} className="btn btn-ghost">View public profile →</Link>
-          <button className="btn btn-primary">+ New engagement</button>
+          <Link href="/dashboard/new" className="btn btn-primary">+ New engagement</Link>
         </div>
       </div>
 
