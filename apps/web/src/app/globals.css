@@ -392,50 +392,354 @@ a.card:hover,
   overflow-x: auto;
 }
 
-/* --- Responsive helpers & mobile fixes --- */
+/* --- Navigation --- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
 .brand-name {
   white-space: nowrap;
 }
-/* horizontal-scroll wrapper for wide tables (reachable columns instead of clipped) */
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: 28px;
+}
+.topnav a {
+  color: var(--text-muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.topnav a:hover {
+  color: var(--text-high);
+}
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-sm {
+  height: 34px;
+  padding: 0 13px;
+  font-size: 13px;
+}
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.session-chip .role {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.session-chip button {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.session-chip button:hover {
+  color: var(--text-high);
+  border-color: var(--border-strong);
+}
+
+/* --- Links & inline flows with SVG arrows --- */
+.backlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.backlink:hover {
+  color: var(--text-high);
+}
+.flow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Stepper (lifecycle + wizard) --- */
+.stepper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.stepper-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.stepper-item:last-child {
+  flex: 0 0 auto;
+}
+.stepper-dot {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1.5px solid var(--border-strong);
+  color: var(--text-dim);
+}
+.stepper-dot.is-done {
+  background: var(--pos);
+  border-color: var(--pos);
+  color: #06281c;
+}
+.stepper-dot.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.step-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.step-label.is-done {
+  color: var(--text-muted);
+}
+.step-label.is-active {
+  color: var(--text-high);
+  font-weight: 600;
+}
+.stepper-line {
+  flex: 1;
+  height: 1.5px;
+  min-width: 12px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.stepper-line.is-done {
+  background: var(--pos);
+}
+
+/* --- Helpers --- */
 .scroll-x {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-/* two-up that stacks on phones */
 .cols-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--gap);
 }
+.cols-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap);
+}
+.demo-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
 
-@media (max-width: 680px) {
-  .cols-2 {
+/* --- Responsive --- */
+@media (max-width: 860px) {
+  .cols-3 {
     grid-template-columns: 1fr;
   }
 }
-
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .topbar {
-    gap: 8px;
-  }
-  .brand-name {
-    font-size: 14px;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 16px;
+    row-gap: 8px;
   }
   .topnav {
-    margin-left: 14px !important;
-    gap: 15px !important;
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 2px 0 2px;
   }
   .topnav a {
     font-size: 13px;
   }
-  .topbar-pill {
-    display: none;
+  .cols-2 {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .brand-name {
+    font-size: 15px;
   }
 }
 
-/* compact steppers on phones: keep the numbered circles, drop the labels */
-@media (max-width: 500px) {
-  .step-label {
+/* --- Sign-in, gates, landing --- */
+.persona-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.persona-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-weight: 600;
+  font-size: 14px;
+}
+.gate-icon,
+.view-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.view-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+.check-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.check-list li svg {
+  vertical-align: 0 !important;
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-2);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.session-chip {
+  margin: 0;
+}
+.mine-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.action-note {
+  margin-top: 10px;
+  max-width: 340px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+@media (max-width: 720px) {
+  .session-chip .role {
     display: none;
+  }
+}
+@media (max-width: 420px) {
+  .session-name {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+/* phones show one caption under the dots instead of per-step labels */
+.stepper-caption {
+  display: none;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.stepper-caption strong {
+  color: var(--text-high);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .step-label {
+    display: none !important;
+  }
+  .stepper-caption {
+    display: block;
+  }
+}
+@media (max-width: 480px) {
+  /* phones: brand + compact account chip share the first row; the nav names the role */
+  .session-chip .session-name {
+    display: none;
+  }
+  .session-chip {
+    padding-left: 10px;
   }
 }

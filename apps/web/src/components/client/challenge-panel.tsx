@@ -56,8 +56,8 @@ export function ChallengePanel({
       <p className="muted" style={{ fontSize: 13, margin: "10px 0 0", lineHeight: 1.6 }}>
         If you believe epoch {challengeableEpoch}&apos;s result is wrong, raise a challenge
         within the window. You post a bond matching the MM&apos;s <span className="mono" style={{ color: "var(--text)" }}>{mmBond}</span>;
-        the committee re-examines the published data and votes. Wrong result → the MM is
-        slashed; valid result → your bond is forfeit.
+        the committee re-examines the published data and votes. If the result was wrong,
+        the MM is slashed; if it holds up, your bond is forfeit.
       </p>
       {!open ? (
         <button className="btn btn-ghost" style={{ marginTop: 14 }} onClick={() => setOpen(true)}>Raise a challenge</button>
