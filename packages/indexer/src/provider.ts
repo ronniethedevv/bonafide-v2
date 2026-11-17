@@ -55,8 +55,11 @@ export interface AddressActivity {
   readonly swapQuoteOut: bigint;
   readonly depthBuckets: readonly DepthBucketSample[];
   readonly flowWindows: readonly FlowWindowSample[];
-  /** Block at which this address's LP position first became active (anti-JIT). */
-  readonly lpFirstActiveBlock: number | null;
+  /**
+   * Timestamp (unix seconds) of the block in which this address's LP position first
+   * became active during the epoch; null if it was already live at the start (anti-JIT).
+   */
+  readonly lpFirstActiveTs: number | null;
 }
 
 export interface PriceSample {

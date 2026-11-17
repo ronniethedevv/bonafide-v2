@@ -47,7 +47,7 @@ builder (`leaves.ts`), commitments (`commit.ts`), TWAP (`twap.ts`), tree + root
 Config that drives the math (`config.ts`): `bandsBps` (default `[50,100,200,500]`),
 `epochSeconds` (24h), `bucketSeconds` (30m → 48 buckets/epoch — matches the
 circuit's `Vector<48>` depth/flow witnesses), `twapWindowSeconds`, `winsorFraction`,
-`kMinBlocks` (anti-JIT), `liquidityFloor`.
+`kMinSeconds` (anti-JIT; was `kMinBlocks` before DD-31), `liquidityFloor`.
 
 **Before writing any extraction, read `packages/prover/src/oracle.ts` and
 `packages/contracts/INVARIANTS.md`** — they define what each metric *means*

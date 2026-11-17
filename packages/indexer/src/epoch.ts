@@ -67,6 +67,8 @@ export interface EpochManifest {
   twapWindowSeconds: number;
   priceSampleSeconds: number;
   winsorFraction: number;
+  /** Anti-JIT window (DD-31): needed to recompute which depth series earn credit. */
+  kMinSeconds: number;
   poolCount: number;
   rootOfRootsHex: string;
   pools: PoolManifestEntry[];
@@ -179,6 +181,7 @@ export async function buildEpoch(
     twapWindowSeconds: config.twapWindowSeconds,
     priceSampleSeconds: config.priceSampleSeconds,
     winsorFraction: config.winsorFraction,
+    kMinSeconds: config.kMinSeconds,
     poolCount: pools.length,
     rootOfRootsHex,
     pools: poolManifest,

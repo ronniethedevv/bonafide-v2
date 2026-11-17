@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { RootOfRoots, Sha256Hasher, digestToHex, parseAddr } from "@mmr/merkle";
 import { PoseidonHasher } from "@mmr/merkle/poseidon";
-import { DEFAULT_CONFIG, type IndexerConfig } from "./config.js";
+import { DEFAULT_CONFIG, assertConfig, type IndexerConfig } from "./config.js";
 import { buildEpoch, InMemoryPublisher } from "./epoch.js";
-import { activityToLeaf } from "./leaves.js";
+import { activityToLeaf, isJit } from "./leaves.js";
 import { commitDepth } from "./commit.js";
 import type {
   AddressActivity,
@@ -43,7 +43,7 @@ function activity(addr: bigint, over: Partial<AddressActivity> = {}): AddressAct
       },
     ],
     flowWindows: [{ window: 0, buy: 50n, sell: 100n }],
-    lpFirstActiveBlock: 0,
+    lpFirstActiveTs: 0,
     ...over,
   };
 }
@@ -137,19 +137,39 @@ describe("buildEpoch", () => {
 });
 
 describe("anti-JIT depth credit", () => {
-  const cfg: IndexerConfig = { ...DEFAULT_CONFIG, kMinBlocks: 30 };
+  const cfg: IndexerConfig = { ...DEFAULT_CONFIG, kMinSeconds: 60 };
 
   it("zeroes depth credit for a position younger than kMin", () => {
-    const fresh = activity(0x11n, { lpFirstActiveBlock: range.endBlock - 5 });
+    const fresh = activity(0x11n, { lpFirstActiveTs: range.endTs - 5 });
     const leaf = activityToLeaf(hasher, fresh, cfg, range);
     const emptyDepthRoot = commitDepth(hasher, [], cfg.bandsBps);
     expect(digestToHex(leaf.depthRoot)).toBe(digestToHex(emptyDepthRoot));
   });
 
   it("keeps depth credit for an aged position", () => {
-    const aged = activity(0x11n, { lpFirstActiveBlock: range.endBlock - 100 });
+    const aged = activity(0x11n, { lpFirstActiveTs: range.endTs - 100 });
     const leaf = activityToLeaf(hasher, aged, cfg, range);
     const emptyDepthRoot = commitDepth(hasher, [], cfg.bandsBps);
     expect(digestToHex(leaf.depthRoot)).not.toBe(digestToHex(emptyDepthRoot));
+  });
+
+  it("measures the window in seconds, whatever the block time (DD-31)", () => {
+    // 60 s exactly before the end is old enough; 59 s is not. Block numbers play no part,
+    // so 300 fast (0.2 s) blocks inside the last minute are still JIT.
+    expect(isJit(activity(0x11n, { lpFirstActiveTs: range.endTs - 60 }), cfg, range)).toBe(false);
+    expect(isJit(activity(0x11n, { lpFirstActiveTs: range.endTs - 59 }), cfg, range)).toBe(true);
+    expect(isJit(activity(0x11n, { lpFirstActiveTs: null }), cfg, range)).toBe(false);
+    expect(() => assertConfig({ ...cfg, kMinSeconds: 1.5 })).toThrow(/kMinSeconds/);
+  });
+
+  it("matches the former 30-block rule on 2 s blocks", () => {
+    // Pre-switch Base: block b has timestamp t0 + 2(b − b0). Old rule: endBlock − b < 30.
+    const t0 = range.endTs - 2 * 1000;
+    const tsOf = (b: number) => t0 + 2 * b;
+    const endBlock = 1000; // timestamp == range.endTs
+    for (let b = 900; b <= endBlock; b++) {
+      const oldRule = endBlock - b < 30;
+      expect(isJit(activity(0x11n, { lpFirstActiveTs: tsOf(b) }), cfg, range)).toBe(oldRule);
+    }
   });
 });

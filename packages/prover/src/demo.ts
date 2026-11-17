@@ -82,7 +82,7 @@ function compliantActivity(addr: bigint): AddressActivity {
     swapQuoteOut: 0n,
     depthBuckets: fullDepth(60n, 60n), // two wallets sum to 120 >= target 100
     flowWindows: [{ window: 0, buy: 50n, sell: 50n }],
-    lpFirstActiveBlock: RANGE.endBlock - 1000,
+    lpFirstActiveTs: RANGE.endTs - 1000,
   };
 }
 

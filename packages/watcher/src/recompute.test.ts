@@ -53,7 +53,7 @@ function activity(addr: bigint, baseEnd: bigint): AddressActivity {
     swapQuoteOut: 0n,
     depthBuckets: fullDepth(50n),
     flowWindows: [{ window: 0, buy: 5n, sell: 5n }],
-    lpFirstActiveBlock: RANGE.endBlock - 500,
+    lpFirstActiveTs: RANGE.endTs - 500,
   };
 }
 

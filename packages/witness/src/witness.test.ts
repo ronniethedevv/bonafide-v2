@@ -62,7 +62,7 @@ function compliant(addr: bigint, over: Partial<AddressActivity> = {}): AddressAc
     swapQuoteOut: 0n,
     depthBuckets: fullDepth(60n, 60n),
     flowWindows: [{ window: 0, buy: 50n, sell: 50n }],
-    lpFirstActiveBlock: 1,
+    lpFirstActiveTs: 1,
     ...over,
   };
 }

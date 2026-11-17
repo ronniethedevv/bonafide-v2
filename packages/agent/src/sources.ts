@@ -43,6 +43,10 @@ export function replaySource(dir: string): ActivitySource {
         range: EpochRange;
         activities: AddressActivity[];
       };
+      // Files from before DD-31 carry the LP's first-active block, not its timestamp.
+      if (j.activities.some((a) => !("lpFirstActiveTs" in a))) {
+        throw new Error(`${file} predates the seconds-based anti-JIT rule (DD-31); re-run replay-run.mts to rewrite it`);
+      }
       return { range: j.range, pool: j.pool.pool, activities: j.activities };
     },
   };

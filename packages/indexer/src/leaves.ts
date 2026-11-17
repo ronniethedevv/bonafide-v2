@@ -2,24 +2,24 @@
 //
 // Deterministic and total: given the same activity + config + epoch range it
 // always produces the same leaf (hence the same root). The only policy applied
-// here is anti-JIT — an LP position alive fewer than K_min blocks earns no depth
-// credit, so its depth_root commits to an empty series.
+// here is anti-JIT — an LP position alive fewer than kMinSeconds before the epoch end
+// earns no depth credit, so its depth_root commits to an empty series.
 
 import { type Hasher, type Leaf, zeroMetrics } from "@mmr/merkle";
 import type { IndexerConfig } from "./config.js";
 import type { AddressActivity, DepthBucketSample, EpochRange } from "./provider.js";
 import { commitDepth, commitFlow } from "./commit.js";
 
-/** True if the address's LP position is younger than K_min (earns no depth credit). */
+/**
+ * True if the address's LP position first went live fewer than kMinSeconds before the
+ * epoch end (by block timestamp), so it earns no depth credit (DD-31).
+ */
 export function isJit(
   activity: AddressActivity,
   config: IndexerConfig,
   range: EpochRange,
 ): boolean {
-  return (
-    activity.lpFirstActiveBlock !== null &&
-    range.endBlock - activity.lpFirstActiveBlock < config.kMinBlocks
-  );
+  return activity.lpFirstActiveTs !== null && range.endTs - activity.lpFirstActiveTs < config.kMinSeconds;
 }
 
 /**

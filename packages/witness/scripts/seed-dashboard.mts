@@ -60,7 +60,7 @@ function activity(
     swapBaseIn: 50n, swapBaseOut: 50n, swapQuoteIn: 0n, swapQuoteOut: 0n,
     depthBuckets: depthSeries(dipped),
     flowWindows: [{ window: 0, buy: 50n, sell }],
-    lpFirstActiveBlock: 1,
+    lpFirstActiveTs: 1,
   };
 }
 

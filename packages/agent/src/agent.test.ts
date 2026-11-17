@@ -30,7 +30,7 @@ function activity(addr: string, depth: bigint): AddressActivity {
     xferIn: 0n, xferOut: 0n, fromTreasury: 0n, swapBaseIn: 50n, swapBaseOut: 50n, swapQuoteIn: 0n, swapQuoteOut: 0n,
     depthBuckets: Array.from({ length: 48 }, (_, b) => ({ bucket: b, perBand: DEFAULT_CONFIG.bandsBps.map((bandBps) => ({ bandBps, minBid: depth, minAsk: depth })) })),
     flowWindows: [{ window: 0, buy: 50n, sell: 40n }],
-    lpFirstActiveBlock: 1,
+    lpFirstActiveTs: 1,
   };
 }
 

@@ -116,7 +116,7 @@ describe("I5 carry-forward commitment", () => {
       swapQuoteOut: 0n,
       depthBuckets: [],
       flowWindows: [],
-      lpFirstActiveBlock: null,
+      lpFirstActiveTs: null,
     });
     const eng = createEngagement({
       id: "carry",

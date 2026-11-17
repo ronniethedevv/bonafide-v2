@@ -217,6 +217,11 @@ export async function extractPoolActivity(
     swapBaseIn: 0n, swapBaseOut: 0n, swapQuoteIn: 0n, swapQuoteOut: 0n,
     xferIn: 0n, xferOut: 0n, fromTreasury: 0n, poolLegBase: 0n, windows: new Map(),
   };
+  // Anti-JIT works in seconds (DD-31): timestamp of the block each LP first went live.
+  const firstActiveTs = new Map<bigint, number>();
+  for (const [owner, d] of depth.owners) {
+    if (d.lpFirstActiveBlock !== null) firstActiveTs.set(owner, (await header(d.lpFirstActiveBlock)).timestamp);
+  }
   return list.map((a, i): AddressActivity => {
     const f = flows.get(a) ?? zero;
     const d = depth.owners.get(a);
@@ -238,7 +243,7 @@ export async function extractPoolActivity(
       swapQuoteOut: f.swapQuoteOut,
       depthBuckets,
       flowWindows: [...f.windows].sort(([x], [y]) => x - y).map(([window, w]) => ({ window, buy: w.buy, sell: w.sell })),
-      lpFirstActiveBlock: d?.lpFirstActiveBlock ?? null,
+      lpFirstActiveTs: firstActiveTs.get(a) ?? null,
     };
   });
 }

@@ -51,7 +51,7 @@ function goodActivity(addr: bigint, over: Partial<AddressActivity> = {}): Addres
     swapQuoteOut: 0n,
     depthBuckets: fullDepth(100n, 100n),
     flowWindows: [{ window: 0, buy: 50n, sell: 50n }],
-    lpFirstActiveBlock: range.endBlock - 1000, // aged, not JIT
+    lpFirstActiveTs: range.endTs - 1000, // aged, not JIT
     ...over,
   };
 }
@@ -150,7 +150,7 @@ describe("evaluateEpoch — reference oracle", () => {
 
   it("I6: anti-JIT position earns no depth credit", () => {
     const acts = new Map([
-      [0x10n, goodActivity(0x10n, { lpFirstActiveBlock: range.endBlock - 5 })],
+      [0x10n, goodActivity(0x10n, { lpFirstActiveTs: range.endTs - 5 })],
     ]);
     const v = evaluateEpoch(engWith([0x10n]), acts, config, range, { settled: true });
     expect(v.uptimeBuckets).toBe(0);

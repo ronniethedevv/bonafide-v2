@@ -86,7 +86,7 @@ function activity(addr: bigint, depth: DepthBucketSample[]): AddressActivity {
     swapQuoteOut: 0n,
     depthBuckets: depth,
     flowWindows: [],
-    lpFirstActiveBlock: RANGE.endBlock - 1_000_000, // old enough: not JIT
+    lpFirstActiveTs: RANGE.endTs - 1_000_000, // old enough: not JIT
   };
 }
 
