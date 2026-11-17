@@ -21,6 +21,7 @@ import { getLogsChunked } from "../src/evm/logs.js";
 import { TOPIC0, decodePoolCreated } from "../src/evm/abi.js";
 import { rpcFetch } from "../src/live/proxy-fetch.js";
 import { cachingFetch } from "../src/live/rpc-cache.js";
+import { pacedFetch } from "./paced-fetch.mjs";
 
 const DATA = resolve(import.meta.dirname, "../../../.replay-data");
 // Base moved from 2 s to 0.2 s blocks around 2026-11-05/06; a day after that is ~432k
@@ -32,7 +33,7 @@ const REPLAY_TO = Date.UTC(2026, 9, 27) / 1000; //     2026-10-27 00:00 UTC (7 e
 const chain = resolveChain(8453);
 const dex = chain.dexes[0]!;
 const url = process.env.BASE_ARCHIVE_RPC_URL ?? "https://base-mainnet.g.alchemy.com/v2";
-const rpc = new JsonRpcClient({ url, fetchImpl: cachingFetch(rpcFetch(process.env), join(DATA, "rpc-cache")), retries: 30 });
+const rpc = new JsonRpcClient({ url, fetchImpl: cachingFetch(pacedFetch(rpcFetch(process.env), Number(process.env.MMR_RPS ?? 6)), join(DATA, "rpc-cache")), retries: 30 });
 
 const QUOTES: Record<string, { symbol: string; decimals: number; min: bigint }> = {
   "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": { symbol: "USDC", decimals: 6, min: 5_000n * 10n ** 6n },

@@ -18,6 +18,7 @@ import { resolveEpochRange } from "../src/evm/range.js";
 import { UniswapV3ChainProvider } from "../src/evm/provider.js";
 import { rpcFetch } from "../src/live/proxy-fetch.js";
 import { cachingFetch } from "../src/live/rpc-cache.js";
+import { pacedFetch } from "./paced-fetch.mjs";
 
 const DATA = resolve(import.meta.dirname, "../../../.replay-data");
 const DAY = 86_400;
@@ -36,7 +37,7 @@ interface Selected {
 const sel = JSON.parse(readFileSync(join(DATA, "selected.json"), "utf8")) as Selected;
 const chain = resolveChain(8453);
 const url = process.env.BASE_ARCHIVE_RPC_URL ?? "https://base-mainnet.g.alchemy.com/v2";
-const rpc = new JsonRpcClient({ url, fetchImpl: cachingFetch(rpcFetch(process.env), join(DATA, "rpc-cache")), retries: 40 });
+const rpc = new JsonRpcClient({ url, fetchImpl: cachingFetch(pacedFetch(rpcFetch(process.env), Number(process.env.MMR_RPS ?? 6)), join(DATA, "rpc-cache")), retries: 40 });
 const J = (x: unknown) => JSON.stringify(x, (_, v) => (typeof v === "bigint" ? v.toString() : v));
 const t0 = Date.now();
 const log = (m: string) => console.log(`[replay +${((Date.now() - t0) / 60000).toFixed(1)}m] ${m}`);
