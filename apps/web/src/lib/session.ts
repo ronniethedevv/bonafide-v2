@@ -28,6 +28,8 @@ interface SessionBase {
   preview?: boolean;
   /** Database account id, for wallet accounts stored in Postgres. */
   accountId?: string;
+  /** Chain the wallet signed in on (wallet sessions). */
+  chainId?: number;
 }
 
 export type Session =
@@ -75,6 +77,7 @@ function fromWallet(c: WalletClaims): Session | undefined {
     address: c.addr,
     ...(c.preview ? { preview: true } : {}),
     ...(c.acct.id ? { accountId: c.acct.id } : {}),
+    chainId: c.chainId,
   };
   return c.acct.kind === "mm"
     ? { ...base, kind: "mm", id: `wallet:${c.addr.toLowerCase()}`, handle: c.acct.handle, name: c.acct.name }

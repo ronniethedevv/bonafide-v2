@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   // Workspace packages ship raw TS via their exports; Next must transpile them.
-  transpilePackages: ["@mmr/read-model"],
+  transpilePackages: ["@mmr/read-model", "@mmr/engagement-file"],
   // pnpm hoists deps to the workspace-root node_modules/.pnpm store, so file
   // tracing must be rooted at the monorepo root or standalone/prebuilt output
   // (e.g. `vercel build`) can't find traced server files.

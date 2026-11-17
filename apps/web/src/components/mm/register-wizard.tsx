@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BackLink, Check, Plus } from "@/components/icons";
+import { contexts, newOpening, seal, sealFile, MIN_PASSPHRASE, type EngagementOpening } from "@mmr/engagement-file";
+import { BackLink, Check, Info, Lock, Plus } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
+import { buildTerms, clientPayload, toMicro } from "@/lib/engagement/terms";
 
 // Register-engagement wizard. The MM sets the deal, the measurable KPI terms, their
-// private wallet set and the bond, reviews the exact commitment that will go on-chain,
-// and registers. The privacy model is front-and-centre: the wallets and terms are
-// committed (hashed with a fresh salt) — the chain only ever sees that commitment,
-// never these values. No backend here: "Register" shows what would be committed.
+// private wallet set and the bond, then:
+//  1. the browser generates the engagement's secrets and computes the protocol's real
+//     commitments (walletCommit, termsCommit — what the contract's register records);
+//  2. the MM must save a passphrase-encrypted engagement file holding those secrets —
+//     without it the engagement could never be proven — before Register unlocks;
+//  3. the full terms are sealed to the client's private inbox key, and the server stores
+//     only the parties, the commitments and that sealed envelope. The client then
+//     reviews the terms, checks them against the commitments, and accepts or declines.
 
 const POOLS = [
   { id: "weth-usdc-base", pair: "WETH / USDC", chain: "Base", addr: "0xd0b53d9277642d899df5c87a3966a349a798f224" },
@@ -38,6 +44,9 @@ interface Form {
   minUptime: string;
   epochs: string;
   roundtrip: string;
+  outflowCap: string;
+  netSellCap: string;
+  floorPrice: string;
   wallets: string[];
   bond: string;
 }
@@ -53,6 +62,9 @@ const EMPTY: Form = {
   minUptime: "90",
   epochs: "30",
   roundtrip: "60",
+  outflowCap: "",
+  netSellCap: "",
+  floorPrice: "",
   wallets: [""],
   bond: "",
 };
@@ -65,7 +77,7 @@ const EMPTY: Form = {
 export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; persist: boolean }) {
   const [step, setStep] = useState(0);
   const [f, setF] = useState<Form>({ ...EMPTY, clientId: clients[0]?.id ?? "" });
-  const [registered, setRegistered] = useState<{ id: string; commitment: string; clientName: string | undefined; saved: boolean } | null>(null);
+  const [registered, setRegistered] = useState<Registered | null>(null);
 
   const set = (k: keyof Form, v: string | number | string[]) => setF((p) => ({ ...p, [k]: v }));
   const pool = POOLS.find((p) => p.id === f.poolId)!;
@@ -76,33 +88,11 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
   const errors = useMemo(() => validate(f, cleanWallets, persist), [f, cleanWallets, persist]);
   const stepValid = (s: number): boolean => {
     if (s === 0) return !errors.label && !errors.loan && !errors.clientAddress;
-    if (s === 1) return !errors.depthTarget && !errors.minUptime && !errors.epochs && !errors.roundtrip;
+    if (s === 1) return !errors.depthTarget && !errors.minUptime && !errors.epochs && !errors.roundtrip && !errors.outflowCap && !errors.netSellCap && !errors.floorPrice;
     if (s === 2) return !errors.wallets;
     if (s === 3) return !errors.bond;
     return Object.keys(errors).length === 0;
   };
-
-  async function register(commitment: string): Promise<string | null> {
-    if (!persist) {
-      setRegistered({ id: nextId(), commitment, clientName: client?.name, saved: false });
-      return null;
-    }
-    try {
-      const res = await fetch("/api/engagements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientAddress: f.clientAddress.trim(), commitment }),
-      });
-      const body = (await res.json()) as { ok?: boolean; id?: string; clientName?: string; error?: string; errors?: Record<string, string> };
-      if (res.ok && body.ok && body.id) {
-        setRegistered({ id: body.id, commitment, clientName: body.clientName, saved: true });
-        return null;
-      }
-      return body.errors?.clientAddress ?? body.error ?? "Couldn't register the engagement.";
-    } catch {
-      return "Network error. Please try again.";
-    }
-  }
 
   if (registered) return <Success {...registered} />;
 
@@ -177,6 +167,26 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
             <Field label="Round-trip cap" err={errors.roundtrip} suffix="% of volume">
               <input className="inp" inputMode="numeric" placeholder="60" value={f.roundtrip} onChange={(e) => set("roundtrip", e.target.value)} />
             </Field>
+            <details className="adv">
+              <summary>Advanced terms (optional)</summary>
+              <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
+                <div className="row2">
+                  <Field label="Outflow cap" err={errors.outflowCap} suffix="USDM">
+                    <input className="inp" inputMode="decimal" placeholder="same as loan" value={f.outflowCap} onChange={(e) => set("outflowCap", e.target.value)} />
+                  </Field>
+                  <Field label="Net-selling cap" err={errors.netSellCap} suffix="USDM">
+                    <input className="inp" inputMode="decimal" placeholder="0" value={f.netSellCap} onChange={(e) => set("netSellCap", e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="Floor price" err={errors.floorPrice} suffix="USDM per token">
+                  <input className="inp" inputMode="decimal" placeholder="0" value={f.floorPrice} onChange={(e) => set("floorPrice", e.target.value)} />
+                </Field>
+                <p className="dim" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                  Outflow cap: the most that may leave your wallets over the contract. Net-selling cap: how much net selling of the
+                  token is allowed. Floor price: the agreed value per token for the custody check.
+                </p>
+              </div>
+            </details>
           </Section>
         )}
 
@@ -214,7 +224,18 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
           </Section>
         )}
 
-        {step === 4 && <Review f={f} pool={pool} clientName={clientLabel} wallets={cleanWallets} persist={persist} onRegister={register} onEditClient={() => setStep(0)} />}
+        {step === 4 && (
+          <Review
+            f={f}
+            pool={pool}
+            clientLabel={clientLabel}
+            demoClientName={client?.name}
+            wallets={cleanWallets}
+            persist={persist}
+            onRegistered={setRegistered}
+            onEditClient={() => setStep(0)}
+          />
+        )}
       </div>
 
       {step < 4 && (
@@ -241,6 +262,12 @@ function validate(f: Form, wallets: string[], persist: boolean): Record<string, 
   if (!(Number.isInteger(Number(f.epochs)) && Number(f.epochs) >= 1 && Number(f.epochs) <= 90)) e.epochs = "1–90 epochs.";
   if (!pct(f.roundtrip)) e.roundtrip = "0–100.";
   if (!pos(f.bond)) e.bond = "Enter a bond amount.";
+  if (!pos(f.loan) || toMicro(f.loan) === null) e.loan = "Enter a loan amount (up to 6 decimals).";
+  if (pos(f.depthTarget) && toMicro(f.depthTarget) === null) e.depthTarget = "Up to 6 decimals.";
+  for (const k of ["outflowCap", "netSellCap", "floorPrice"] as const) {
+    if (f[k].trim() && toMicro(f[k]) === null) e[k] = "Enter an amount (up to 6 decimals), or leave blank.";
+  }
+  if (f.floorPrice.trim() && (toMicro(f.floorPrice) ?? 0n) >= 1n << 64n) e.floorPrice = "Too large.";
   if (wallets.length === 0) e.wallets = "Add at least one wallet.";
   else if (wallets.some((w) => !ADDR_RE.test(w))) e.wallets = "Every wallet must be a 0x address (40 hex chars).";
   else if (new Set(wallets.map((w) => w.toLowerCase())).size !== wallets.length) e.wallets = "Duplicate wallet.";
@@ -248,100 +275,232 @@ function validate(f: Form, wallets: string[], persist: boolean): Record<string, 
   return e;
 }
 
+interface Registered {
+  id: string;
+  fingerprint: string;
+  clientName: string | undefined;
+  fileName: string;
+  saved: boolean;
+}
+
+function download(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function Review({
-  f, pool, clientName, wallets, persist, onRegister, onEditClient,
+  f, pool, clientLabel, demoClientName, wallets, persist, onRegistered, onEditClient,
 }: {
-  f: Form; pool: (typeof POOLS)[number]; clientName: string; wallets: string[]; persist: boolean;
-  onRegister: (c: string) => Promise<string | null>; onEditClient: () => void;
+  f: Form; pool: (typeof POOLS)[number]; clientLabel: string; demoClientName: string | undefined; wallets: string[]; persist: boolean;
+  onRegistered: (r: Registered) => void; onEditClient: () => void;
 }) {
-  const [commitment, setCommitment] = useState<string>("computing…");
-  const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState<EngagementOpening | null>(null);
+  const [clientKey, setClientKey] = useState<string | null>(null);
+  const [pass, setPass] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"" | "saving" | "registering">("");
   const [error, setError] = useState<string | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
+
+  // Fresh secrets + the protocol's real commitments, once per visit to this step.
   useEffect(() => {
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const body = JSON.stringify({
-      pool: pool.addr, client: persist ? f.clientAddress.trim().toLowerCase() : f.clientId, loan: f.loan, depthTarget: f.depthTarget, bandBps: f.bandBps,
-      minUptime: f.minUptime, epochs: f.epochs, roundtrip: f.roundtrip,
-      wallets: [...wallets].map((w) => w.toLowerCase()).sort(), bond: f.bond,
-      salt: Array.from(salt),
-    });
-    crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)).then((d) => {
-      setCommitment("0x" + Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join(""));
-    });
-  }, [f, pool, wallets, persist]);
+    const { terms, human } = buildTerms(f);
+    newOpening({
+      pool: { chain: pool.chain, address: pool.addr, pair: pool.pair },
+      client: persist ? { address: f.clientAddress.trim().toLowerCase() } : demoClientName ? { name: demoClientName } : {},
+      label: f.label.trim(),
+      wallets,
+      terms,
+      human,
+    })
+      .then(setOpening)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't prepare the engagement."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The client's inbox key, to seal the terms to.
+  useEffect(() => {
+    if (!persist) return;
+    fetch(`/api/clients/inbox-key?address=${encodeURIComponent(f.clientAddress.trim())}`, { cache: "no-store" })
+      .then(async (r) => {
+        const b = (await r.json()) as { encryptionKey?: string; error?: string };
+        if (r.ok && b.encryptionKey) setClientKey(b.encryptionKey);
+        else setClientError(b.error ?? "Couldn't find your client's inbox.");
+      })
+      .catch(() => setClientError("Couldn't look up your client. Check your connection."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const passErr = pass.length > 0 && pass.length < MIN_PASSPHRASE ? `At least ${MIN_PASSPHRASE} characters.` : pass2.length > 0 && pass !== pass2 ? "Passphrases don't match." : null;
+  const canSave = !!opening && pass.length >= MIN_PASSPHRASE && pass === pass2 && !busy;
+
+  async function saveFile() {
+    if (!opening) return;
+    setBusy("saving");
+    setError(null);
+    try {
+      const file = await sealFile(opening, pass);
+      const name = `engagement-${opening.commitments.termsCommit.slice(2, 10)}.mmr.json`;
+      download(name, JSON.stringify(file, null, 2));
+      setFileName(name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't create the file.");
+    }
+    setBusy("");
+  }
+
+  async function register() {
+    if (!opening || !fileName) return;
+    setBusy("registering");
+    setError(null);
+    try {
+      if (!persist) {
+        onRegistered({ id: nextId(), fingerprint: opening.commitments.termsCommit, clientName: demoClientName, fileName, saved: false });
+        return;
+      }
+      if (!clientKey) throw new Error(clientError ?? "Your client's inbox isn't available.");
+      const { walletCommit, termsCommit } = opening.commitments;
+      const termsEnvelope = await seal(JSON.stringify(clientPayload(opening)), clientKey, contexts.terms(walletCommit, termsCommit));
+      const res = await fetch("/api/engagements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientAddress: f.clientAddress.trim(), walletCommit, termsCommit, termsEnvelope }),
+      });
+      const body = (await res.json()) as { ok?: boolean; id?: string; clientName?: string; fingerprint?: string; error?: string; errors?: Record<string, string> };
+      if (!res.ok || !body.ok || !body.id) throw new Error(body.errors?.clientAddress ?? body.error ?? "Couldn't register the engagement.");
+      onRegistered({ id: body.id, fingerprint: body.fingerprint ?? "", clientName: body.clientName, fileName, saved: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't register the engagement.");
+      setBusy("");
+    }
+  }
 
   return (
     <div>
       <div className="eyebrow" style={{ marginBottom: 12 }}>Review & register</div>
       <dl className="rev">
         <Row k="Pool" v={`${pool.pair} — ${pool.chain}`} />
-        <Row k="Client (private)" v={clientName} />
+        <Row k="Client (private)" v={clientLabel} />
         <Row k="Label (private)" v={f.label} />
         <Row k="Depth target" v={`${fmt(f.depthTarget)} USDM / side @ ±${f.bandBps}bps`} />
         <Row k="Min uptime" v={`${f.minUptime}% of buckets`} />
         <Row k="Contract" v={`${f.epochs} epochs`} />
         <Row k="Loan" v={`${fmt(f.loan)} USDM`} />
         <Row k="Round-trip cap" v={`${f.roundtrip}% of volume`} />
+        <Row k="Outflow cap" v={`${fmt(f.outflowCap.trim() || f.loan)} USDM`} />
         <Row k="Wallets (private)" v={`${wallets.length} committed`} />
         <Row k="Bond" v={`${fmt(f.bond)} USDM`} />
       </dl>
 
-      <div style={{ marginTop: 16, padding: "14px 16px", background: "var(--accent-soft)", border: "1px solid color-mix(in srgb, var(--accent) 24%, transparent)", borderRadius: "var(--radius-sm)" }}>
-        <div className="eyebrow" style={{ marginBottom: 6 }}>Goes on-chain — the commitment only</div>
-        <code className="mono" style={{ fontSize: 12, color: "var(--text-muted)", wordBreak: "break-all" }}>{commitment}</code>
+      {persist && clientError && (
+        <div role="alert" style={{ marginTop: 14, fontSize: 13, color: "var(--neg)", lineHeight: 1.5 }}>
+          {clientError}{" "}
+          <button type="button" className="link-btn" onClick={onEditClient}>Edit client</button>
+        </div>
+      )}
+
+      <div className="commit-box">
+        <div className="eyebrow" style={{ marginBottom: 8 }}>Goes on-chain: the commitments only</div>
+        <div className="commit-line"><span className="dim">Wallets</span><code className="mono">{opening?.commitments.walletCommit ?? "computing…"}</code></div>
+        <div className="commit-line"><span className="dim">Terms</span><code className="mono">{opening?.commitments.termsCommit ?? "computing…"}</code></div>
         <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.6, margin: "10px 0 0" }}>
-          Your wallets and KPI terms are hashed with a fresh salt into this commitment.
-          The chain records only the commitment — never the addresses, targets or loan above.
+          Your wallets and terms are each hashed with a fresh secret value. The chain records only these two
+          fingerprints, never the addresses, targets or loan above.
         </p>
+      </div>
+
+      <div className={`save-box${fileName ? " is-done" : ""}`}>
+        <div className="row" style={{ gap: 10, alignItems: "center" }}>
+          <span className="view-icon" aria-hidden="true">{fileName ? <Check size={17} /> : <Lock size={17} />}</span>
+          <div>
+            <div style={{ fontWeight: 600, color: "var(--text-high)" }}>{fileName ? "Engagement file saved" : "Save your engagement file"}</div>
+            <div className="dim" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.5 }}>
+              {fileName ? (
+                <>Saved as <span className="mono">{fileName}</span>. Keep it and its passphrase safe: you need both to prove this engagement.</>
+              ) : (
+                <>It holds the secret values behind the commitments. Without it, this engagement can never be proven, and we can&apos;t recover it for you.</>
+              )}
+            </div>
+          </div>
+        </div>
+        {!fileName && (
+          <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+            <div className="row2">
+              <input className="inp" type="password" autoComplete="new-password" placeholder={`Passphrase (${MIN_PASSPHRASE}+ characters)`} value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Passphrase" />
+              <input className="inp" type="password" autoComplete="new-password" placeholder="Repeat passphrase" value={pass2} onChange={(e) => setPass2(e.target.value)} aria-label="Repeat passphrase" />
+            </div>
+            {passErr && <div className="field-err" style={{ marginTop: 0 }}>{passErr}</div>}
+            <button type="button" className="btn btn-ghost" disabled={!canSave} style={{ opacity: canSave ? 1 : 0.5 }} onClick={saveFile}>
+              {busy === "saving" ? "Encrypting…" : "Download encrypted file"}
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
         <div role="alert" style={{ marginTop: 14, fontSize: 13, color: "var(--neg)", lineHeight: 1.5 }}>
           {error}{" "}
-          <button type="button" className="link-btn" onClick={onEditClient}>Edit client</button>
+          {persist && <button type="button" className="link-btn" onClick={onEditClient}>Edit client</button>}
         </div>
       )}
 
       <button
         className="btn btn-primary"
         style={{ marginTop: 18, width: "100%" }}
-        disabled={commitment.startsWith("computing") || busy}
-        onClick={async () => {
-          setBusy(true);
-          setError(null);
-          setError(await onRegister(commitment));
-          setBusy(false);
-        }}
+        disabled={!opening || !fileName || !!busy || (persist && !clientKey)}
+        onClick={register}
       >
-        {busy ? "Registering…" : "Register engagement"}
+        {busy === "registering" ? "Registering…" : fileName ? "Register engagement" : "Save the file first to register"}
       </button>
+      {persist && (
+        <div className="demo-note" style={{ marginTop: 12, alignItems: "flex-start" }}>
+          <Info size={14} style={{ marginTop: 2 }} />
+          <span style={{ lineHeight: 1.5 }}>
+            Registering sends your client the full terms, encrypted so only they can read them. They check the terms against
+            the commitments and accept or decline.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-function Success({ id, commitment, clientName, saved }: { id: string; commitment: string; clientName: string | undefined; saved: boolean }) {
+function Success({ id, fingerprint, clientName, fileName, saved }: Registered) {
   return (
     <main className="container" style={{ maxWidth: 640 }}>
       <div className="card" style={{ marginTop: 40, padding: 32, textAlign: "center" }}>
         <div style={{ width: 48, height: 48, borderRadius: 999, background: "color-mix(in srgb, var(--pos) 18%, transparent)", color: "var(--pos)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
           <Check size={24} style={{ verticalAlign: "middle" }} />
         </div>
-        <h2 style={{ margin: 0, fontSize: 24 }}>Engagement registered</h2>
-        <p className="muted" style={{ fontSize: 14, margin: "10px auto 0", maxWidth: 440, lineHeight: 1.6 }}>
-          Committed privately as <span className="mono" style={{ color: "var(--text)" }}>{id}</span>. The chain holds only the
-          commitment below — your wallets and terms never left this session. Capture begins at epoch 1
-          {saved && clientName ? <>, and {clientName} can follow it from their client portal</> : null}.
+        <h2 style={{ margin: 0, fontSize: 24 }}>{saved ? "Sent to your client" : "Engagement prepared"}</h2>
+        <p className="muted" style={{ fontSize: 14, margin: "10px auto 0", maxWidth: 460, lineHeight: 1.6 }}>
+          {saved ? (
+            <>
+              Registered as <span className="mono" style={{ color: "var(--text)" }}>{id}</span>.{" "}
+              {clientName ?? "Your client"} now reviews the terms and accepts or declines; you&apos;ll see their answer in your workspace.
+            </>
+          ) : (
+            <>Demo: this engagement isn&apos;t saved. Sign in with a wallet to register real ones.</>
+          )}
         </p>
-        <code className="mono" style={{ display: "block", marginTop: 14, padding: "10px 12px", background: "var(--code)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 11.5, color: "var(--text-muted)", wordBreak: "break-all" }}>{commitment}</code>
+        {fingerprint && (
+          <code className="mono" style={{ display: "block", marginTop: 14, padding: "10px 12px", background: "var(--code)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 11.5, color: "var(--text-muted)", wordBreak: "break-all" }}>{fingerprint}</code>
+        )}
+        <div className="demo-note" style={{ marginTop: 14, justifyContent: "center" }}>
+          <Lock size={13} />
+          <span>Keep <span className="mono">{fileName}</span> and its passphrase. You need both to prove this engagement.</span>
+        </div>
         <div className="row" style={{ justifyContent: "center", gap: 10, marginTop: 20 }}>
           <Link href="/dashboard" className="btn btn-primary">Back to workspace</Link>
           <Link href="/dashboard/new" className="btn btn-ghost">Register another</Link>
         </div>
-        <p className="dim" style={{ fontSize: 11, marginTop: 16 }}>
-          {saved
-            ? "Saved: the parties, this commitment and the status. Your terms and wallets were not sent."
-            : "Demo: this engagement isn't saved. Sign in with a wallet to register real ones."}
-        </p>
       </div>
       <StyleTag />
     </main>
