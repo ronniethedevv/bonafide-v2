@@ -27,6 +27,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span className="brand-mark" aria-hidden="true" />
             <span className="brand-name">MM Reputation</span>
           </Link>
+          <nav className="row" style={{ marginLeft: 28, gap: 20, alignItems: "center" }}>
+            <Link href="/" className="muted" style={{ fontSize: 14 }}>Explore</Link>
+            <Link href="/dashboard" className="muted" style={{ fontSize: 14 }}>Dashboard</Link>
+          </nav>
           <span className="pill" style={{ marginLeft: "auto" }}>
             Built on Midnight
           </span>

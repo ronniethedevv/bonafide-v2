@@ -127,10 +127,9 @@ integration work remains, and one item is an external ecosystem issue:
   local node accepts the same calls**, so it is not our contract or client — it is
   isolated to the wallet's DUST and reported to Midnight. Full write-up and
   reproduction: [`specs/CALL_SUBMISSION_BLOCKER.md`](./specs/CALL_SUBMISSION_BLOCKER.md).
-- **Witness capture — live wiring & off-chain scope.** The `@mmr/witness` tool exists
-  (per-epoch capture + carry chaining + store); what remains is feeding it live activity
-  from the archive-RPC reader filtered to the MM's wallets, and extending capture to
-  off-chain / CEX venues (zkTLS).
+- **Witness capture — off-chain scope.** `@mmr/witness` captures per epoch and is wired
+  to the live archive-RPC reader (`captureLiveEpoch` filters the pool index to the MM's
+  committed wallets); what remains is extending capture to off-chain / CEX venues (zkTLS).
 - **Real attester operations** — the on-chain 2-of-3 threshold is enforced; a live
   3-operator fleet with Jubjub-Schnorr signing is the operational piece.
 - **Fee-sponsor** (DUST self-relay) and the live frontend API/DB path.

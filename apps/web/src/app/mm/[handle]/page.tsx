@@ -15,6 +15,7 @@ import { EpochChart } from "@/components/epoch-chart";
 import { PrivacyNote } from "@/components/privacy-note";
 import { FreshnessChip } from "@/components/freshness-chip";
 import { CoverageNote } from "@/components/coverage-note";
+import { TrustPanel } from "@/components/trust-panel";
 
 export default async function ProfilePage({
   params,
@@ -78,6 +79,10 @@ export default async function ProfilePage({
 
       <div style={{ marginTop: 14 }}>
         <CoverageNote coverage={coverage} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <TrustPanel />
       </div>
 
       {profile.epochSeries.length > 0 && (
