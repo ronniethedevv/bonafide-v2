@@ -16,7 +16,7 @@ import type { Registration } from "@/lib/db/store";
 import { RegistrationCard } from "@/components/registrations";
 import { unlockInbox } from "@/lib/wallet/inbox";
 import { signMessage, walletErrorText } from "@/lib/wallet/browser";
-import { BUCKETS_PER_EPOCH, formatMicro, toMicro, type ClientTermsPayload } from "@/lib/engagement/terms";
+import { BUCKETS_PER_EPOCH, formatUnits, pToPrice, toUnits, type ClientTermsPayload, type TokenInfo } from "@/lib/engagement/terms";
 import { Check, Info } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
 
@@ -118,22 +118,28 @@ function Proposal({ r, address, inboxKey }: { r: Registration; address: string; 
 }
 
 function bondText(raw: string | undefined): string {
-  const m = raw ? toMicro(raw) : null;
-  return m !== null ? formatMicro(m) : (raw ?? "?");
+  const m = raw ? toUnits(raw, 6) : null;
+  return m !== null ? formatUnits(m, 6) : (raw ?? "?");
 }
+
+// Files from before token units were recorded fall back to 6-decimal "units".
+const UNKNOWN: TokenInfo = { symbol: "units", decimals: 6 };
 
 function TermsView({ payload, matches }: { payload: ClientTermsPayload; matches: boolean }) {
   const t = payload.terms;
+  const base = payload.pool.base ?? UNKNOWN;
+  const quote = payload.pool.quote ?? UNKNOWN;
+  const p = BigInt(t.floorPriceP);
   const rows: Array<[string, string]> = [
     ["Pool", `${payload.pool.pair} on ${payload.pool.chain} · ${shortAddress(payload.pool.address)}`],
-    ["Depth target", `${formatMicro(t.depthTarget)} USDM per side within ±${t.bandBps} bps`],
+    ["Depth target", `${formatUnits(t.depthTarget, quote.decimals)} ${quote.symbol} per side within ±${t.bandBps} bps`],
     ["Min uptime", `${t.minUptimeBuckets} of ${BUCKETS_PER_EPOCH} half-hours per epoch (${payload.human.minUptimePct ?? "?"}%)`],
     ["Contract length", `${t.epochsTotal} epochs`],
-    ["Loan", `${formatMicro(t.loanL0)} USDM`],
+    ["Loan", `${formatUnits(t.loanL0, base.decimals)} ${base.symbol}`],
     ["Round-trip cap", `${Number(t.roundtripSharePpm) / 10_000}% of volume`],
-    ["Outflow cap", `${formatMicro(t.disposalD)} USDM`],
-    ["Net-selling cap", `${formatMicro(t.netSellS)} USDM`],
-    ["Floor price", `${formatMicro(t.floorPriceP)} USDM per token`],
+    ["Outflow cap", `${formatUnits(t.disposalD, base.decimals)} ${base.symbol}`],
+    ["Net-selling cap", `${formatUnits(t.netSellS, base.decimals)} ${base.symbol}`],
+    ["Floor price", p === 0n ? "not set (sold tokens don't count as held)" : `≈ ${pToPrice(p, base, quote)} ${quote.symbol} per ${base.symbol}`],
     ["Bond", `${bondText(payload.human.bond)} USDM`],
     ["Quoting wallets", payload.wallets.map(shortAddress).join(", ")],
   ];

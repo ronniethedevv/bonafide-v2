@@ -3,6 +3,7 @@ import { fetchPortal, clientSummary, type ClientEngagement } from "@/lib/client-
 import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { SignInGate } from "@/components/signin-gate";
+import { SampleDataBanner } from "@/components/sample-banner";
 import { ChevronRight } from "@/components/icons";
 import { ClientRegistrations } from "@/components/client/client-registrations";
 import { InboxSetup } from "@/components/client/inbox-setup";
@@ -18,7 +19,8 @@ export default async function ClientPage() {
   const session = await getSession();
   if (session?.kind !== "client") return <SignInGate need="client" next="/client" current={session} />;
   // A new wallet account has no engagements yet: show its own empty portal.
-  const p = fetchPortal(session.clientId) ?? { clientId: session.clientId, clientName: session.name, engagements: [] };
+  const demoPortal = fetchPortal(session.clientId);
+  const p = demoPortal ?? { clientId: session.clientId, clientName: session.name, engagements: [] };
 
   // Engagements market makers have registered with this (database-backed) account.
   const pool = db();
@@ -36,6 +38,7 @@ export default async function ClientPage() {
 
   return (
     <main className="container">
+      {demoPortal && <SampleDataBanner kind="account" />}
       <div className="eyebrow" style={{ marginBottom: 6 }}>Client portal</div>
       <h1 style={{ margin: 0, fontSize: "clamp(30px, 4.5vw, 44px)" }}>{p.clientName}</h1>
       <div className="muted" style={{ fontSize: 14, marginTop: 8, maxWidth: 580, lineHeight: 1.6 }}>

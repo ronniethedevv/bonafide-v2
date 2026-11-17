@@ -5,6 +5,7 @@ import { totalCompleted } from "@/lib/read-model";
 import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { SignInGate } from "@/components/signin-gate";
+import { SampleDataBanner } from "@/components/sample-banner";
 import { ArrowRight, ChevronRight, Globe, Plus } from "@/components/icons";
 import { RegistrationList } from "@/components/registrations";
 import { db } from "@/lib/db/pool";
@@ -18,7 +19,8 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (session?.kind !== "mm") return <SignInGate need="mm" next="/dashboard" current={session} />;
   // A new wallet account has no engagements yet: show its own empty workspace.
-  const ws = fetchWorkspace(session.handle) ?? { handle: session.handle, displayName: session.name, engagements: [] };
+  const demoWs = fetchWorkspace(session.handle);
+  const ws = demoWs ?? { handle: session.handle, displayName: session.name, engagements: [] };
   const profile = await fetchProfile(ws.handle);
 
   // Engagements registered from this (database-backed) account.
@@ -38,6 +40,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="container">
+      {demoWs && <SampleDataBanner kind="account" />}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Your workspace</div>

@@ -1,6 +1,7 @@
 import { BackLink } from "@/components/icons";
 import { notFound } from "next/navigation";
-import { fetchProfile } from "@/lib/data";
+import { fetchProfile, isSampleProfile } from "@/lib/data";
+import { SampleDataBanner } from "@/components/sample-banner";
 import {
   totalCompleted,
   overallKpiHitRate,
@@ -32,6 +33,7 @@ export default async function TearSheetPage({
   return (
     <main className="container" style={{ maxWidth: 820 }}>
       <BackLink href={`/mm/${profile.handle}`}>Back to profile</BackLink>
+      {isSampleProfile(profile.handle) && <SampleDataBanner kind="directory" />}
 
       {/* Letterhead */}
       <div className="card" style={{ marginTop: 16, padding: 32 }}>

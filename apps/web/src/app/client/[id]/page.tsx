@@ -7,6 +7,7 @@ import { ChallengePanel } from "@/components/client/challenge-panel";
 import { PrivacyNote } from "@/components/privacy-note";
 import { NotYours, SignInGate } from "@/components/signin-gate";
 import { BackLink } from "@/components/icons";
+import { SampleDataBanner } from "@/components/sample-banner";
 
 export default async function ClientEngagementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +21,7 @@ export default async function ClientEngagementPage({ params }: { params: Promise
   return (
     <main className="container" style={{ maxWidth: 1000 }}>
       <BackLink href="/client">My engagements</BackLink>
+      <SampleDataBanner kind="account" />
 
       <section className="hero" style={{ marginTop: 14, padding: "32px 28px" }}>
         <div className="row" style={{ gap: 10, alignItems: "center" }}>

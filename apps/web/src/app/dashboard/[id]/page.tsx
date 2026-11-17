@@ -11,6 +11,7 @@ import { EpochGrid } from "@/components/mm/epoch-grid";
 import { ActionButton } from "@/components/mm/action-button";
 import { NotYours, SignInGate } from "@/components/signin-gate";
 import { BackLink, Flow } from "@/components/icons";
+import { SampleDataBanner } from "@/components/sample-banner";
 
 export default async function EngagementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,6 +28,7 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
   return (
     <main className="container" style={{ maxWidth: 1000 }}>
       <BackLink href="/dashboard">Workspace</BackLink>
+      <SampleDataBanner kind="account" />
 
       {/* Header */}
       <section className="hero" style={{ marginTop: 14, padding: "32px 32px" }}>

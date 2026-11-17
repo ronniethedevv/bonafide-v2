@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchProfile } from "@/lib/data";
+import { fetchProfile, isSampleProfile } from "@/lib/data";
+import { SampleDataBanner } from "@/components/sample-banner";
 import {
   totalCompleted,
   liveEngagements,
@@ -48,6 +49,7 @@ export default async function ProfilePage({
   return (
     <main className="container">
       <BackLink href="/explore">All market makers</BackLink>
+      {isSampleProfile(profile.handle) && <SampleDataBanner kind="directory" />}
 
       {isOwner && (
         <div className="mine-banner" style={{ marginTop: 14 }}>
