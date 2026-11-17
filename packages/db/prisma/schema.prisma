@@ -80,6 +80,9 @@ model Account {
   createdAt DateTime        @default(now())
   wallets   AccountWallet[]
 
+  mmRegistrations     EngagementRegistration[] @relation("MmRegistrations")
+  clientRegistrations EngagementRegistration[] @relation("ClientRegistrations")
+
   @@map("account")
 }
 
@@ -92,4 +95,25 @@ model AccountWallet {
 
   @@index([accountId])
   @@map("account_wallet")
+}
+
+// --- Engagement registry --------------------------------------------------------
+//
+// The PUBLIC facts of a registered engagement: who the two parties are, the commitment
+// that goes on-chain, and its status. Never the pair, terms, wallets or salt — those
+// stay with the market maker and are shared with the client directly.
+
+model EngagementRegistration {
+  id              String   @id // public record id, e.g. "rec_7k2m9q4x"
+  mmAccountId     String
+  mm              Account  @relation("MmRegistrations", fields: [mmAccountId], references: [id], onDelete: Cascade)
+  clientAccountId String
+  client          Account  @relation("ClientRegistrations", fields: [clientAccountId], references: [id], onDelete: Cascade)
+  commitment      String   @unique // 0x + SHA-256 over terms + wallets + salt
+  status          String   @default("registered") // registered | active | completed | claimed | defaulted | void
+  createdAt       DateTime @default(now())
+
+  @@index([mmAccountId])
+  @@index([clientAccountId])
+  @@map("engagement_registration")
 }

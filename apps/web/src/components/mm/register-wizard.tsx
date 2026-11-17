@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BackLink, Check, Plus } from "@/components/icons";
+import { shortAddress } from "@/lib/auth/shared";
 
 // Register-engagement wizard. The MM sets the deal, the measurable KPI terms, their
 // private wallet set and the bond, reviews the exact commitment that will go on-chain,
@@ -29,6 +30,7 @@ export interface ClientOption {
 interface Form {
   poolId: string;
   clientId: string;
+  clientAddress: string;
   label: string;
   loan: string;
   depthTarget: string;
@@ -43,6 +45,7 @@ interface Form {
 const EMPTY: Form = {
   poolId: POOLS[0].id,
   clientId: "",
+  clientAddress: "",
   label: "",
   loan: "",
   depthTarget: "",
@@ -54,26 +57,54 @@ const EMPTY: Form = {
   bond: "",
 };
 
-export function RegisterWizard({ clients }: { clients: ClientOption[] }) {
+/**
+ * `persist`: the MM's account is stored in the database, so registering saves the
+ * engagement (parties + commitment) and the client, found by their sign-in wallet, sees
+ * it in their portal. Otherwise (demo / browser-only accounts) nothing is saved.
+ */
+export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; persist: boolean }) {
   const [step, setStep] = useState(0);
   const [f, setF] = useState<Form>({ ...EMPTY, clientId: clients[0]?.id ?? "" });
-  const [registered, setRegistered] = useState<{ id: string; commitment: string } | null>(null);
+  const [registered, setRegistered] = useState<{ id: string; commitment: string; clientName: string | undefined; saved: boolean } | null>(null);
 
   const set = (k: keyof Form, v: string | number | string[]) => setF((p) => ({ ...p, [k]: v }));
   const pool = POOLS.find((p) => p.id === f.poolId)!;
   const client = clients.find((c) => c.id === f.clientId);
   const cleanWallets = f.wallets.map((w) => w.trim()).filter(Boolean);
+  const clientLabel = persist ? (ADDR_RE.test(f.clientAddress.trim()) ? shortAddress(f.clientAddress.trim()) : "—") : (client?.name ?? "—");
 
-  const errors = useMemo(() => validate(f, cleanWallets), [f, cleanWallets]);
+  const errors = useMemo(() => validate(f, cleanWallets, persist), [f, cleanWallets, persist]);
   const stepValid = (s: number): boolean => {
-    if (s === 0) return !errors.label && !errors.loan;
+    if (s === 0) return !errors.label && !errors.loan && !errors.clientAddress;
     if (s === 1) return !errors.depthTarget && !errors.minUptime && !errors.epochs && !errors.roundtrip;
     if (s === 2) return !errors.wallets;
     if (s === 3) return !errors.bond;
     return Object.keys(errors).length === 0;
   };
 
-  if (registered) return <Success id={registered.id} commitment={registered.commitment} clientName={client?.name} />;
+  async function register(commitment: string): Promise<string | null> {
+    if (!persist) {
+      setRegistered({ id: nextId(), commitment, clientName: client?.name, saved: false });
+      return null;
+    }
+    try {
+      const res = await fetch("/api/engagements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientAddress: f.clientAddress.trim(), commitment }),
+      });
+      const body = (await res.json()) as { ok?: boolean; id?: string; clientName?: string; error?: string; errors?: Record<string, string> };
+      if (res.ok && body.ok && body.id) {
+        setRegistered({ id: body.id, commitment, clientName: body.clientName, saved: true });
+        return null;
+      }
+      return body.errors?.clientAddress ?? body.error ?? "Couldn't register the engagement.";
+    } catch {
+      return "Network error. Please try again.";
+    }
+  }
+
+  if (registered) return <Success {...registered} />;
 
   return (
     <main className="container" style={{ maxWidth: 820 }}>
@@ -94,16 +125,26 @@ export function RegisterWizard({ clients }: { clients: ClientOption[] }) {
               </select>
               <div className="dim mono" style={{ fontSize: 11, marginTop: 6, wordBreak: "break-all" }}>{pool.addr}</div>
             </Field>
-            <Field label="Client">
-              <select className="inp" value={f.clientId} onChange={(e) => set("clientId", e.target.value)}>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
-                Only this client sees your per-epoch figures. The public sees pass/fail, never who the client is.
-              </div>
-            </Field>
+            {persist ? (
+              <Field label="Client's sign-in wallet" err={f.clientAddress.trim() ? errors.clientAddress : undefined}>
+                <input className="inp mono" style={{ fontSize: 13 }} placeholder="0x…" value={f.clientAddress} onChange={(e) => set("clientAddress", e.target.value)} />
+                <div className="dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+                  The wallet your client signs in to MM Reputation with (not a trading wallet). They need to have
+                  signed in once. Only this client sees your per-epoch figures; the public never learns who they are.
+                </div>
+              </Field>
+            ) : (
+              <Field label="Client">
+                <select className="inp" value={f.clientId} onChange={(e) => set("clientId", e.target.value)}>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+                  Only this client sees your per-epoch figures. The public sees pass/fail, never who the client is.
+                </div>
+              </Field>
+            )}
             <Field label="Private label" err={errors.label}>
               <input className="inp" placeholder="e.g. Orion desk — WETH pair" value={f.label} onChange={(e) => set("label", e.target.value)} />
             </Field>
@@ -173,7 +214,7 @@ export function RegisterWizard({ clients }: { clients: ClientOption[] }) {
           </Section>
         )}
 
-        {step === 4 && <Review f={f} pool={pool} clientName={client?.name ?? "—"} wallets={cleanWallets} onRegister={(commitment) => setRegistered({ id: nextId(), commitment })} />}
+        {step === 4 && <Review f={f} pool={pool} clientName={clientLabel} wallets={cleanWallets} persist={persist} onRegister={register} onEditClient={() => setStep(0)} />}
       </div>
 
       {step < 4 && (
@@ -188,8 +229,9 @@ export function RegisterWizard({ clients }: { clients: ClientOption[] }) {
   );
 }
 
-function validate(f: Form, wallets: string[]): Record<string, string> {
+function validate(f: Form, wallets: string[], persist: boolean): Record<string, string> {
   const e: Record<string, string> = {};
+  if (persist && !ADDR_RE.test(f.clientAddress.trim())) e.clientAddress = "Enter your client's 0x wallet address.";
   const pos = (v: string) => v.trim() !== "" && Number(v) > 0 && Number.isFinite(Number(v));
   const pct = (v: string) => pos(v) && Number(v) <= 100;
   if (!f.label.trim()) e.label = "Give the deal a private label.";
@@ -206,12 +248,19 @@ function validate(f: Form, wallets: string[]): Record<string, string> {
   return e;
 }
 
-function Review({ f, pool, clientName, wallets, onRegister }: { f: Form; pool: (typeof POOLS)[number]; clientName: string; wallets: string[]; onRegister: (c: string) => void }) {
+function Review({
+  f, pool, clientName, wallets, persist, onRegister, onEditClient,
+}: {
+  f: Form; pool: (typeof POOLS)[number]; clientName: string; wallets: string[]; persist: boolean;
+  onRegister: (c: string) => Promise<string | null>; onEditClient: () => void;
+}) {
   const [commitment, setCommitment] = useState<string>("computing…");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const salt = crypto.getRandomValues(new Uint8Array(32));
     const body = JSON.stringify({
-      pool: pool.addr, client: f.clientId, loan: f.loan, depthTarget: f.depthTarget, bandBps: f.bandBps,
+      pool: pool.addr, client: persist ? f.clientAddress.trim().toLowerCase() : f.clientId, loan: f.loan, depthTarget: f.depthTarget, bandBps: f.bandBps,
       minUptime: f.minUptime, epochs: f.epochs, roundtrip: f.roundtrip,
       wallets: [...wallets].map((w) => w.toLowerCase()).sort(), bond: f.bond,
       salt: Array.from(salt),
@@ -219,7 +268,7 @@ function Review({ f, pool, clientName, wallets, onRegister }: { f: Form; pool: (
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)).then((d) => {
       setCommitment("0x" + Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join(""));
     });
-  }, [f, pool, wallets]);
+  }, [f, pool, wallets, persist]);
 
   return (
     <div>
@@ -246,14 +295,31 @@ function Review({ f, pool, clientName, wallets, onRegister }: { f: Form; pool: (
         </p>
       </div>
 
-      <button className="btn btn-primary" style={{ marginTop: 18, width: "100%" }} disabled={commitment.startsWith("computing")} onClick={() => onRegister(commitment)}>
-        Register engagement
+      {error && (
+        <div role="alert" style={{ marginTop: 14, fontSize: 13, color: "var(--neg)", lineHeight: 1.5 }}>
+          {error}{" "}
+          <button type="button" className="link-btn" onClick={onEditClient}>Edit client</button>
+        </div>
+      )}
+
+      <button
+        className="btn btn-primary"
+        style={{ marginTop: 18, width: "100%" }}
+        disabled={commitment.startsWith("computing") || busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          setError(await onRegister(commitment));
+          setBusy(false);
+        }}
+      >
+        {busy ? "Registering…" : "Register engagement"}
       </button>
     </div>
   );
 }
 
-function Success({ id, commitment, clientName }: { id: string; commitment: string; clientName: string | undefined }) {
+function Success({ id, commitment, clientName, saved }: { id: string; commitment: string; clientName: string | undefined; saved: boolean }) {
   return (
     <main className="container" style={{ maxWidth: 640 }}>
       <div className="card" style={{ marginTop: 40, padding: 32, textAlign: "center" }}>
@@ -264,14 +330,18 @@ function Success({ id, commitment, clientName }: { id: string; commitment: strin
         <p className="muted" style={{ fontSize: 14, margin: "10px auto 0", maxWidth: 440, lineHeight: 1.6 }}>
           Committed privately as <span className="mono" style={{ color: "var(--text)" }}>{id}</span>. The chain holds only the
           commitment below — your wallets and terms never left this session. Capture begins at epoch 1
-          {clientName ? <>, and {clientName} can follow it from their client portal</> : null}.
+          {saved && clientName ? <>, and {clientName} can follow it from their client portal</> : null}.
         </p>
         <code className="mono" style={{ display: "block", marginTop: 14, padding: "10px 12px", background: "var(--code)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 11.5, color: "var(--text-muted)", wordBreak: "break-all" }}>{commitment}</code>
         <div className="row" style={{ justifyContent: "center", gap: 10, marginTop: 20 }}>
           <Link href="/dashboard" className="btn btn-primary">Back to workspace</Link>
           <Link href="/dashboard/new" className="btn btn-ghost">Register another</Link>
         </div>
-        <p className="dim" style={{ fontSize: 11, marginTop: 16 }}>Demo: the engagement isn&apos;t persisted in this preview.</p>
+        <p className="dim" style={{ fontSize: 11, marginTop: 16 }}>
+          {saved
+            ? "Saved: the parties, this commitment and the status. Your terms and wallets were not sent."
+            : "Demo: this engagement isn't saved. Sign in with a wallet to register real ones."}
+        </p>
       </div>
       <StyleTag />
     </main>

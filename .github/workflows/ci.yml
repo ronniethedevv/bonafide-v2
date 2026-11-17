@@ -11,6 +11,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Throwaway Postgres for the account/registry and migration tests (TEST_DATABASE_URL).
+    # Local-only credentials for a disposable container, not a secret.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mmr
+          POSTGRES_PASSWORD: mmr
+          POSTGRES_DB: mmr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mmr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +54,8 @@ jobs:
 
       - name: Test
         run: pnpm -r --filter='!@mmr/dapp' test
+        env:
+          TEST_DATABASE_URL: postgresql://mmr:mmr@localhost:5432/mmr
 
       - name: Build web
         run: pnpm --filter web build

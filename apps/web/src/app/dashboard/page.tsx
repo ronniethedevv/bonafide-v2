@@ -6,6 +6,9 @@ import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { SignInGate } from "@/components/signin-gate";
 import { ArrowRight, ChevronRight, Globe, Plus } from "@/components/icons";
+import { RegistrationList } from "@/components/registrations";
+import { db } from "@/lib/db/pool";
+import { registrationsForMm, type Registration } from "@/lib/db/store";
 
 export const metadata = { title: "Workspace · MM Reputation" };
 
@@ -17,6 +20,18 @@ export default async function DashboardPage() {
   // A new wallet account has no engagements yet: show its own empty workspace.
   const ws = fetchWorkspace(session.handle) ?? { handle: session.handle, displayName: session.name, engagements: [] };
   const profile = await fetchProfile(ws.handle);
+
+  // Engagements registered from this (database-backed) account.
+  const pool = db();
+  let registrations: Registration[] = [];
+  let registryError = false;
+  if (pool && session.accountId) {
+    try {
+      registrations = await registrationsForMm(pool, session.accountId);
+    } catch {
+      registryError = true;
+    }
+  }
 
   const active = ws.engagements.filter((e) => e.state === "active" || e.state === "at_risk" || e.state === "registered");
   const done = ws.engagements.filter((e) => e.state === "completed" || e.state === "claimed" || e.state === "defaulted");
@@ -54,12 +69,25 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {registrations.length > 0 && (
+        <section style={{ marginTop: 32 }}>
+          <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Registered</h2>
+          <p className="dim" style={{ fontSize: 13, margin: "0 0 14px" }}>
+            Saved and shared with each client. Epoch capture starts once the engagement is funded.
+          </p>
+          <RegistrationList items={registrations} viewer="mm" />
+        </section>
+      )}
+      {registryError && (
+        <p className="muted" role="alert" style={{ marginTop: 24 }}>Couldn&apos;t load your registered engagements right now.</p>
+      )}
+
       <section style={{ marginTop: 32 }}>
         <h2 style={{ fontSize: 22, margin: "0 0 14px" }}>In flight</h2>
         <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 14 }}>
           {active.length ? (
             active.map((e) => <EngagementRow key={e.id} e={e} />)
-          ) : ws.engagements.length === 0 ? (
+          ) : ws.engagements.length === 0 && registrations.length === 0 ? (
             <div className="card" style={{ padding: "26px 24px", textAlign: "center" }}>
               <h3 style={{ margin: 0, fontSize: 18 }}>No engagements yet</h3>
               <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 440, lineHeight: 1.6 }}>

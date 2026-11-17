@@ -23,13 +23,15 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
 
       <OnboardingForm next={safeNext(next)} />
 
-      <div className="demo-note" style={{ marginTop: 16, alignItems: "flex-start" }}>
-        <Info size={14} style={{ marginTop: 2 }} />
-        <span style={{ lineHeight: 1.55 }}>
-          Preview: no database is connected yet, so this account is saved in this browser only.
-          Signing in from another device will ask you to set it up again.
-        </span>
-      </div>
+      {!auth.persistent && (
+        <div className="demo-note" style={{ marginTop: 16, alignItems: "flex-start" }}>
+          <Info size={14} style={{ marginTop: 2 }} />
+          <span style={{ lineHeight: 1.55 }}>
+            Preview: no database is connected yet, so this account is saved in this browser only.
+            Signing in from another device will ask you to set it up again.
+          </span>
+        </div>
+      )}
     </main>
   );
 }

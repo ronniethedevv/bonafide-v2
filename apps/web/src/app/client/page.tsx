@@ -4,6 +4,9 @@ import { getSession } from "@/lib/session";
 import { StateBadge } from "@/components/mm/state-badge";
 import { SignInGate } from "@/components/signin-gate";
 import { ChevronRight } from "@/components/icons";
+import { RegistrationList } from "@/components/registrations";
+import { db } from "@/lib/db/pool";
+import { registrationsForClient, type Registration } from "@/lib/db/store";
 
 export const metadata = { title: "My engagements · MM Reputation" };
 
@@ -16,6 +19,18 @@ export default async function ClientPage() {
   // A new wallet account has no engagements yet: show its own empty portal.
   const p = fetchPortal(session.clientId) ?? { clientId: session.clientId, clientName: session.name, engagements: [] };
 
+  // Engagements market makers have registered with this (database-backed) account.
+  const pool = db();
+  let registrations: Registration[] = [];
+  let registryError = false;
+  if (pool && session.accountId) {
+    try {
+      registrations = await registrationsForClient(pool, session.accountId);
+    } catch {
+      registryError = true;
+    }
+  }
+
   return (
     <main className="container">
       <div className="eyebrow" style={{ marginBottom: 6 }}>Client portal</div>
@@ -25,8 +40,21 @@ export default async function ClientPage() {
         per-epoch figures each market maker proved; the public record shows only pass/fail.
       </div>
 
+      {registrations.length > 0 && (
+        <section style={{ marginTop: 28 }}>
+          <h2 style={{ fontSize: 20, margin: "0 0 4px" }}>Registered with you</h2>
+          <p className="dim" style={{ fontSize: 13, margin: "0 0 14px" }}>
+            Per-epoch figures appear here once capture starts.
+          </p>
+          <RegistrationList items={registrations} viewer="client" />
+        </section>
+      )}
+      {registryError && (
+        <p className="muted" role="alert" style={{ marginTop: 24 }}>Couldn&apos;t load your registered engagements right now.</p>
+      )}
+
       <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 14, marginTop: 28 }}>
-        {p.engagements.length ? (
+        {p.engagements.length || registrations.length ? (
           p.engagements.map((e) => <Row key={e.id} e={e} />)
         ) : (
           <div className="card" style={{ padding: "26px 24px", textAlign: "center" }}>
