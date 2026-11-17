@@ -5,9 +5,10 @@
 
 import { SignJWT, jwtVerify } from "jose";
 
+/** `id` is set for accounts stored in the database (absent for preview/demo accounts). */
 export type AccountClaim =
-  | { kind: "mm"; handle: string; name: string }
-  | { kind: "client"; clientId: string; name: string };
+  | { kind: "mm"; handle: string; name: string; id?: string }
+  | { kind: "client"; clientId: string; name: string; id?: string };
 
 export interface WalletClaims {
   addr: `0x${string}`;

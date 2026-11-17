@@ -12,6 +12,7 @@
 import { cookies } from "next/headers";
 import { WORLD } from "./world";
 import { readToken, sessionKey, SESSION_AUD, type WalletClaims } from "./auth/token";
+import { dbConfigured } from "./db/pool";
 
 export const SESSION_COOKIE = "mmr_demo_persona";
 export const WALLET_SESSION_COOKIE = "mmr_session";
@@ -25,6 +26,8 @@ interface SessionBase {
   address?: `0x${string}`;
   /** Account kept only in this browser (no database connected yet). */
   preview?: boolean;
+  /** Database account id, for wallet accounts stored in Postgres. */
+  accountId?: string;
 }
 
 export type Session =
@@ -61,11 +64,18 @@ export interface Auth {
   pendingWallet?: { address: `0x${string}`; chainId: number };
   /** Wallet sign-in is available (a session key is configured). */
   walletEnabled: boolean;
+  /** Accounts are stored in the database (vs. this browser only). */
+  persistent: boolean;
 }
 
 function fromWallet(c: WalletClaims): Session | undefined {
   if (!c.acct) return undefined;
-  const base = { via: "wallet" as const, address: c.addr, ...(c.preview ? { preview: true } : {}) };
+  const base = {
+    via: "wallet" as const,
+    address: c.addr,
+    ...(c.preview ? { preview: true } : {}),
+    ...(c.acct.id ? { accountId: c.acct.id } : {}),
+  };
   return c.acct.kind === "mm"
     ? { ...base, kind: "mm", id: `wallet:${c.addr.toLowerCase()}`, handle: c.acct.handle, name: c.acct.name }
     : { ...base, kind: "client", id: `wallet:${c.addr.toLowerCase()}`, clientId: c.acct.clientId, name: c.acct.name };
@@ -79,12 +89,12 @@ export async function getAuth(): Promise<Auth> {
     if (claims?.addr) {
       const session = fromWallet(claims);
       return session
-        ? { session, walletEnabled: true }
-        : { pendingWallet: { address: claims.addr, chainId: claims.chainId }, walletEnabled: true };
+        ? { session, walletEnabled: true, persistent: dbConfigured() }
+        : { pendingWallet: { address: claims.addr, chainId: claims.chainId }, walletEnabled: true, persistent: dbConfigured() };
     }
   }
   const demo = personaById(jar.get(SESSION_COOKIE)?.value);
-  return { ...(demo ? { session: demo } : {}), walletEnabled: key !== undefined };
+  return { ...(demo ? { session: demo } : {}), walletEnabled: key !== undefined, persistent: dbConfigured() };
 }
 
 export async function getSession(): Promise<Session | undefined> {

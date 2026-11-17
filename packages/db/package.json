@@ -5,16 +5,19 @@
   "type": "module",
   "description": "PostgreSQL/Prisma-backed ProfileRepository: reconstructs the public read model from stored rows behind the @mmr/read-model interface.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./migrate": "./scripts/migrate.mjs"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@mmr/read-model": "workspace:*"
+    "@mmr/read-model": "workspace:*",
+    "pg": "8.23.1"
   },
   "devDependencies": {
+    "@types/pg": "8.23.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

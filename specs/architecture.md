@@ -97,9 +97,19 @@ Anyone can rebuild the roots from Base.
   our server; quoting wallets are never sent to us (they stay on the MM's machine,
   committed by hash). The UI says so at sign-in.
 - **Accounts** (`Account`, `AccountWallet` in `packages/db`) map identity wallets to an
-  MM (public handle) or a client. Until `DATABASE_URL` is set, accounts are "preview":
-  a signed cookie in the user's browser. Operators can link a wallet to a demo account
-  with `DEMO_WALLET_LINKS`. Demo accounts remain for walkthroughs without a wallet.
+  MM (public handle) or a client, stored in Postgres (Neon, via the Vercel integration).
+  Without `DATABASE_URL` (local dev, CI builds) accounts fall back to "preview": a signed
+  cookie in the user's browser, moved into the database on the next sign-in once one is
+  connected. Operators can link a wallet to a demo account with `DEMO_WALLET_LINKS`.
+  Demo accounts remain for walkthroughs without a wallet.
+- **Engagement registry** (`EngagementRegistration`): when an MM registers an engagement,
+  the browser computes the commitment (SHA-256 over terms + quoting wallets + a fresh
+  salt) and the server stores only the parties, that commitment and the status. The
+  client is found by the wallet they sign in with, so MMs never browse a client list.
+- **Migrations**: `packages/db/migrations/*.sql` (generated from `schema.prisma` with
+  `prisma migrate diff`), applied by `packages/db/scripts/migrate.mjs` in a single
+  transaction under an advisory lock. The web build runs it, but only for Vercel
+  **production** builds; preview builds never touch the live schema.
 - **Not yet:** WalletConnect (custody / mobile wallets: Fireblocks, Safe{Wallet}) needs a
   Reown project id; team members per account; email/SSO for non-crypto client staff.
 
@@ -110,7 +120,7 @@ The backend is a coordinator that never sees an MM's books:
 | Concern | Choice | Notes |
 |---------|--------|-------|
 | User-facing API | Next.js route handlers (same Vercel project) | Auth, accounts, engagement registry metadata, client inbox. Short request/response only. |
-| Database | Postgres (Neon via Vercel Marketplace) + Prisma | Accounts, engagement registry (id, MM, client, public commitment, status), attestation status, read models. Never terms, wallets or salts. |
+| Database | Postgres (Neon free plan via Vercel Marketplace); schema in Prisma, queries via `pg` | **Live:** accounts + engagement registry (id, MM, client, public commitment, status). Next: attestation status, read models. Never terms, wallets or salts. |
 | Long-running work | Trigger.dev workers (invariant #1) | Indexing, witness capture service, attester runs, proof orchestration, read-model projection. |
 | Heavy payloads | IPFS via Pinata (invariant #3) | Published Merkle trees, attestation bundles. Content-addressed, so a second mirror can be added without changing CIDs. |
 | Client-visible figures | Encrypted MM → client | The MM's tool encrypts opened per-epoch figures to the client's key; the server stores ciphertext it cannot read. |

@@ -12,6 +12,8 @@ import {
   type WalletClaims,
 } from "@/lib/auth/token";
 import { parseWalletLinks } from "@/lib/auth/accounts";
+import { db } from "@/lib/db/pool";
+import { createAccount, findAccountByAddress } from "@/lib/db/store";
 import {
   NONCE_COOKIE,
   PREVIEW_ACCOUNT_COOKIE,
@@ -57,15 +59,31 @@ export async function POST(req: NextRequest) {
   }
 
   const addr = result.address;
-  // Which account does this wallet act for? Operator links first, then this browser's preview account.
+  // Which account does this wallet act for? Operator links first, then the database, then
+  // (no database) this browser's preview account.
   let acct: AccountClaim | undefined = parseWalletLinks(process.env.DEMO_WALLET_LINKS).get(addr.toLowerCase());
   let preview = false;
-  if (!acct) {
-    const saved = await readToken<{ addr: string; acct: AccountClaim }>(req.cookies.get(PREVIEW_ACCOUNT_COOKIE)?.value, key, PREVIEW_ACCOUNT_AUD);
-    if (saved && saved.addr.toLowerCase() === addr.toLowerCase()) {
-      acct = saved.acct;
-      preview = true;
+  const saved = await readToken<{ addr: string; acct: AccountClaim }>(req.cookies.get(PREVIEW_ACCOUNT_COOKIE)?.value, key, PREVIEW_ACCOUNT_AUD);
+  const savedHere = saved && saved.addr.toLowerCase() === addr.toLowerCase() ? saved.acct : undefined;
+  const pool = db();
+  let upgraded = false;
+  if (!acct && pool) {
+    try {
+      acct = await findAccountByAddress(pool, addr);
+      if (!acct && savedHere) {
+        // An account made before the database was connected: move it in, if its handle is still free.
+        const created = await createAccount(pool, addr, result.chainId, savedHere);
+        if (created.ok) {
+          acct = created.account;
+          upgraded = true;
+        }
+      }
+    } catch {
+      return NextResponse.json({ error: "Accounts are temporarily unavailable. Please try again shortly." }, { status: 503 });
     }
+  } else if (!acct && savedHere) {
+    acct = savedHere;
+    preview = true;
   }
 
   const claims: WalletClaims = { addr, chainId: result.chainId, ...(acct ? { acct } : {}), ...(preview ? { preview } : {}) };
@@ -77,5 +95,6 @@ export async function POST(req: NextRequest) {
   res.cookies.set(WALLET_SESSION_COOKIE, await signToken(claims, key, SESSION_AUD, SESSION_TTL_S), cookieOpts(SESSION_TTL_S));
   res.cookies.delete(NONCE_COOKIE);
   res.cookies.delete(SESSION_COOKIE); // a wallet session replaces any demo account
+  if (upgraded) res.cookies.delete(PREVIEW_ACCOUNT_COOKIE); // now stored in the database
   return res;
 }
