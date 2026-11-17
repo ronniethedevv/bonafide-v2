@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { getSession } from "@/lib/session";
+import { getAuth } from "@/lib/session";
+import { shortAddress } from "@/lib/auth/shared";
 import { User } from "@/components/icons";
 import "./globals.css";
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const session = await getSession();
+  const { session, pendingWallet } = await getAuth();
   return (
     <html lang="en">
       <head>
@@ -46,7 +47,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <form action="/api/session" method="post" className="session-chip" title={`Signed in as ${session.name}`}>
                 <User size={14} style={{ color: "var(--text-dim)" }} />
                 <span className="session-name">{session.name}</span>
-                <span className="role">{session.kind === "mm" ? "Market maker" : "Client"}</span>
+                <span className="role">
+                  {session.kind === "mm" ? "Market maker" : "Client"}
+                  {session.address ? ` · ${shortAddress(session.address)}` : ""}
+                </span>
+                <input type="hidden" name="persona" value="signout" />
+                <button type="submit">Sign out</button>
+              </form>
+            ) : pendingWallet ? (
+              <form action="/api/session" method="post" className="session-chip" title="Finish setting up your account">
+                <User size={14} style={{ color: "var(--text-dim)" }} />
+                <Link href="/onboarding" className="session-name">{shortAddress(pendingWallet.address)}</Link>
+                <span className="role">Setup pending</span>
                 <input type="hidden" name="persona" value="signout" />
                 <button type="submit">Sign out</button>
               </form>

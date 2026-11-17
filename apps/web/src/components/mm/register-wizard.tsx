@@ -348,8 +348,6 @@ function nextId(): string {
 function StyleTag() {
   return (
     <style>{`
-      .inp { width:100%; height:40px; padding:0 12px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:var(--font-body); font-size:14px; }
-      .inp:focus { outline:none; border-color:var(--accent); }
       select.inp { appearance:none; cursor:pointer; }
       .row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
       @media (max-width:560px){ .row2 { grid-template-columns:1fr; } }

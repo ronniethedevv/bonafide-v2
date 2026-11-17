@@ -1,4 +1,6 @@
-import { PERSONAS, getSession, safeNext, type Persona } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { PERSONAS, getAuth, safeNext, type Persona } from "@/lib/session";
+import { WalletSignIn } from "@/components/wallet/wallet-signin";
 import { ArrowRight, Info } from "@/components/icons";
 
 export const metadata = { title: "Sign in · MM Reputation" };
@@ -10,7 +12,9 @@ export default async function SignInPage({
 }) {
   const sp = await searchParams;
   const next = safeNext(sp.next);
-  const current = await getSession();
+  const auth = await getAuth();
+  if (auth.pendingWallet) redirect(`/onboarding${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+  const current = auth.session;
   const mms = PERSONAS.filter((p) => p.session.kind === "mm");
   const clients = PERSONAS.filter((p) => p.session.kind === "client");
   const groups =
@@ -20,16 +24,22 @@ export default async function SignInPage({
 
   return (
     <main className="container" style={{ maxWidth: 760 }}>
-      <div className="eyebrow" style={{ marginBottom: 6 }}>Sign in</div>
-      <h1 style={{ margin: 0, fontSize: "clamp(28px, 4vw, 40px)" }}>Choose an account</h1>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Account</div>
+      <h1 style={{ margin: 0, fontSize: "clamp(28px, 4vw, 40px)" }}>Sign in</h1>
       <p className="muted" style={{ fontSize: 14, margin: "10px 0 0", maxWidth: 560, lineHeight: 1.6 }}>
         Each account sees only its own private data: a market maker sees their own
         workspace, a client sees only the engagements they are party to. Everyone can
         browse the public records.
       </p>
-      <div className="demo-note" style={{ marginTop: 14 }}>
+
+      <div style={{ marginTop: 22 }}>
+        <WalletSignIn next={next} enabled={auth.walletEnabled} />
+      </div>
+
+      <div className="divider-label" style={{ marginTop: 34 }}><span>or explore with a demo account</span></div>
+      <div className="demo-note" style={{ marginTop: 12 }}>
         <Info size={14} />
-        <span>Demo accounts. No password needed. Real sign-in (wallet or SSO) comes later.</span>
+        <span>Demo accounts come with sample engagements. No wallet or password needed.</span>
       </div>
 
       {current && (

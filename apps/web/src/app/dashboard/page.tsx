@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { fetchWorkspace, claimProgress, nextAction, type MmEngagement } from "@/lib/mm-dashboard";
 import { fetchProfile } from "@/lib/data";
 import { totalCompleted } from "@/lib/read-model";
@@ -15,8 +14,8 @@ export const metadata = { title: "Workspace · MM Reputation" };
 export default async function DashboardPage() {
   const session = await getSession();
   if (session?.kind !== "mm") return <SignInGate need="mm" next="/dashboard" current={session} />;
-  const ws = fetchWorkspace(session.handle);
-  if (!ws) notFound();
+  // A new wallet account has no engagements yet: show its own empty workspace.
+  const ws = fetchWorkspace(session.handle) ?? { handle: session.handle, displayName: session.name, engagements: [] };
   const profile = await fetchProfile(ws.handle);
 
   const active = ws.engagements.filter((e) => e.state === "active" || e.state === "at_risk" || e.state === "registered");
@@ -28,7 +27,9 @@ export default async function DashboardPage() {
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Your workspace</div>
           <h1 style={{ margin: 0, fontSize: "clamp(30px, 4.5vw, 44px)" }}>{ws.displayName}</h1>
-          <div className="muted mono" style={{ fontSize: 13, marginTop: 6 }}>@{ws.handle} · only you can see this page</div>
+          <div className="muted mono" style={{ fontSize: 13, marginTop: 6 }}>
+            @{ws.handle} · only you can see this page{session.preview ? " · preview account (this browser only)" : ""}
+          </div>
         </div>
         <Link href="/dashboard/new" className="btn btn-primary link-arrow">
           <Plus size={16} />
@@ -56,7 +57,23 @@ export default async function DashboardPage() {
       <section style={{ marginTop: 32 }}>
         <h2 style={{ fontSize: 22, margin: "0 0 14px" }}>In flight</h2>
         <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 14 }}>
-          {active.length ? active.map((e) => <EngagementRow key={e.id} e={e} />) : <p className="muted">Nothing running right now.</p>}
+          {active.length ? (
+            active.map((e) => <EngagementRow key={e.id} e={e} />)
+          ) : ws.engagements.length === 0 ? (
+            <div className="card" style={{ padding: "26px 24px", textAlign: "center" }}>
+              <h3 style={{ margin: 0, fontSize: 18 }}>No engagements yet</h3>
+              <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 440, lineHeight: 1.6 }}>
+                Register your first client engagement. Its terms and wallets are committed
+                privately; only a fingerprint goes on-chain.
+              </p>
+              <Link href="/dashboard/new" className="btn btn-primary link-arrow" style={{ marginTop: 16 }}>
+                <Plus size={16} />
+                <span>Register an engagement</span>
+              </Link>
+            </div>
+          ) : (
+            <p className="muted">Nothing running right now.</p>
+          )}
         </div>
       </section>
 
