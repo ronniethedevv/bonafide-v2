@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { contexts, newOpening, seal, sealFile, MIN_PASSPHRASE, type EngagementOpening } from "@mmr/engagement-file";
 import { BackLink, Check, Info, Lock, Plus } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
-import { buildTerms, clientPayload, toMicro } from "@/lib/engagement/terms";
+import { buildTerms, clientPayload, floorPriceToP, toUnits, type TokenInfo } from "@/lib/engagement/terms";
 
 // Register-engagement wizard. The MM sets the deal, the measurable KPI terms, their
 // private wallet set and the bond, then:
@@ -17,12 +17,17 @@ import { buildTerms, clientPayload, toMicro } from "@/lib/engagement/terms";
 //     only the parties, the commitments and that sealed envelope. The client then
 //     reviews the terms, checks them against the commitments, and accepts or declines.
 
+// base = the client's token (the loan, caps and custody are in it); quote = what it trades
+// against (depth is measured in it). Decimals set the raw on-chain units.
+const WETH: TokenInfo = { symbol: "WETH", decimals: 18 };
+const USDC: TokenInfo = { symbol: "USDC", decimals: 6 };
 const POOLS = [
-  { id: "weth-usdc-base", pair: "WETH / USDC", chain: "Base", addr: "0xd0b53d9277642d899df5c87a3966a349a798f224" },
-  { id: "cbbtc-usdc-base", pair: "cbBTC / USDC", chain: "Base", addr: "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef" },
-  { id: "degen-weth-base", pair: "DEGEN / WETH", chain: "Base", addr: "0x1d42064fc4beb5f8aaf85f4617ae8b3b5b8bd801" },
-  { id: "weth-usdc-eth", pair: "WETH / USDC", chain: "Ethereum", addr: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640" },
+  { id: "weth-usdc-base", pair: "WETH / USDC", chain: "Base", addr: "0xd0b53d9277642d899df5c87a3966a349a798f224", base: WETH, quote: USDC },
+  { id: "cbbtc-usdc-base", pair: "cbBTC / USDC", chain: "Base", addr: "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef", base: { symbol: "cbBTC", decimals: 8 }, quote: USDC },
+  { id: "degen-weth-base", pair: "DEGEN / WETH", chain: "Base", addr: "0x1d42064fc4beb5f8aaf85f4617ae8b3b5b8bd801", base: { symbol: "DEGEN", decimals: 18 }, quote: WETH },
+  { id: "weth-usdc-eth", pair: "WETH / USDC", chain: "Ethereum", addr: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", base: WETH, quote: USDC },
 ] as const;
+type Pool = (typeof POOLS)[number];
 
 const BANDS = [50, 100, 200, 500];
 const STEPS = ["Deal", "KPI terms", "Wallets", "Bond", "Review"] as const;
@@ -85,7 +90,7 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
   const cleanWallets = f.wallets.map((w) => w.trim()).filter(Boolean);
   const clientLabel = persist ? (ADDR_RE.test(f.clientAddress.trim()) ? shortAddress(f.clientAddress.trim()) : "—") : (client?.name ?? "—");
 
-  const errors = useMemo(() => validate(f, cleanWallets, persist), [f, cleanWallets, persist]);
+  const errors = useMemo(() => validate(f, cleanWallets, persist, pool), [f, cleanWallets, persist, pool]);
   const stepValid = (s: number): boolean => {
     if (s === 0) return !errors.label && !errors.loan && !errors.clientAddress;
     if (s === 1) return !errors.depthTarget && !errors.minUptime && !errors.epochs && !errors.roundtrip && !errors.outflowCap && !errors.netSellCap && !errors.floorPrice;
@@ -138,8 +143,9 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
             <Field label="Private label" err={errors.label}>
               <input className="inp" placeholder="e.g. Orion desk — WETH pair" value={f.label} onChange={(e) => set("label", e.target.value)} />
             </Field>
-            <Field label="Loan" err={errors.loan} suffix="USDM">
+            <Field label={`Loan of ${pool.base.symbol}`} err={errors.loan} suffix={pool.base.symbol}>
               <input className="inp" inputMode="decimal" placeholder="2000000" value={f.loan} onChange={(e) => set("loan", e.target.value)} />
+              <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>The client&apos;s tokens lent to you for market making.</div>
             </Field>
           </Section>
         )}
@@ -147,7 +153,7 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
         {step === 1 && (
           <Section title="KPI terms" hint="The measurable targets you'll prove each epoch. These are committed, never revealed.">
             <div className="row2">
-              <Field label="Depth target (per side)" err={errors.depthTarget} suffix="USDM">
+              <Field label="Depth target (per side)" err={errors.depthTarget} suffix={pool.quote.symbol}>
                 <input className="inp" inputMode="decimal" placeholder="250000" value={f.depthTarget} onChange={(e) => set("depthTarget", e.target.value)} />
               </Field>
               <Field label="Depth band">
@@ -171,19 +177,20 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
               <summary>Advanced terms (optional)</summary>
               <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
                 <div className="row2">
-                  <Field label="Outflow cap" err={errors.outflowCap} suffix="USDM">
+                  <Field label="Outflow cap" err={errors.outflowCap} suffix={pool.base.symbol}>
                     <input className="inp" inputMode="decimal" placeholder="same as loan" value={f.outflowCap} onChange={(e) => set("outflowCap", e.target.value)} />
                   </Field>
-                  <Field label="Net-selling cap" err={errors.netSellCap} suffix="USDM">
+                  <Field label="Net-selling cap" err={errors.netSellCap} suffix={pool.base.symbol}>
                     <input className="inp" inputMode="decimal" placeholder="0" value={f.netSellCap} onChange={(e) => set("netSellCap", e.target.value)} />
                   </Field>
                 </div>
-                <Field label="Floor price" err={errors.floorPrice} suffix="USDM per token">
-                  <input className="inp" inputMode="decimal" placeholder="0" value={f.floorPrice} onChange={(e) => set("floorPrice", e.target.value)} />
+                <Field label="Floor price" err={errors.floorPrice} suffix={`${pool.quote.symbol} per ${pool.base.symbol}`}>
+                  <input className="inp" inputMode="decimal" placeholder="blank: quote holdings don't count" value={f.floorPrice} onChange={(e) => set("floorPrice", e.target.value)} />
                 </Field>
                 <p className="dim" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-                  Outflow cap: the most that may leave your wallets over the contract. Net-selling cap: how much net selling of the
-                  token is allowed. Floor price: the agreed value per token for the custody check.
+                  Outflow cap: how much of the client&apos;s token may leave your wallets over the contract (blank = the loan).
+                  Net-selling cap: how much of it you may net-sell. Floor price: the agreed price at which tokens you sold
+                  for {pool.quote.symbol} still count as held; leave blank if sold tokens shouldn&apos;t count.
                 </p>
               </div>
             </details>
@@ -250,24 +257,26 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
   );
 }
 
-function validate(f: Form, wallets: string[], persist: boolean): Record<string, string> {
+function validate(f: Form, wallets: string[], persist: boolean, pool: Pool): Record<string, string> {
   const e: Record<string, string> = {};
   if (persist && !ADDR_RE.test(f.clientAddress.trim())) e.clientAddress = "Enter your client's 0x wallet address.";
-  const pos = (v: string) => v.trim() !== "" && Number(v) > 0 && Number.isFinite(Number(v));
+  const pos = (v: string) => v.trim() !== "" && Number(v.replace(/,/g, "")) > 0 && Number.isFinite(Number(v.replace(/,/g, "")));
   const pct = (v: string) => pos(v) && Number(v) <= 100;
+  const amount = (v: string, t: TokenInfo) => toUnits(v, t.decimals) !== null;
   if (!f.label.trim()) e.label = "Give the deal a private label.";
-  if (!pos(f.loan)) e.loan = "Enter a loan amount.";
-  if (!pos(f.depthTarget)) e.depthTarget = "Enter a depth target.";
+  if (!pos(f.loan) || !amount(f.loan, pool.base)) e.loan = `Enter an amount of ${pool.base.symbol} (up to ${pool.base.decimals} decimals).`;
+  if (!pos(f.depthTarget) || !amount(f.depthTarget, pool.quote)) e.depthTarget = `Enter an amount of ${pool.quote.symbol} (up to ${pool.quote.decimals} decimals).`;
   if (!pct(f.minUptime)) e.minUptime = "0–100.";
   if (!(Number.isInteger(Number(f.epochs)) && Number(f.epochs) >= 1 && Number(f.epochs) <= 90)) e.epochs = "1–90 epochs.";
   if (!pct(f.roundtrip)) e.roundtrip = "0–100.";
   if (!pos(f.bond)) e.bond = "Enter a bond amount.";
-  if (!pos(f.loan) || toMicro(f.loan) === null) e.loan = "Enter a loan amount (up to 6 decimals).";
-  if (pos(f.depthTarget) && toMicro(f.depthTarget) === null) e.depthTarget = "Up to 6 decimals.";
-  for (const k of ["outflowCap", "netSellCap", "floorPrice"] as const) {
-    if (f[k].trim() && toMicro(f[k]) === null) e[k] = "Enter an amount (up to 6 decimals), or leave blank.";
+  for (const k of ["outflowCap", "netSellCap"] as const) {
+    if (f[k].trim() && !amount(f[k], pool.base)) e[k] = `Enter an amount of ${pool.base.symbol}, or leave blank.`;
   }
-  if (f.floorPrice.trim() && (toMicro(f.floorPrice) ?? 0n) >= 1n << 64n) e.floorPrice = "Too large.";
+  if (f.floorPrice.trim()) {
+    const r = floorPriceToP(f.floorPrice, pool.base, pool.quote);
+    if (!r.ok) e.floorPrice = r.error;
+  }
   if (wallets.length === 0) e.wallets = "Add at least one wallet.";
   else if (wallets.some((w) => !ADDR_RE.test(w))) e.wallets = "Every wallet must be a 0x address (40 hex chars).";
   else if (new Set(wallets.map((w) => w.toLowerCase())).size !== wallets.length) e.wallets = "Duplicate wallet.";
@@ -297,7 +306,7 @@ function download(name: string, text: string) {
 function Review({
   f, pool, clientLabel, demoClientName, wallets, persist, onRegistered, onEditClient,
 }: {
-  f: Form; pool: (typeof POOLS)[number]; clientLabel: string; demoClientName: string | undefined; wallets: string[]; persist: boolean;
+  f: Form; pool: Pool; clientLabel: string; demoClientName: string | undefined; wallets: string[]; persist: boolean;
   onRegistered: (r: Registered) => void; onEditClient: () => void;
 }) {
   const [opening, setOpening] = useState<EngagementOpening | null>(null);
@@ -311,9 +320,9 @@ function Review({
 
   // Fresh secrets + the protocol's real commitments, once per visit to this step.
   useEffect(() => {
-    const { terms, human } = buildTerms(f);
+    const { terms, human } = buildTerms({ ...f, base: pool.base, quote: pool.quote });
     newOpening({
-      pool: { chain: pool.chain, address: pool.addr, pair: pool.pair },
+      pool: { chain: pool.chain, address: pool.addr, pair: pool.pair, base: pool.base, quote: pool.quote },
       client: persist ? { address: f.clientAddress.trim().toLowerCase() } : demoClientName ? { name: demoClientName } : {},
       label: f.label.trim(),
       wallets,
@@ -389,12 +398,14 @@ function Review({
         <Row k="Pool" v={`${pool.pair} — ${pool.chain}`} />
         <Row k="Client (private)" v={clientLabel} />
         <Row k="Label (private)" v={f.label} />
-        <Row k="Depth target" v={`${fmt(f.depthTarget)} USDM / side @ ±${f.bandBps}bps`} />
+        <Row k="Depth target" v={`${fmt(f.depthTarget)} ${pool.quote.symbol} / side @ ±${f.bandBps}bps`} />
         <Row k="Min uptime" v={`${f.minUptime}% of buckets`} />
         <Row k="Contract" v={`${f.epochs} epochs`} />
-        <Row k="Loan" v={`${fmt(f.loan)} USDM`} />
+        <Row k="Loan" v={`${fmt(f.loan)} ${pool.base.symbol}`} />
         <Row k="Round-trip cap" v={`${f.roundtrip}% of volume`} />
-        <Row k="Outflow cap" v={`${fmt(f.outflowCap.trim() || f.loan)} USDM`} />
+        <Row k="Outflow cap" v={`${fmt(f.outflowCap.trim() || f.loan)} ${pool.base.symbol}`} />
+        <Row k="Net-selling cap" v={`${fmt(f.netSellCap.trim() || "0")} ${pool.base.symbol}`} />
+        <Row k="Floor price" v={f.floorPrice.trim() ? `${fmt(f.floorPrice)} ${pool.quote.symbol} per ${pool.base.symbol}` : "not set"} />
         <Row k="Wallets (private)" v={`${wallets.length} committed`} />
         <Row k="Bond" v={`${fmt(f.bond)} USDM`} />
       </dl>

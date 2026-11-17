@@ -973,3 +973,34 @@ details.adv summary {
     gap: 2px;
   }
 }
+
+/* --- Sample-data label --- */
+.sample-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 18px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.sample-banner svg {
+  color: var(--warn);
+  vertical-align: 0 !important;
+}
+.sample-banner strong {
+  color: var(--warn);
+}
+.backlink + .sample-banner {
+  margin-top: 14px;
+}
+@media print {
+  .sample-banner {
+    border-color: #b7791f;
+    color: #000;
+  }
+}

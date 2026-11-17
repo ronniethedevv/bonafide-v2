@@ -14,9 +14,16 @@ export const FILE_FORMAT = "mmr-engagement-file";
 export const PBKDF2_ITERATIONS = 600_000;
 export const MIN_PASSPHRASE = 12;
 
+/** A pool token: `base` is the client's token, `quote` the token it trades against. */
+export interface TokenInfo {
+  symbol: string;
+  decimals: number;
+}
+
 export interface EngagementOpening {
   v: 1;
-  pool: { chain: string; address: string; pair: string };
+  /** base/quote say which units the terms are in (see the web app's terms mapping). */
+  pool: { chain: string; address: string; pair: string; base?: TokenInfo; quote?: TokenInfo };
   /** Who the engagement is with (private to the two parties). */
   client: { name?: string; address?: string };
   /** The MM's own label for the deal. */

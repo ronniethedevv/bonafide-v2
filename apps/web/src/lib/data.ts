@@ -11,6 +11,16 @@ import {
 
 const API_URL = process.env.API_URL;
 
+/**
+ * Profiles that come from the bundled sample fixtures (illustrative firms and records),
+ * as opposed to records from real completed engagements. Every listed profile is a
+ * sample until real engagements are claimed.
+ */
+const SAMPLE_HANDLES = new Set(fixtureListProfiles().map((p) => p.handle));
+export function isSampleProfile(handle: string): boolean {
+  return SAMPLE_HANDLES.has(handle);
+}
+
 export interface ProfileSummary {
   handle: string;
   displayName: string;

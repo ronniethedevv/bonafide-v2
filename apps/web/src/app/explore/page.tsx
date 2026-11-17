@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { fetchProfiles } from "@/lib/data";
+import { fetchProfiles, isSampleProfile } from "@/lib/data";
+import { SampleDataBanner } from "@/components/sample-banner";
 import { getSession } from "@/lib/session";
 import { ChevronRight, Globe } from "@/components/icons";
 
@@ -12,6 +13,7 @@ export default async function ExplorePage() {
 
   return (
     <main className="container">
+      {profiles.some((p) => isSampleProfile(p.handle)) && <SampleDataBanner kind="directory" />}
       <div className="eyebrow" style={{ marginBottom: 6 }}>Explore</div>
       <h1 style={{ margin: 0, fontSize: "clamp(30px, 4.5vw, 44px)" }}>Market makers with a public record</h1>
       <p className="muted" style={{ fontSize: 14, margin: "10px 0 0", maxWidth: 620, lineHeight: 1.6 }}>
