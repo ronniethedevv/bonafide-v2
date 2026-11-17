@@ -1,7 +1,9 @@
-// Browser-only helpers: find the signed-in wallet among installed wallets (EIP-6963) and
-// ask it to sign a plain-text message. Used for the private inbox key and for accepting.
+// Browser-only helpers: find the signed-in wallet among installed wallets (EIP-6963) or the
+// WalletConnect session, and ask it to sign a plain-text message. Used for the private
+// inbox key and for accepting.
 
 import { stringToHex } from "viem";
+import { connectWalletConnect, getWalletConnectProvider, walletConnectEnabled } from "./walletconnect";
 
 interface Eip1193 {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -36,22 +38,39 @@ export function walletErrorText(e: unknown): string {
   return err?.message && err.message.length < 200 ? err.message : "Something went wrong with your wallet. Please try again.";
 }
 
-/** The installed wallet that controls `address` (asking for access if needed). */
+/**
+ * The wallet that controls `address`: an installed browser wallet, or the WalletConnect
+ * session the user signed in with (Fireblocks, Safe, phone wallets). Asks for access if needed.
+ */
 export async function providerFor(address: string): Promise<Eip1193> {
   const want = address.toLowerCase();
+  const has = (accts: unknown) => Array.isArray(accts) && accts.some((a) => String(a).toLowerCase() === want);
   const providers = await discoverProviders();
-  if (providers.length === 0) throw new Error("No browser wallet found. Open this page in the wallet you signed in with.");
   for (const p of providers) {
     try {
-      const accts = (await p.provider.request({ method: "eth_accounts" })) as string[];
-      if (accts?.some((a) => a.toLowerCase() === want)) return p.provider;
+      if (has(await p.provider.request({ method: "eth_accounts" }))) return p.provider;
     } catch {
       // wallet locked or not permitted yet
     }
   }
+  // An existing WalletConnect session for this address (loaded only when no browser wallet matched).
+  if (walletConnectEnabled()) {
+    try {
+      const wc = await getWalletConnectProvider();
+      if (wc.session && has(wc.accounts)) return wc as unknown as Eip1193;
+    } catch {
+      // WalletConnect unavailable; fall through to asking the browser wallets
+    }
+  }
   for (const p of providers) {
-    const accts = (await p.provider.request({ method: "eth_requestAccounts" })) as string[];
-    if (accts?.some((a) => a.toLowerCase() === want)) return p.provider;
+    if (has(await p.provider.request({ method: "eth_requestAccounts" }))) return p.provider;
+  }
+  if (walletConnectEnabled()) {
+    const { provider, accounts } = await connectWalletConnect();
+    if (has(accounts)) return provider as unknown as Eip1193;
+  }
+  if (providers.length === 0 && !walletConnectEnabled()) {
+    throw new Error("No browser wallet found. Open this page in the wallet you signed in with.");
   }
   throw new Error(`Switch your wallet to ${address.slice(0, 6)}…${address.slice(-4)}, the wallet you signed in with.`);
 }
