@@ -11,7 +11,8 @@
 import { bytesToHex, hexToBytes, sha256, uintLE, concatBytes } from "./bytes.js";
 
 export const WALLET_SLOTS = 16;
-export const MAX_EPOCHS = 90;
+/** Every engagement runs exactly this many epochs (the contract enforces it, DD-35). */
+export const CONTRACT_EPOCHS = 30;
 
 export interface Terms {
   floorPriceP: bigint; // Uint<64>
@@ -23,7 +24,7 @@ export interface Terms {
   roundtripSharePpm: bigint; // Uint<64>
   bandBps: number; // Uint<64>
   minUptimeBuckets: number; // Uint<64>
-  epochsTotal: number; // Uint<64>, 1..90
+  epochsTotal: number; // Uint<64>, always CONTRACT_EPOCHS (30)
 }
 
 /** Active wallets → the committed 16-slot vector: sorted ascending, zero-padded. */
@@ -58,7 +59,7 @@ export function assertTerms(t: Terms): void {
     if (!Number.isInteger(v) || v < 0) throw new Error(`${k} must be a non-negative integer`);
   }
   if (t.bandBps <= 0) throw new Error("bandBps must be positive");
-  if (t.epochsTotal < 1 || t.epochsTotal > MAX_EPOCHS) throw new Error(`epochsTotal must be 1..${MAX_EPOCHS}`);
+  if (t.epochsTotal !== CONTRACT_EPOCHS) throw new Error(`engagements run ${CONTRACT_EPOCHS} epochs`);
 }
 
 export function termsImage(t: Terms): Uint8Array {

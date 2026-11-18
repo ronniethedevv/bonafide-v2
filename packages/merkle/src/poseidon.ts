@@ -7,9 +7,9 @@
 // re-implemented here. Checked by the KAT in packages/contracts/test.
 //
 // Digest encoding: a Field f is carried as its 32-byte little-endian image,
-// which is exactly Compact's `f as Bytes<32>` cast (convertFieldToBytes). The
+// which is exactly Compact's `f as Bytes<32>` cast (convertBigintToBytes). The
 // public `rootOfRoots: Bytes<32>` is therefore just `RootOfRoots.root`, and a
-// witness sibling / poolRoot (a Field) is `convertBytesToField` of the digest.
+// witness sibling / poolRoot (a Field) is the digest read back as a Field (range-checked).
 // Digests >= the field modulus are rejected (no non-canonical encodings).
 //
 // Hasher contract: `hashLeaf` takes only the leaf images the circuit hashes,
@@ -47,7 +47,7 @@ interface Part {
 }
 
 const uint = (t: rt.CompactTypeUnsignedInteger, n: number): Part => ({
-  t: t as Desc, n, dec: (b) => rt.convertBytesToUint((1n << BigInt(8 * n)) - 1n, n, b, "PoseidonHasher"),
+  t: t as Desc, n, dec: (b) => rt.convertBytesToUint((1n << BigInt(8 * n)) - 1n, n, b, "Uint", "PoseidonHasher"),
 });
 const bool: Part = {
   t: BOOL as Desc, n: 1,
@@ -103,13 +103,15 @@ function hashStruct(parts: readonly Part[], img: Uint8Array): bigint {
 
 /** Field -> 32-byte LE digest, exactly Compact's `Field as Bytes<32>`. */
 export function fieldToDigest(f: bigint): Digest {
-  return rt.convertFieldToBytes(DIGEST_BYTES, f, "PoseidonHasher");
+  return rt.convertBigintToBytes(DIGEST_BYTES, f, "PoseidonHasher");
 }
 
 /** 32-byte LE digest -> Field, exactly Compact's `Bytes<32> as Field`; throws if >= modulus. */
 export function digestToField(d: Digest): bigint {
   if (d.length !== DIGEST_BYTES) throw new RangeError("digest must be 32 bytes");
-  return rt.convertBytesToField(DIGEST_BYTES, d, "PoseidonHasher");
+  // Compact 0.36 compiles `Bytes<32> as Field` to a range-checked uint conversion bounded
+  // by the field maximum (it throws rather than reducing).
+  return rt.convertBytesToUint(rt.MAX_FIELD, DIGEST_BYTES, d, "Field", "PoseidonHasher");
 }
 
 export class PoseidonHasher implements Hasher {

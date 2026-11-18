@@ -8,7 +8,7 @@
 
 Two circuit-tier gaps are tracked as known-open (see progress_tracker.md). Both
 need a design decision before implementation, so they are written up here rather
-than guessed. Written by the cloud session from a full review of the current
+than guessed. Written from a full review of the current
 circuits; the laptop/compiler is not needed to decide, only to implement.
 
 Status at time of writing: all invariant bindings (I1–I7, I9, I10), H3b anchors,

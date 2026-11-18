@@ -66,6 +66,8 @@ import {
   type MemberDepth,
   type CarryTotalsW,
   runProveEpoch,
+  profileTierKey,
+  BUILD_DIR,
   KAT_ID,
   WALLET_B,
   toSlotLeaf,
@@ -85,7 +87,7 @@ describe("PoseidonHasher matches compact-runtime transientHash", () => {
     const l = 123456789n, r = rt.MAX_FIELD - 7n;
     const f = rt.transientHash(new rt.CompactTypeVector(2, F), [l, r]);
     const d = h.hashNode(fieldToDigest(l), fieldToDigest(r));
-    expect(d).toEqual(rt.convertFieldToBytes(32, f, "kat"));
+    expect(d).toEqual(rt.convertBigintToBytes(32, f, "kat"));
     expect(d[0]).toBe(Number(f & 0xffn)); // little-endian
     expect(digestToField(d)).toBe(f);
   });
@@ -579,7 +581,8 @@ describe.skipIf(!HAVE_BUILD)("M2(b): I5 carry-forward commitment across epochs",
 describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", () => {
   const SECRET = new Uint8Array(32).fill(0x99);
   const PROFILE = new Uint8Array(32).fill(0x77);
-  // Terms: min_uptime_buckets = 40, epochs_total = 3. Epoch uptimes 48, 43, 0 -> passed 2 of 3.
+  // Terms: min_uptime_buckets = 40, epochs_total = 30 (DD-35). Proven epoch uptimes 48, 43, 0 ->
+  // passed 2 of 30 (the 27 unproven epochs count toward the total, never toward passed).
   const a43 = flatDepth(10n);
   for (let b = 0; b < 5; b++) { a43.bid[b] = 3n; a43.ask[b] = 3n; }
   const epochScenarios = () => [
@@ -596,7 +599,7 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     const present = new Map(records.map((r) => [Number(r.epoch), r]));
     const base: ClaimArgs = {
       engagementId: reg.id, engagementSecret: SECRET, profileSecret: PROFILE, terms, termsSalt,
-      present, epochsPassed: 2n, epochsTotal: 3n,
+      present, epochsPassed: 2n, epochsTotal: 30n,
     };
     return { reg, state, records, base };
   }
@@ -608,12 +611,12 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     const t = termsToEngagement(base.terms);
     const derived = deriveClaimFromRecords("h4", 1,
       records.map((r) => ({ epoch: Number(r.epoch), uptime: Number(r.uptime) })), t.minUptimeBuckets, t.epochsTotal);
-    expect(derived).toMatchObject({ epochsPassed: 2, epochsTotal: 3 });
+    expect(derived).toMatchObject({ epochsPassed: 2, epochsTotal: 30 });
     expect(verifyClaimAgainstRecords(derived,
       records.map((r) => ({ epoch: Number(r.epoch), uptime: Number(r.uptime) })), t.minUptimeBuckets, t.epochsTotal)).toBe(true);
 
     const r = await runClaim(base, state);
-    expect([r.completed, r.kpiHits, r.kpiTotal]).toEqual([1n, 2n, 3n]);
+    expect([r.completed, r.kpiHits, r.kpiTotal]).toEqual([1n, 2n, 30n]);
     // I10: the same engagement cannot be claimed twice
     await expect(runClaim(base, r.state)).rejects.toThrow(/engagement already claimed \(I10\)/);
   });
@@ -626,8 +629,8 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
 
   it("rejects a wrong denominator (epochsTotal != committed contract length)", async () => {
     const { state, base } = await setup();
-    await expect(runClaim({ ...base, epochsTotal: 2n }, state))
-      .rejects.toThrow(/epochsTotal is not the committed contract length \(H4\)/);
+    await expect(runClaim({ ...base, epochsTotal: 29n }, state))
+      .rejects.toThrow(/epochsTotal is not the contract length \(H4\)/);
   });
 
   it("rejects a fabricated record (not on the ledger)", async () => {
@@ -659,14 +662,29 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
       .rejects.toThrow(/record is not this engagement's epoch \(H4\)/);
   });
 
-  it("an epoch beyond the contract length is not credited; withholding only lowers the score", async () => {
-    const scen = [...epochScenarios(), buildScenario()]; // epoch 4 (48) is outside epochs_total = 3
-    const { state, base } = await setup(scen);
-    await expect(runClaim({ ...base, epochsPassed: 3n }, state))
-      .rejects.toThrow(/epochsPassed does not match/);
+  it("an epoch beyond the contract cannot be proven; withholding only lowers the score", async () => {
+    // a fresh engagement (genesis carry), so the only thing wrong is the epoch number
+    const { witness, rootOfRoots } = buildScenario();
+    const fresh = await runRegister(witness, new Uint8Array(32).fill(0x31));
+    await expect(runProveEpoch(witness, fresh.id, rootOfRoots, 31n, fresh.state))
+      .rejects.toThrow(/epoch outside the contract \(DD-35\)/);
+    const { state, base } = await setup();
     const present = new Map(base.present);
     present.delete(2); // withhold epoch 2 (43 >= 40)
     await expect(runClaim({ ...base, present, epochsPassed: 1n }, state)).resolves.toMatchObject({ kpiHits: 1n });
+  });
+
+  it("the tier must be the registered one, and counters are kept per tier (DD-35)", async () => {
+    const { state, base } = await setup();
+    // the records were proven under tier A (1): claiming them as tier B does not match
+    await expect(runClaim({ ...base, tier: 2n }, state))
+      .rejects.toThrow(/record is not this engagement's epoch \(H4\)/);
+    await expect(runClaim({ ...base, tier: 4n }, state)).rejects.toThrow(/unknown tier \(DD-35\)/);
+    const a = await runClaim(base, state);
+    expect([a.completed, a.kpiHits, a.kpiTotal]).toEqual([1n, 2n, 30n]);
+    // a tier-B profile counter for the same profile is untouched
+    const led = (await import(BUILD_DIR)).ledger(a.state);
+    expect(led.completedCount.member(profileTierKey(rt.persistentHash(new rt.CompactTypeBytes(32), PROFILE), 2n))).toBe(false);
   });
 });
 

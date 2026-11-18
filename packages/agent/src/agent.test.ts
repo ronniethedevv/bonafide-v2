@@ -79,7 +79,7 @@ beforeEach(async () => {
     pool: { chain: "Base", address: POOL, pair: "TKN / USDC" },
     client: { address: "0x70997970c51812dc3a010c7d01b50e0d17dc79c8" },
     wallets: [MM_WALLET],
-    terms: { floorPriceP: 0n, loanL0: 1000n, quoteStartQ0: 0n, disposalD: 1000n, netSellS: 0n, depthTarget: 100n, roundtripSharePpm: 600_000n, bandBps: 100, minUptimeBuckets: 44, epochsTotal: 7 },
+    terms: { floorPriceP: 0n, loanL0: 1000n, quoteStartQ0: 0n, disposalD: 1000n, netSellS: 0n, depthTarget: 100n, roundtripSharePpm: 600_000n, bandBps: 100, minUptimeBuckets: 44, epochsTotal: 30 },
     human: {},
   });
   home.saveEngagementFile("rec_abc", await sealFile(opening, PASS, 1_000));
@@ -119,7 +119,7 @@ describe("agent daily step", () => {
     await expect(runEpoch({ ...args, api: fakeServer({ ...reg, clientInboxKey: null }).api })).rejects.toThrow("private inbox");
     await expect(runEpoch({ ...args, api: fakeServer({ ...reg, termsCommit: `0x${"00".repeat(32)}` }).api })).rejects.toThrow("doesn't match");
     await expect(runEpoch({ ...args, api: fakeServer(reg).api, passphrase: "wrong passphrase!!" })).rejects.toThrow("wrong passphrase");
-    await expect(runEpoch({ ...args, api: fakeServer(reg).api, epoch: 8 })).rejects.toThrow("7 epochs");
+    await expect(runEpoch({ ...args, api: fakeServer(reg).api, epoch: 31 })).rejects.toThrow("30 epochs");
     const other = join(replayDir, "other");
     mkdirSync(other);
     writeEpoch(other, 1, "0x00000000000000000000000000000000000fffff");

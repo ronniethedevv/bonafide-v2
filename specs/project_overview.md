@@ -83,6 +83,6 @@ fallback, and an **exportable tear sheet**.
 - Proving time & leaf size unmeasured (the 1.5s estimate is unsourced).
 - Clients may still prefer read-only keys + live dashboards (test in pilot).
 - Permanent record vs NDAs/EU rules → legal advice before EU clients (MiCA).
-- Midnight ledger 9 not live as of 28 Sep 2026; plan a migration that exports
-  all verdicts as one root.
+- Ledger 9 is live on every Midnight network since 6–9 Nov 2026 (Preview relaunched
+  as a new chain); the contract moved to Compact 0.36.1 (DD-34) and is redeployed.
 - Small initial anonymity set → batch claims weekly, seed early engagements.

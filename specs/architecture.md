@@ -40,7 +40,7 @@ Midnight**, and **Base is read-only** (indexed, never written).
 | Async workers | Trigger.dev (demo: GitHub Actions scheduler, DD-33) | Durable long-running indexing/proving (invariant #1) |
 | Protocol | **Compact 0.31.x (ledger 8) on Midnight** | ZK contracts; `disclose()`-gated flows |
 | Chain (read) | **Base + Ethereum** archive RPC (Uniswap v3; Aerodrome on Base) | Deterministic source data; per-chain roots; no deploy |
-| ZK primitives | Jubjub Schnorr (attester sigs), Poseidon-family hash (trees) | Midnight-native |
+| ZK primitives | Secret-knowledge attester votes (DD-26), Poseidon-family hash (trees), SHA-256 commitments | Midnight-native |
 | DB / ORM | PostgreSQL / Prisma | Typed read models, fast indexing |
 | Off-chain store | IPFS (trees) · Vercel Blob (tear sheets) | Avoid on-chain bloat (invariant #3) |
 | Host | Vercel / Cloudflare edge + IPFS mirror | HA, decentralized fallback |
@@ -77,8 +77,10 @@ so an engagement never reveals its pool.
 - **Reference price:** winsorized 30-min TWAP from replayed pool state (not `observe()`).
 - **Anti-JIT:** an LP whose position first went live < `kMinSeconds` (60 s, by block
   timestamp) before the epoch end gets no depth credit (DD-31: seconds, not blocks).
-- **Signed:** 2-of-3 attesters sign `(epoch, root_of_roots, IPFS_CID)` with
-  Jubjub Schnorr keys; then a 12-hour challenge window.
+- **Published:** 2 of 3 committee members each submit `publishRoot(chain, day, root,
+  IPFS_CID)`, authenticated by proving knowledge of their secret (DD-26); then a 12-hour
+  window in which 2 of 3 can `disputeRoot`, which stops anything on that root from
+  settling, releasing or defaulting (DD-35).
 
 ## Trust & private-state boundary
 

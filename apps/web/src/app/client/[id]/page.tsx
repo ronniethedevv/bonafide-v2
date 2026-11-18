@@ -97,7 +97,7 @@ export default async function ClientEngagementPage({ params }: { params: Promise
             npx @mmr/attest verify {e.id}
           </code>
         </div>
-        <ChallengePanel challengeableEpoch={e.challengeableEpoch} windowHours={e.challengeWindowHours} mmBond={e.bondAtStakeLabel} />
+        <ChallengePanel challengeableEpoch={e.challengeableEpoch} windowHours={e.challengeWindowHours} />
       </section>
     </main>
   );

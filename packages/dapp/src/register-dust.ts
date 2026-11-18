@@ -10,7 +10,6 @@
 // Reads the seed from packages/dapp/.env, falling back to the workspace-root
 // .env (MIDNIGHT_WALLET_SEED). The seed is never printed.
 
-import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import type { FacadeState, UtxoWithMeta, WalletFacade } from "@midnightntwrk/wallet-sdk";
 import * as Rx from "rxjs";
 import { loadConfig } from "./config.js";
@@ -87,18 +86,16 @@ async function pollForDust(wallet: HeadlessWallet): Promise<bigint> {
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  setNetworkId(cfg.networkId as Parameters<typeof setNetworkId>[0]);
 
   console.log("mmr register-dust — designate a DUST address for the NIGHT UTXOs");
   console.log(`  network   ${cfg.networkId}`);
   console.log(`  node      ${cfg.nodeUrl}`);
   console.log(`  indexer   ${cfg.indexerUrl}`);
 
-  console.log("\nbuilding + syncing wallet… (a first sync replays ~280k indices)");
+  console.log("\nbuilding + syncing wallet…");
   const wallet = await buildHeadlessWallet(cfg);
   try {
-    console.log(`  shielded addr   ${wallet.shieldedAddress}`);
-    console.log(`  unshielded addr ${String(wallet.keystore.getBech32Address())}`);
+    console.log(`  address         ${wallet.unshieldedAddress}`);
 
     const night = nightTotal(wallet.state);
     const utxos = nightUtxos(wallet.state);
@@ -108,6 +105,13 @@ async function main(): Promise<void> {
     console.log(`  NIGHT UTXOs     ${utxos.length}`);
     utxos.forEach((u, i) => console.log(describeUtxo(u, i)));
     console.log(`  DUST balance    ${dust}`);
+
+    if (utxos.length === 0) {
+      throw new Error(
+        `The wallet holds no tNIGHT yet. Request some for ${wallet.unshieldedAddress} at ` +
+          "https://faucet.preview.midnight.network/ and run this again once it arrives.",
+      );
+    }
 
     const unregistered = utxos.filter((u) => !u.meta.registeredForDustGeneration);
     console.log(`  unregistered    ${unregistered.length}`);
@@ -145,10 +149,10 @@ async function main(): Promise<void> {
       const recipe = await wallet.facade.registerNightUtxosForDustGeneration(
         unregistered,
         wallet.keystore.getPublicKey(),
-        (payload) => wallet.keystore.signData(payload),
+        (payload) => wallet.keystore.signDataAsync(payload),
       );
       const finalized = await wallet.facade.finalizeRecipe(recipe);
-      return wallet.facade.submitTransaction(finalized);
+      return String(await wallet.facade.submitTransaction(finalized));
     };
 
     // The wait comes first: registerNightUtxosForDustGeneration throws before

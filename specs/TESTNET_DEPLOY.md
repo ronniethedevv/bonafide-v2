@@ -3,7 +3,7 @@
 > The last big "their tech in action" win: a **live contract on Midnight testnet** +
 > a **connect-wallet-and-submit-a-proof** demo, which also produces the project's
 > first **real proof instances** (we have keys for all 11 circuits; no live proof has
-> run yet). This is a **laptop/testnet runbook** — the cloud session can't reach
+> run yet). This is a **laptop/testnet runbook** — the CI sandbox can't reach
 > Midnight hosts (proxy-blocked); the specifics below were **confirmed against the
 > Preview support matrix** (docs.midnight.network, Oct 2026) and are pinned, not
 > guessed. Still: **run each step before committing SDK code**, and `npm view` each

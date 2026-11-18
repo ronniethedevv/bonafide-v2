@@ -18,7 +18,7 @@ Midnight. The whole protocol tier is **Compact on Midnight**; Base is only read
 
 | Midnight primitive / tool | How this project uses it | Evidence |
 |---|---|---|
-| **Compact 0.31.1** (contract language) | The entire protocol lifecycle — `register → activate → proveEpoch → settleEpoch → releaseEpoch / voidUnfunded / defaultEngagement → claim` — is one Compact contract | `packages/contracts/src/epoch_proof.compact` |
+| **Compact 0.36.1** (contract language, ledger 9) | The entire protocol lifecycle — `register → postBond → activate → proveEpoch → settleEpoch → releaseEpoch / voidUnfunded / defaultEngagement → claim`, plus the committee's `publishRoot` / `disputeRoot` — is one Compact contract | `packages/contracts/src/epoch_proof.compact` |
 | **`witness` + `disclose`** (private state) | Wallet addresses, balances, depth, and flow are private `witness`es that never touch the ledger; only the uptime count, commitments, and nullifier are `disclose()`d | `proveEpoch`, `claim` |
 | **`transientHash`** (Poseidon, in-circuit) | Every in-circuit Merkle hash: the depth-16 pool tree, depth-10 root-of-roots, depth-2 depth-band tree, and the depth-20 `HistoricMerkleTree` | `verifyPath16`, `verifyPoolPath`, `verifyBandPath` |
 | **`persistentHash` / `persistentCommit`** (SHA-256 ledger hash) | Salted wallet / terms / carry-forward commitments and epoch keys on the ledger | `commitWallets`, `commitTerms`, `CarryTotals` |
@@ -59,19 +59,20 @@ Midnight primitive directly:
 
 The Midnight/ZK core above is real and verified, and the circuit has **zero open
 in-circuit gaps**: I1–I10, the **I8 attester-root registry** (2-of-3, on-chain), and
-the **funding-membership** proof are all bound and KAT-covered (**123/123** tests).
-All 11 circuits are keyed, the contract is **deployed to Midnight Preview**
-(`48e2cfce…2d9eb6`, 11/11 circuits verified on chain), and the full lifecycle
+the **funding-membership** proof are all bound and KAT-covered (**135/135** tests,
+all run in CI against the compiled circuits). The contract targets ledger 9 (Compact
+0.36.1), and the ledger-9 build is **deployed to Midnight Preview** at
+`2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6` with all 12 circuits'
+verifier keys on chain (7 in the deploy, 5 added by maintenance updates, DD-36). The full lifecycle
 (`register → activate → publishRoot → proveFunding`) has **run live as real on-chain
 calls on a real Midnight node** (`specs/LIVE_LOCAL_LIFECYCLE.md`).
 
 The **IPFS tree publisher** is a real Pinata v3 adapter and the **PostgreSQL/Prisma
 `DbProfileRepository` (`@mmr/db`)** is real, both behind clean interfaces (they need
 only a `PINATA_JWT` / `DATABASE_URL`). What remains is production plumbing, clearly
-labelled and outside the contract logic: a **live Base/Ethereum archive-RPC reader**,
-**market-maker witness capture**, a live **3-operator attester fleet with
-Jubjub-Schnorr signing** (the on-chain threshold itself is already enforced), and a
-fee-sponsor. One item is an **external ecosystem issue**: live contract *calls* on
+labelled and outside the contract logic: running the **three attester operators'**
+daily `publishRoot` / `disputeRoot` votes (members authenticate by proving knowledge of
+their secret, DD-26; the 2-of-3 threshold is enforced on-chain), and a fee-sponsor. One item is an **external ecosystem issue**: live contract *calls* on
 public networks are currently dropped (`NotNormalized`) for a registration-funded
 wallet while deploys land — isolated to the wallet's DUST, reproduced as working on a
 byte-identical local node, and reported to Midnight

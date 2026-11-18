@@ -89,9 +89,10 @@ MMR_INDEX_DATE=2026-11-16 MMR_INDEX_CHAIN=8453 pnpm --filter @mmr/worker index  
 
 ## What needs a Midnight environment (not runnable here)
 
-`packages/contracts` holds Compact 0.31.x circuit/contract **skeletons**. They are
-not wired into any build script and need the Midnight toolchain (`compactc`) plus
-a Blockfrost project token to compile and prove. See
+`packages/contracts` holds the Compact contract (toolchain 0.36.1, ledger 9). CI
+compiles it (`compactc --skip-zk`) and runs all 135 KATs against the compiled circuits;
+locally, `pnpm --filter @mmr/contracts kat:build && pnpm --filter @mmr/contracts test`
+with the toolchain installed. Proving keys and live calls need the full Midnight setup. See
 [`packages/contracts/README.md`](../packages/contracts/README.md) for the overview
 and **[`specs/MIDNIGHT_SETUP.md`](./MIDNIGHT_SETUP.md)** for the full Ubuntu setup
 walkthrough (toolchain, proof server, keys, `.env`).
@@ -105,5 +106,5 @@ walkthrough (toolchain, proof server, keys, `.env`).
 | `@mmr/prover` | engagement model, witness assembly, I1–I8 reference oracle, demo CLI |
 | `@mmr/protocol` | settlement state machine + mock attester committee |
 | `@mmr/watcher` | challenge watchdog (root recomputation) + client verdict log |
-| `@mmr/contracts` | Compact circuit/contract skeletons (not compiled here) |
+| `@mmr/contracts` | Compact contract (0.36.1, ledger 9) + 135 KATs on the compiled circuits |
 | `web` | public profile + tear sheet (Next.js) |

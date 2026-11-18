@@ -90,6 +90,12 @@ leaf schema, root-of-roots).
 | 2026-11-17 | **Daily indexer on Trigger.dev** — new `apps/worker` (`@mmr/worker`, SDK 4.8.3): `daily-index` schedule (01:10 UTC) triggers `index-epoch` per covered chain with a global idempotency key; `index-epoch` (concurrency 1, small-2x, 6 h max, 4 retries with 10–60 min backoff for not-yet-final days and RPC outages) runs `indexDay`: skip if stored, restore the position registry from Postgres, `runLiveEpoch` with the Pinata publisher and configurable log chunk (`MMR_LOG_CHUNK_BLOCKS`, 10 on a free key), save the registry, store the root. Migration `0004_indexer.sql` (`indexed_epoch`, `worker_state`). `runLiveEpoch` now takes a publisher and activity options and returns the manifest CID. `.github/workflows/deploy-worker.yml` deploys on main (skips until the `TRIGGER_ACCESS_TOKEN` secret and `TRIGGER_PROJECT_REF` variable exist). Tests: 3 day/coverage tests, 2 `indexDay` tests on Postgres (index once, idempotent re-run, registry carried across days, no-coverage skip, conflicting root rejected); task module and an esbuild bundle import cleanly in Node. Not yet deployed (needs the token, project ref and the task env vars in the Trigger.dev dashboard). Cost note: on a free RPC key a post-DD-31 Base day is ~43k `eth_getLogs` calls per scan, so daily runs need a paid key (larger chunks) to be practical | **built, not deployed** |
 | 2026-11-17 | **DD-31 resolved: anti-JIT in seconds** — `kMinSeconds = 60` replaces `kMinBlocks = 30`; `AddressActivity.lpFirstActiveTs` (block timestamp, fetched by the provider) replaces `lpFirstActiveBlock`; `isJit` = `endTs − lpFirstActiveTs < kMinSeconds`; `kMinSeconds` added to the epoch manifest and validated in `assertConfig`. New tests: 60 s / 59 s boundary, block numbers irrelevant, and a block-by-block check that it equals the old 30-block rule on 2 s blocks (so pre-switch roots are unchanged). Fixtures in indexer, prover, watcher, witness, agent and contract KAT moved to timestamps. Also: RPC cache writes are now atomic (temp + rename); the agent refuses pre-DD-31 replay files; the running VIRTUAL/USDC replay was restarted on the new code (resumed from cache, no epochs had been written). All package tests pass (tearsheet PDF test excluded: Chromium hangs on a fresh profile on this build host). Live re-check: re-indexing the pinned Base epoch (BROOMY/WETH 0.3%, 2026-10-21, 89 leaves) with the new rule reproduces root `0x5a3a6373…04461` exactly, built twice | **done** |
 | 2026-11-18 | **Daily indexer: demo scheduler (DD-33)** — PR #12 merged (agent v1, WalletConnect, indexer, DD-31); production applied migrations `0003`/`0004`; unused second Vercel project removed (the live project keeps the Neon store). Demo runner: `apps/worker/src/run-daily.ts` (`pnpm --filter @mmr/worker index`: covered chains × last `MMR_CATCHUP_DAYS` days, or one `MMR_INDEX_DATE`/`MMR_INDEX_CHAIN`) and `.github/workflows/daily-index.yml` (01:10 UTC + manual backfill, skips at once without coverage, fails clearly on missing secrets). Production runner: the Trigger.dev tasks in `apps/worker/src/trigger` (SDK/CLI 4.8.5). Tests: 9 worker tests (catch-up window, run plan, indexDay on Postgres); the real command against a migrated database skips a stored day without RPC/IPFS; filtered install (`--filter "@mmr/worker..."`) runs in a clean checkout | **done** |
+| 2026-11-18 | **Ledger 9 toolchain (DD-34)** — Compact 0.36.1 / runtime 0.21.0 in `contracts`, `merkle`, `worker`; Poseidon helper on the new casts; KAT harness on the async, `callContext` runtime API; CI compiles the contract (pinned by SHA-256) and requires the build. 123/123 contract KATs pass locally (previously 6 ran in CI); all package tests pass, pinned epoch roots unchanged | **done** |
+| 2026-11-18 | **Review fixes in the contract (DD-35)** — roots keyed by (chain, UTC day) with day-aligned epochs; public tier/chain/bond/beneficiary at registration with per-tier minimum bonds and a deploy-time bond token; owner-only, bond-first activation; `disputeRoot` (2 of 3) blocking settle/release/default; fixed 30-epoch engagements, 30-slot claim with the tier checked against the records and per-tier counters; dead identity check removed. KATs: harness drives the new flow (bond + owner activation + (chain, day) roots), 30-epoch tranche/bond/claim tests, +12 new (`dd35.kat.test.ts`: different-start-day proofs, cross-chain roots, registration rules, dispute votes and their effects; owner/bond/start-day activation; per-tier claim). 135/135 contract KATs, all packages green; engagement file and wizard fixed to 30 epochs; client dispute copy matches the contract | **done** |
+| 2026-11-18 | **Docs and licence (review #10)** — MIT `LICENSE`; README live link, ledger-9 status (Preview relaunched 2026-11-07; the earlier deployment was on the retired chain; redeploy next), 135 KATs run in CI, attesters as secret-knowledge votes + disputes (DD-26/35) instead of Jubjub-Schnorr; same in DEMO, BUILT_ON_MIDNIGHT, architecture, RUNNING, MIDNIGHT_SETUP (pin 0.36.1), project overview, contracts README (was "not compiled"); call-blocker report marked as recorded on the pre-relaunch chain; new `specs/README.md` index | **done** |
+| 2026-11-18 | **Presentation and licence** — licence changed from MIT to Apache-2.0 (canonical apache.org text, copyright line filled; `package.json`). README rewritten to the standard of winning Midnight submissions: product screenshot, badges, links, contract and transaction tables, `check-deployment` (reads the Preview indexer, decodes the state, compares all 12 on-chain verifier keys byte for byte with a local build: identical; key generation is deterministic), why privacy, numbered flow, checks table, private/public table, try it, tests per package (509 in 16), scope and limits, layout, roadmap. Deployment record committed (`packages/dapp/deployments/preview.json`). Stale I9 text in INVARIANTS.md fixed; the standard recorded in AGENTS.md | **done** |
+| 2026-11-18 | **CI: contract KATs no longer stall Vitest** — the compiled circuits are async but resolve without real I/O, so a test file ran as one unbroken microtask chain (event-loop stalls of 52–128 s measured); an RPC in flight when a stall began timed out at Vitest's 60 s ("Timeout calling onTaskUpdate") and a file's results were lost, on CI's slower CPU every time. The harness now yields to the event loop before each circuit call (worst stall 1.9 s); files run in parallel again (135/135 in 118 s) | **done** |
+| 2026-11-18 | **Deploy package on ledger 9 (DD-36)** — `@mmr/dapp` on Midnight.js 5.0.1 / wallet SDK 2.0.1 (seed-started wallet, byte hand-off, provider `config`); `deploy` publishes `test_bond_token` then `epoch_proof` with the committee and the token's color and records both in `.deploy/<network>.json`; `register-dust` stops with the faucet step when the wallet is empty; committee secrets derived from the seed; ledger-8 diagnostics (call-submission repro, batched deploy, pre-DD-35 `interact`) removed; full keys for both contracts built (`compact:build`); CI typechecks the dapp. **Deployed to Preview (ledger 9):** wallet funded from the faucet, DUST registered (tx `00bb9e00…`); `test_bond_token` `30cba593…31b61` (color `e371ca24…b146`); `epoch_proof` `2f663d74…c2b6` at block 168,424 with 7 circuits (deploy writes 54% of a block; all 12 would be 79%, over the ~65% one transaction may use), then 5 verifier-key inserts (~18 s each): 12/12 on chain. Next: the live lifecycle | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
@@ -466,6 +472,58 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   `.github/workflows/daily-index.yml` for the demo), always outside HTTP handlers
   (invariant #1). The job is re-runnable: stored days are skipped, the position registry
   lives in Postgres, and each run re-checks the last `MMR_CATCHUP_DAYS` (3) days.
+- **DD-34** (toolchain) **Ledger 9: Compact toolchain 0.36.1, runtime 0.21.0.** Midnight moved
+  every network to ledger 9 (Preview relaunched as a new chain on 2026-11-07), so new
+  deploys need toolchain 0.36.x. The contract compiles unchanged apart from
+  `pragma language_version 0.28.0`; all 11 circuits build and the compiler now emits
+  `contract-manifest.json`. Runtime 0.21 renamed the casts (`Field as Bytes<32>` →
+  `convertBigintToBytes`; `Bytes<32> as Field` → range-checked `convertBytesToUint`
+  bounded by `MAX_FIELD`), made `initialState` and circuits async, and moved query and
+  zswap state under `context.callContext` with block time set by `createCircuitContext({ time })`.
+  Hashes are unchanged: the pinned Base and Ethereum epoch roots still recompute byte for
+  byte. CI installs the checksum-pinned compiler and compiles the contract, so all 123
+  contract KATs run there (`KAT_REQUIRE_BUILD=1` fails the run if the build is missing).
+  `@mmr/dapp` moves to Midnight.js 5 with the redeploy.
+- **DD-35** (contract) **Review fixes: roots by (chain, day), bond and tier rules, a real
+  dispute, fixed length.** (1) Published roots are keyed by `rootKey(chain, day)`; `activate`
+  records `startDay` (the UTC day after activation, range-checked against the
+  block-time-checked `activatedTs`), epoch e is day `startDay + e - 1` and ends at
+  `(startDay + e) · 86400`, so engagements that start on different days prove against their
+  own day's root and Base/Ethereum roots never collide. (2) `register` fixes tier (1 A,
+  2 B, 3 C), chain (1 or 8453), the required bond and the beneficiary publicly, with a fixed
+  per-tier minimum bond (A 10,000 / B 5,000 / C 2,500 in the bond token); the bond token is
+  a deploy-time constant; `postBond` checks token and amount; `activate` needs the
+  engagement secret (only the MM starts the clock) and a posted bond. These values are
+  public, not in the committed terms: the bond and beneficiary were already public once
+  posted, the client checks them before accepting, and the terms commitment and every TS
+  encoder of it stay unchanged. (3) `disputeRoot(chain, day)`: committee members vote; at
+  2 of 3 the root is disputed and no epoch on it settles, releases or defaults (the MM is
+  not slashed for a bad root; its tranche for that day stays escrowed). The client UI asks
+  the committee to recheck instead of offering a bond-backed challenge. (4) Engagements run
+  exactly 30 epochs (register and claim), so length links nothing; `claim` loops 30 slots,
+  checks the claimed tier against each presented record's tier (`EpochRecord.tier`, written
+  by `proveEpoch` from the registered tier) and keeps counters per (profile, tier). A claim
+  presenting no records cannot have its tier verified; it only adds misses to that tier.
+  Removed `assertNotIdentity`: a `ZswapCoinPublicKey` is a SHA-256 hash of the coin secret
+  key (no curve point), and the check was unused; the beneficiary must instead be non-zero.
+  Not done: weekly claim batching (claim timing can still correlate with an engagement's end).
+- **DD-36** (deploy) **Preview deploy on the ledger-9 SDKs, with a test bond token.**
+  `@mmr/dapp` runs on Midnight.js 5.0.1 and wallet SDK 2.0.1: the wallet starts from seeds
+  derived from `DEPLOY_SEED`, transactions cross between Midnight.js and the wallet as
+  bytes (each decodes with its own ledger copy), and the providers carry
+  `config: { networkId, ttlSeconds }`. Preview's faucet hands out unshielded tNIGHT only,
+  while a bond is a shielded coin, so `test_bond_token.compact` (Preview scaffolding:
+  anyone can mint) is deployed first and `epoch_proof`'s bond token is its color,
+  `rawTokenType(pad(32, "mmr:bond:test"), tokenAddress)`; a production deploy names a real
+  shielded token instead. The demo committee's three secrets are derived from the deploy
+  seed (`sha256("mmr:attester:secret:v1" || seed || i)`); the earlier scripts used fixed
+  bytes anyone could reproduce, which on a public chain would let anyone publish or dispute
+  roots. In production each attester holds its own key. Proof server 9.0.0; full keys from
+  `pnpm --filter @mmr/contracts compact:build` (about 4 minutes, 1.1 GB).
+  Deploy is batched (Midnight's batched-deploy runbook): the full deploy writes 39,464 bytes
+  (79% of a block; one transaction may use ~65%), so `deploy` sends the constructor state
+  with 7 circuits' keys (54%) and adds the other 5 with `submitInsertVerifierKeyTx`, storing
+  the maintenance key before submitting and recording each step so a re-run resumes.
 
 ## Open decisions (carry from spec)
 

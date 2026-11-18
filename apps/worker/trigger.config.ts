@@ -10,6 +10,6 @@ export default defineConfig({
   retries: { enabledInDev: false },
   build: {
     // The Poseidon hasher loads WASM from the Midnight runtime; install it, don't bundle it.
-    external: ["@midnight-ntwrk/compact-runtime", "@midnight-ntwrk/onchain-runtime-v3"],
+    external: ["@midnight-ntwrk/compact-runtime", "@midnightntwrk/onchain-runtime-v4"],
   },
 });

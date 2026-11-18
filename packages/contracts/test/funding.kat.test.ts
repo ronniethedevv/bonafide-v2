@@ -7,10 +7,9 @@ import * as rt from "@midnight-ntwrk/compact-runtime";
 import {
   BLOCK_TIME,
   BOND_COIN,
-  CLIENT_PK,
+  startDayFor,
   FUNDED_A,
   HAVE_BUILD,
-  TIER_MIN,
   buildScenario,
   cloneWitness,
   epochEndOf,
@@ -31,8 +30,8 @@ const WRONG_ROOT = /funding root is not epoch-1's attested root \(DD-27\)/;
 /** register -> postBond -> activate, with `scenario`'s wallets and terms; no root published. */
 async function activated(scenario: Scenario): Promise<{ id: Uint8Array; state: rt.ChargedState }> {
   const reg = await runRegister(scenario.witness, SECRET);
-  let state = (await runLifecycle("postBond", [reg.id, TIER_MIN, { bytes: CLIENT_PK }], { state: reg.state, coin: BOND_COIN })).state;
-  state = (await runLifecycle("activate", [reg.id, new Uint8Array(32), BLOCK_TIME + 100n],
+  let state = (await runLifecycle("postBond", [reg.id], { state: reg.state, coin: BOND_COIN })).state;
+  state = (await runLifecycle("activate", [reg.id, startDayFor(BLOCK_TIME + 100n), BLOCK_TIME + 100n],
     { state, blockTime: BLOCK_TIME + 100n })).state;
   return { id: reg.id, state };
 }

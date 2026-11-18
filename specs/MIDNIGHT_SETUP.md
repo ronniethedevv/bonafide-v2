@@ -59,12 +59,14 @@ compiler version.
    source ~/.bashrc
    ```
 
-3. **Pin the compiler to the ledger-8 / mainnet-compatible line.** This project
-   targets **Compact 0.31.x** (ledger 8). Do NOT run a bare `compact update` —
-   that pulls the newest release (0.35.x / ledger 9), which mainnet doesn't run yet.
+3. **Pin the compiler to the ledger-9 line.** Every Midnight network runs ledger 9
+   since 6–9 Nov 2026, and this project targets **Compact toolchain 0.36.1**
+   (language 0.28.0, runtime 0.21.0). Pin it rather than running a bare `compact update`.
    ```bash
-   compact update 0.31.1       # [verify] latest 0.31.x on the releases page
+   compact update 0.36.1
    ```
+   CI downloads the same compiler release directly and checks its SHA-256
+   (`.github/workflows/ci.yml`).
 
 4. **Verify:**
    ```bash
@@ -144,8 +146,8 @@ I can drive) is:
 1. Fix the circuits until `compact compile` passes for all four.
 2. Run the **proving benchmark** (16-slot epoch circuit) → measure proving time,
    then fix bucket sizes (currently 48 buckets/epoch is a placeholder).
-3. Implement **real Jubjub Schnorr attester signing** behind the existing
-   `AttesterCommittee` interface (replaces the mock in `@mmr/protocol`).
+3. Run the **attester operators**: each recomputes the day with the watcher and
+   submits `publishRoot` (or `disputeRoot`), authenticated by its secret (DD-26/DD-35).
 4. Implement the live **Base `ChainProvider`** (archive RPC) and **IPFS
    `TreePublisher`** behind the interfaces `@mmr/indexer` already defines.
 5. Deploy to **preview → preprod**, run an end-to-end epoch, then pilot.

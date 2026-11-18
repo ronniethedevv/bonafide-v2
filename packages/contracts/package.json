@@ -3,16 +3,16 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Compact 0.31.x contract for Midnight (one contract: registration, bond escrow, epoch proof I1-I8, nullifier claim), plus a known-answer test that executes the compiled epoch circuit.",
+  "description": "Compact 0.36 contracts for Midnight (ledger 9): epoch_proof (registration, bond escrow, epoch proof I1-I10, disputes, nullifier claim) and a test bond token for Preview, plus the known-answer tests that execute the compiled circuits.",
   "scripts": {
     "compact:check": "compact compile --skip-zk src/epoch_proof.compact dist/epoch_proof",
-    "compact:build": "echo 'ZK key generation requires a GPU-capable Midnight node. Use compact:check for type/syntax verification.' && exit 1",
+    "compact:build": "compact compile src/epoch_proof.compact dist/epoch_proof && compact compile src/test_bond_token.compact dist/test_bond_token",
     "kat:build": "compact compile --skip-zk src/epoch_proof.compact build/epoch_proof",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
     "vitest": "^2.1.9",
     "typescript": "^5.7.2"
   },
@@ -25,6 +25,7 @@
   },
   "exports": {
     "./epoch_proof": "./dist/epoch_proof/contract/index.js",
+    "./test_bond_token": "./dist/test_bond_token/contract/index.js",
     "./harness": "./test/harness.ts"
   }
 }

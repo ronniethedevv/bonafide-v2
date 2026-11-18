@@ -11,12 +11,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { nextTranche } from "@mmr/protocol";
 import {
   BLOCK_TIME, BOND_COIN, HAVE_BUILD, Status, T, buildScenario, cloneWitness, epochEndOf, epochKey,
-  graceDeadlineOf, runLifecycle, runProveEpoch, runRegister, runningEngagement, settle,
-  type BondRun, type Engagement,
+  graceDeadlineOf, runLifecycle, runProveEpoch, runRegister, runningEngagement, settle, startDayFor,
+  type BondRun, type Engagement, type Registered,
 } from "./harness.js";
 
 const SECRET = new Uint8Array(32).fill(0x99);
-const ROOT = new Uint8Array(32);
+/** DD-35: activation needs the bond posted first. */
+const bonded = async (reg: Registered) =>
+  (await runLifecycle("postBond", [reg.id], { state: reg.state, coin: BOND_COIN })).state;
 
 describe.skipIf(!HAVE_BUILD)("H3b: funding window anchored on the stored registeredAt", () => {
   const { witness } = buildScenario();
@@ -43,24 +45,43 @@ describe.skipIf(!HAVE_BUILD)("H3b: funding window anchored on the stored registe
     await expect(runLifecycle("voidUnfunded", [new Uint8Array(32).fill(0x42)], { blockTime: BLOCK_TIME + T.FUNDING }))
       .rejects.toThrow(/not awaiting funding/);
     const reg = await runRegister(witness, SECRET);
-    const act = await runLifecycle("activate", [reg.id, ROOT, BLOCK_TIME + 10n], { state: reg.state, blockTime: BLOCK_TIME + 10n });
+    const st = await bonded(reg);
+    const at = BLOCK_TIME + 10n;
+    const act = await runLifecycle("activate", [reg.id, startDayFor(at), at], { state: st, blockTime: at });
     expect(act.status).toBe(Status.Funded);
     await expect(runLifecycle("voidUnfunded", [reg.id], { state: act.state, blockTime: BLOCK_TIME + T.FUNDING }))
       .rejects.toThrow(/not awaiting funding/);
     const late = BLOCK_TIME + T.FUNDING;
-    await expect(runLifecycle("activate", [reg.id, ROOT, late], { state: reg.state, blockTime: late }))
+    await expect(runLifecycle("activate", [reg.id, startDayFor(late), late], { state: st, blockTime: late }))
       .rejects.toThrow(/funding window closed \(H3b\)/);
   });
 
   it("activatedAt is recorded within 600 s of the block", async () => {
     const reg = await runRegister(witness, SECRET);
+    const st = await bonded(reg);
     const b = BLOCK_TIME + 1_000n;
-    const ok = await runLifecycle("activate", [reg.id, ROOT, b - 599n], { state: reg.state, blockTime: b });
+    const activate = (ts: bigint) => runLifecycle("activate", [reg.id, startDayFor(ts), ts], { state: st, blockTime: b });
+    const ok = await activate(b - 599n);
     expect(ok.ledger.activatedAt.lookup(reg.id)).toBe(b - 599n);
-    await expect(runLifecycle("activate", [reg.id, ROOT, b - 600n], { state: reg.state, blockTime: b }))
-      .rejects.toThrow(/activatedTs too far in the past \(H3b\)/);
-    await expect(runLifecycle("activate", [reg.id, ROOT, b + 1n], { state: reg.state, blockTime: b }))
-      .rejects.toThrow(/activatedTs is in the future \(H3b\)/);
+    expect(ok.ledger.startDay.lookup(reg.id)).toBe(startDayFor(b - 599n));
+    await expect(activate(b - 600n)).rejects.toThrow(/activatedTs too far in the past \(H3b\)/);
+    await expect(activate(b + 1n)).rejects.toThrow(/activatedTs is in the future \(H3b\)/);
+  });
+
+  it("only the owner activates, only once the bond is posted, on the day after activation (DD-35)", async () => {
+    const reg = await runRegister(witness, SECRET);
+    const at = BLOCK_TIME + 10n;
+    const day = startDayFor(at);
+    await expect(runLifecycle("activate", [reg.id, day, at], { state: reg.state, blockTime: at }))
+      .rejects.toThrow(/bond not posted \(DD-35\)/);
+    const st = await bonded(reg);
+    await expect(runLifecycle("activate", [reg.id, day, at], { state: st, blockTime: at, secret: new Uint8Array(32).fill(0x55) }))
+      .rejects.toThrow(/only the engagement owner can activate \(DD-35\)/);
+    for (const wrong of [day - 1n, day + 1n]) {
+      await expect(runLifecycle("activate", [reg.id, wrong, at], { state: st, blockTime: at }))
+        .rejects.toThrow(/start day is not the day after activation \(DD-35\)/);
+    }
+    await expect(runLifecycle("activate", [reg.id, day, at], { state: st, blockTime: at })).resolves.toMatchObject({ status: Status.Funded });
   });
 });
 
@@ -99,7 +120,7 @@ describe.skipIf(!HAVE_BUILD)("H3b: settledAt is recorded on-chain, bounded, for 
     const w = cloneWitness(h.scenario.witness);
     w.terms.min_uptime_buckets = 0n; // loosened: the proof passes, but tc != termsCommit[id]
     const r = await runProveEpoch(w, h.id, h.scenario.rootOfRoots, 1n, h.state);
-    const rec = { id: h.id, epoch: 1n, uptime: r.uptime, termsCommit: r.termsCommit };
+    const rec = { id: h.id, epoch: 1n, uptime: r.uptime, termsCommit: r.termsCommit, tier: r.tier };
     await expect(settle(h, r.state, 1n, epochEndOf(h, 1n), undefined, rec))
       .rejects.toThrow(/epoch proven under unregistered terms \(H3b\)/);
   });
@@ -109,7 +130,7 @@ describe.skipIf(!HAVE_BUILD)("H3b: releaseEpoch reads the stored settledAt", () 
   let g: Engagement;
   beforeAll(async () => { g = await runningEngagement({ proven: 1 }); });
   const release = (state: BondRun["state"], blockTime: bigint) =>
-    runLifecycle("releaseEpoch", [g.id, 1n, nextTranche(BOND_COIN.value, 3, 0)], { state, blockTime });
+    runLifecycle("releaseEpoch", [g.id, 1n, nextTranche(BOND_COIN.value, 30, 0)], { state, blockTime });
 
   it("an unsettled epoch never releases, however late", async () => {
     await expect(release(g.state, graceDeadlineOf(g, 1n) + 10n * T.EPOCH)).rejects.toThrow(/epoch not settled \(H3b\)/);
