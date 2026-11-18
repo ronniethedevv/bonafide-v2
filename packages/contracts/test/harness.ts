@@ -568,7 +568,18 @@ export async function freshState(): Promise<rt.ChargedState> {
 }
 
 
+/**
+ * Gives the event loop a turn. The compiled circuits are async but resolve without any
+ * real I/O, so a test file of circuit runs is otherwise one unbroken chain of microtasks:
+ * no timer or IPC message is handled until it ends. Vitest's worker RPC times out after
+ * 60 s, and a stall that long (a whole file on a slow CI runner) fails the run with
+ * "Timeout calling onTaskUpdate" even when every test passed. Yielding before each
+ * circuit call bounds a stall to one circuit run.
+ */
+const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 async function freshContext(contract: CompiledContract, circuitId: string, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
+  await yieldToEventLoop();
   const init = await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE, BOND_TOKEN);
   // H3: `time` is the trusted "now" — what blockTimeLt/Gte compare against on-chain.
   return rt.createCircuitContext({
