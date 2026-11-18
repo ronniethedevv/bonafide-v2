@@ -262,6 +262,9 @@ importers:
       '@mmr/merkle':
         specifier: workspace:*
         version: link:../merkle
+      '@mmr/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@mmr/prover':
         specifier: workspace:*
         version: link:../prover
