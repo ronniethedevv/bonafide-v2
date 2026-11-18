@@ -17,8 +17,8 @@
 // before the deploy is submitted, and the record is written after every step, so
 // an interrupted run resumes: re-run and it inserts only the keys still missing.
 //
-// Pays fees in DUST from the DEPLOY_SEED wallet; records addresses in
-// .deploy/<network>.json (gitignored). The attester secrets are derived from the
+// Pays fees in DUST from the DEPLOY_SEED wallet; records addresses and transaction ids in
+// deployments/<network>.json (public data only). The attester secrets are derived from the
 // seed and never leave this process; only their ids go on chain.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -74,7 +74,7 @@ const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)}s
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  const out = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".deploy");
+  const out = resolve(dirname(fileURLToPath(import.meta.url)), "..", "deployments");
   const file = resolve(out, `${cfg.networkId}.json`);
   const record: DeployRecord = existsSync(file)
     ? (JSON.parse(readFileSync(file, "utf8")) as DeployRecord)

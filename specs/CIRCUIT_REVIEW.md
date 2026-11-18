@@ -1,6 +1,6 @@
 # Circuit review — soundness audit of the Compact circuits
 
-Date: 2026-10-19 · Reviewed at commit `6dfeacf` · Reviewer: cloud session (read-only).
+Date: 2026-10-19 · Reviewed at commit `6dfeacf` · Reviewer: internal review (read-only).
 
 **Scope:** `packages/contracts/src/{epoch_proof,registration,bond,claim}.compact`
 against `INVARIANTS.md` (I1–I10) and the reference oracle

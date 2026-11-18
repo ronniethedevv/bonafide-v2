@@ -37,7 +37,7 @@ without a compiler and need a real grammar + semantics pass.
   `export ledger <name>: <Type>;`, `export circuit <name>(…): <Ret> { … }`,
   `constructor() { … }`, `assert`, `disclose(...)`, `return`.
 - **To verify against the reference** (docs host, reachable from a normal machine —
-  it would not load through the cloud session's proxy):
+  it would not load through the build sandbox's proxy):
   - Language reference: https://docs.midnight.network/develop/reference/compact/lang-ref
   - Writing a contract: https://docs.midnight.network/compact/reference/writing
   - Bulletin-board tutorial (structs, witnesses, disclose): https://docs.midnight.network/tutorials/bboard/smart-contract

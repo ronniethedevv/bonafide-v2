@@ -56,3 +56,22 @@ nothing to them.
   `disclose()` in Compact.
 - Never commit secrets, salts, witnesses, RPC tokens, or `.env*`.
 - Update `specs/progress_tracker.md` at the end of every working unit.
+
+## README and public docs
+
+The README is what reviewers read. Keep it to the standard of the strongest Midnight
+submissions:
+
+- **Order:** hero image, name and one-line pitch, badges, a row of checked links, one
+  opening paragraph (problem, product, exact guarantee), contents, on-chain evidence
+  (contract and transaction tables, a committed record, a "check it yourself" command),
+  why privacy is the requirement, how it works (numbered steps), what is checked, what
+  is private and what is public (table), try it (no-install path first), tests (counts
+  per package), scope and limits, repository layout, roadmap, license and attribution.
+- **Writing:** plain declarative sentences, present tense; concrete numbers, dates,
+  addresses and transaction ids, each checked against the source; no emojis in headings,
+  no hype words, few em dashes; plain-English names next to any internal code; honest
+  status labels (done, in progress, next) and a specific limits section.
+- **No "What's new in Wave N" section** until the second submission.
+- **License:** Apache-2.0.
+- Fix stale numbers in any doc the README links to.

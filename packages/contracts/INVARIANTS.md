@@ -94,13 +94,12 @@ Once per engagement, before any epoch settles: against epoch 1's published root
 and the registered wallets and terms (C2), `Σ_j from_treasury(m_j) ≥ L_0` over member
 slots. *Circuit:* `proveFunding`; `settleEpoch` requires it.
 
-## I9 · Callers prove a secret; no key is the identity point
-
+## I9 · Callers prove a secret
 No circuit trusts `ownPublicKey()` (the prover's machine chooses its value).
-Authorization is by proving knowledge of a registration secret. The contract
-rejects identity-point keys itself (Compact's built-in signature checks only do
-so from 0.35; we target 0.31.x, so the check is explicit). *Contract:*
-`registration`, `bond`.
+Authorization is by proving knowledge of a secret: the engagement secret for the
+market maker's own steps (activation is owner-only), each attester's secret for root
+votes and disputes. `register` requires a non-zero bond beneficiary. *Circuits:*
+`activate`, `publishRoot`, `disputeRoot`, `proveEpoch`, `claim`.
 
 ## I10 · The record only grows
 
