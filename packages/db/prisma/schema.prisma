@@ -85,6 +85,7 @@ model Account {
 
   mmRegistrations     EngagementRegistration[] @relation("MmRegistrations")
   clientRegistrations EngagementRegistration[] @relation("ClientRegistrations")
+  agentTokens         AgentToken[]
 
   @@map("account")
 }
@@ -121,6 +122,7 @@ model EngagementRegistration {
   acceptSignature String? // client's wallet signature over the acceptance message
   acceptedBy      String? // the wallet that signed it
   messages        EngagementMessage[]
+  epochs          EngagementEpoch[]
 
   @@index([mmAccountId])
   @@index([clientAccountId])
@@ -141,4 +143,66 @@ model EngagementMessage {
 
   @@unique([registrationId, kind, epoch])
   @@map("engagement_message")
+}
+
+// --- Market-maker agent -------------------------------------------------------------
+//
+// Tokens a market maker's agent uses to call /api/agent/v1. Only a SHA-256 hash is
+// stored; the token itself is shown once. Revoked tokens stay for the audit trail.
+model AgentToken {
+  id         String    @id
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  label      String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([accountId])
+  @@map("agent_token")
+}
+
+// How far each epoch of an engagement has got, as reported by the agent. Phases only:
+// whether an epoch passed is sealed to the client, never stored here.
+model EngagementEpoch {
+  registrationId String
+  registration   EngagementRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  epoch          Int
+  phase          String // captured | proven | submitted | settled
+  updatedAt      DateTime               @default(now())
+
+  @@id([registrationId, epoch])
+  @@map("engagement_epoch")
+}
+
+/// One indexed epoch per chain: the deterministic root-of-roots anyone with an archive
+/// RPC can recompute (invariant #4), with its IPFS manifest. Written by the daily
+/// indexer (apps/worker); public data only.
+model IndexedEpoch {
+  chainId      Int
+  epoch        Int // UTC day number: startTs / 86400 (DD-32)
+  startTs      Int
+  endTs        Int
+  startBlock   Int
+  endBlock     Int
+  endBlockHash String
+  rootHex      String
+  manifestCid  String
+  poolCount    Int
+  manifest     Json
+  indexedAt    DateTime @default(now())
+
+  @@id([chainId, epoch])
+  @@map("indexed_epoch")
+}
+
+/// Small resumable state for background workers, by key (e.g. the position registry
+/// cache, "registry:8453"), so a stateless worker machine continues where it left off.
+model WorkerState {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now())
+
+  @@map("worker_state")
 }

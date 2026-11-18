@@ -49,7 +49,7 @@ function activity(addr: bigint, depth: bigint, over: Partial<AddressActivity> = 
     addr, isProtocol: false, baseStart: 1000n, baseEnd: 800n, quoteEnd: 0n, lpBase: 300n, lpQuote: 0n,
     xferIn: 1000n, xferOut: 0n, fromTreasury: 1000n, swapBaseIn: 50n, swapBaseOut: 50n,
     swapQuoteIn: 0n, swapQuoteOut: 0n, depthBuckets: fullDepth(depth),
-    flowWindows: [{ window: 0, buy: 50n, sell: 50n }], lpFirstActiveBlock: 1, ...over,
+    flowWindows: [{ window: 0, buy: 50n, sell: 50n }], lpFirstActiveTs: 1, ...over,
   };
 }
 function range(epoch: number): EpochRange {

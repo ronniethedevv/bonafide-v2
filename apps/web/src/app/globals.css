@@ -1004,3 +1004,72 @@ details.adv summary {
     color: #000;
   }
 }
+
+/* --- Agent --- */
+.agent-token {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.agent-token code {
+  display: block;
+  padding: 10px 12px;
+  background: var(--code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+.agent-token .btn {
+  justify-self: start;
+}
+.token-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.token-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+.token-list li .link-btn {
+  margin-left: auto;
+  font-size: 12.5px;
+}
+.progress-line {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.figures-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.figures-table th,
+.figures-table td {
+  padding: 8px 10px;
+  text-align: right;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+.figures-table th:first-child,
+.figures-table td:first-child {
+  text-align: left;
+}
+.figures-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  border-top: 0;
+}

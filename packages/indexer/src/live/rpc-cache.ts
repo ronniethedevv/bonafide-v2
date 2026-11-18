@@ -13,7 +13,7 @@
 // never contain the key.
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FetchLike } from "../http.js";
 
@@ -73,7 +73,12 @@ export function cachingFetch(base: FetchLike, dir: string): FetchLike {
     if (res.ok) {
       try {
         const env = JSON.parse(text) as { error?: unknown; result?: unknown };
-        if (!env.error && "result" in env) writeFileSync(file, text);
+        if (!env.error && "result" in env) {
+          // Write then rename, so a run stopped mid-write never leaves a truncated entry.
+          const tmp = `${file}.${process.pid}.tmp`;
+          writeFileSync(tmp, text);
+          renameSync(tmp, file);
+        }
       } catch {
         // Non-JSON success body: don't cache it.
       }

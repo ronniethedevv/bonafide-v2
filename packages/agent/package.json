@@ -1,0 +1,31 @@
+{
+  "name": "@mmr/agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "The market maker's agent: runs on the MM's own server, captures each epoch from public chain data with their private engagement file, reports progress and seals the client's figures.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "mmr-agent": "./src/cli.ts"
+  },
+  "scripts": {
+    "agent": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mmr/engagement-file": "workspace:*",
+    "@mmr/indexer": "workspace:*",
+    "@mmr/merkle": "workspace:*",
+    "@mmr/prover": "workspace:*",
+    "@mmr/witness": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

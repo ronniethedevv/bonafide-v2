@@ -40,7 +40,7 @@ function activity(addr: bigint): AddressActivity {
       },
     ],
     flowWindows: [{ window: 0, buy: 50n, sell: 100n }],
-    lpFirstActiveBlock: 0,
+    lpFirstActiveTs: 0,
   };
 }
 

@@ -10,6 +10,8 @@ function statusOf(r: Registration, viewer: Viewer): { text: string; tone: "warn"
       return viewer === "mm" ? { text: `Waiting for ${r.counterparty} to accept`, tone: "warn" } : { text: "Waiting for your answer", tone: "warn" };
     case "accepted":
       return { text: "Accepted · starts at epoch 1", tone: "pos" };
+    case "active":
+      return { text: "Active", tone: "pos" };
     case "declined":
       return { text: "Declined", tone: "neg" };
     default:
@@ -57,6 +59,12 @@ export function RegistrationCard({ r, viewer, children }: { r: Registration; vie
           <div className="mono dim" style={{ fontSize: 12, marginTop: 3 }}>{shortHash(r.commitment)}</div>
         </div>
       </div>
+      {r.lastEpoch ? (
+        <div className="progress-line">
+          Epoch {r.lastEpoch} {r.lastPhase}
+          {r.lastPhase === "captured" ? " · proof pending (Midnight)" : ""}
+        </div>
+      ) : null}
       {children ?? (
         <div className="demo-note" style={{ marginTop: 12 }}>
           <Lock size={13} />

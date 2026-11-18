@@ -26,7 +26,7 @@ function fullDepth(v: bigint): DepthBucketSample[] {
   return out;
 }
 
-function compliant(addr: bigint, endBlock: number): AddressActivity {
+function compliant(addr: bigint): AddressActivity {
   return {
     addr,
     isProtocol: false,
@@ -45,7 +45,7 @@ function compliant(addr: bigint, endBlock: number): AddressActivity {
     swapQuoteOut: 0n,
     depthBuckets: fullDepth(60n), // two wallets sum to 120 >= target 100
     flowWindows: [{ window: 0, buy: 50n, sell: 50n }],
-    lpFirstActiveBlock: endBlock - 1000,
+    lpFirstActiveTs: 0, // long-lived LP, not JIT
   };
 }
 
@@ -74,10 +74,10 @@ function range(epoch: number, endBlock: number, endTs: number): EpochRange {
   return { epoch, startBlock: endBlock - 100_000, endBlock, endBlockHash: "0x", startTs: endTs - 86_400, endTs };
 }
 
-function activities(endBlock: number): Map<bigint, AddressActivity> {
+function activities(): Map<bigint, AddressActivity> {
   return new Map([
-    [0x10n, compliant(0x10n, endBlock)],
-    [0x20n, compliant(0x20n, endBlock)],
+    [0x10n, compliant(0x10n)],
+    [0x20n, compliant(0x20n)],
   ]);
 }
 
@@ -86,7 +86,7 @@ describe("client verdict log", () => {
     {
       // epoch 1: settled with an on-time proof
       range: range(1, 1_000_000, 1_000_000),
-      activities: activities(1_000_000),
+      activities: activities(),
       root: { publishedTs: 1_000_100, voteCount: 2 },
       now: 1_100_000,
       challenged: false,
@@ -96,7 +96,7 @@ describe("client verdict log", () => {
     {
       // epoch 2: no root yet, before the attester timeout
       range: range(2, 1_100_000, 1_086_400),
-      activities: activities(1_100_000),
+      activities: activities(),
       root: null,
       now: 1_090_000,
       challenged: false,

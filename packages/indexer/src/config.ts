@@ -28,8 +28,12 @@ export interface IndexerConfig {
   readonly priceSampleSeconds: number;
   /** Winsorization fraction trimmed from each tail of the price samples. */
   readonly winsorFraction: number;
-  /** Anti-JIT: LP positions alive fewer than this many blocks get no depth credit. */
-  readonly kMinBlocks: number;
+  /**
+   * Anti-JIT (DD-31): an LP whose position first went live fewer than this many seconds
+   * before the epoch end (by block timestamp) gets no depth credit for the epoch. In
+   * seconds, not blocks, so the rule survives block-time changes (Base went 2 s → 0.2 s).
+   */
+  readonly kMinSeconds: number;
   /**
    * Pool inclusion floor (DD-23): a pool is indexed when its quote-denominated depth
    * min(bid, ask) within ±bandBps, measured at the epoch's end block, is ≥ the floor
@@ -61,7 +65,7 @@ export const DEFAULT_CONFIG: IndexerConfig = {
   twapWindowSeconds: 30 * 60,
   priceSampleSeconds: 60,
   winsorFraction: 0.05,
-  kMinBlocks: 30,
+  kMinSeconds: 60, // = the former 30 blocks at Base's 2 s blocks (DD-31)
   poolDepthFloor: { bandBps: 200, minQuote: {} },
   baseTokens: [],
   treasuryAddresses: [],
@@ -103,6 +107,9 @@ export function assertConfig(cfg: IndexerConfig): void {
   }
   if (cfg.winsorFraction < 0 || cfg.winsorFraction >= 0.5) {
     throw new Error("winsorFraction must be in [0, 0.5)");
+  }
+  if (!Number.isInteger(cfg.kMinSeconds) || cfg.kMinSeconds < 0 || cfg.kMinSeconds >= cfg.epochSeconds) {
+    throw new Error("kMinSeconds must be an integer in [0, epochSeconds)");
   }
 }
 

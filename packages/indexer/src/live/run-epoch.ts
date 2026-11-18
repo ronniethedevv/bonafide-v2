@@ -22,7 +22,8 @@ import { UniswapV3ChainProvider } from "../evm/provider.js";
 import { resolveEpochRange } from "../evm/range.js";
 import { buildEpoch, InMemoryPublisher, type EpochManifest } from "../epoch.js";
 import { DEFAULT_CONFIG, type IndexerConfig } from "../config.js";
-import type { ChainProvider, EpochRange } from "../provider.js";
+import type { ChainProvider, EpochRange, TreePublisher } from "../provider.js";
+import type { ActivityOptions } from "../evm/activity.js";
 import { rpcFetch } from "./proxy-fetch.js";
 import { cachingFetch } from "./rpc-cache.js";
 
@@ -32,6 +33,8 @@ export interface RunResult {
   /** buildEpoch twice over independent publishers produced the same root (invariant #4). */
   readonly identical: boolean;
   readonly manifest: EpochManifest;
+  /** Manifest content id from the first run's publisher (an IPFS CID with Pinata). */
+  readonly manifestCid: string;
 }
 
 /**
@@ -42,8 +45,10 @@ export async function runEpochTwice(
   provider: ChainProvider,
   config: IndexerConfig,
   range: EpochRange,
+  publisher: TreePublisher = new InMemoryPublisher(),
 ): Promise<RunResult> {
-  const first = await buildEpoch({ provider, publisher: new InMemoryPublisher() }, config, range);
+  // The first run publishes (IPFS in production); the second recomputes in memory.
+  const first = await buildEpoch({ provider, publisher }, config, range);
   const second = await buildEpoch({ provider, publisher: new InMemoryPublisher() }, config, range);
   const identical = first.manifest.rootOfRootsHex === second.manifest.rootOfRootsHex;
   if (!identical) {
@@ -51,7 +56,7 @@ export async function runEpochTwice(
       `non-deterministic root: ${first.manifest.rootOfRootsHex} != ${second.manifest.rootOfRootsHex}`,
     );
   }
-  return { rootHex: first.manifest.rootOfRootsHex, identical, manifest: first.manifest };
+  return { rootHex: first.manifest.rootOfRootsHex, identical, manifest: first.manifest, manifestCid: first.manifestCid };
 }
 
 export interface LiveEpochOptions {
@@ -68,6 +73,10 @@ export interface LiveEpochOptions {
   readonly cacheDir?: string;
   /** Per-call retry budget for transient failures (default 10). */
   readonly retries?: number;
+  /** Publisher for the first run's trees and manifest (default in-memory). */
+  readonly publisher?: TreePublisher;
+  /** Log-scan and position options: chunkBlocks (10 on a free key), registryPath, onStage. */
+  readonly activity?: ActivityOptions;
 }
 
 /**
@@ -87,7 +96,7 @@ export async function runLiveEpoch(opts: LiveEpochOptions): Promise<RunResult> {
     retries: opts.retries ?? 10,
     ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
   });
-  const provider = new UniswapV3ChainProvider(cfg, rpc);
+  const provider = new UniswapV3ChainProvider(cfg, rpc, opts.activity ?? {});
   await provider.assertChainId();
   const range = await resolveEpochRange(rpc, opts.epoch, opts.startTs, opts.endTs);
   const config: IndexerConfig = {
@@ -97,7 +106,7 @@ export async function runLiveEpoch(opts: LiveEpochOptions): Promise<RunResult> {
     treasuryAddresses: opts.treasuryAddresses ?? [],
     ...opts.configOverrides,
   };
-  return runEpochTwice(provider, config, range);
+  return runEpochTwice(provider, config, range, opts.publisher);
 }
 
 // --- CLI -----------------------------------------------------------------------------

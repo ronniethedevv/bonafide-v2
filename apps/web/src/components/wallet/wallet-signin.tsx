@@ -5,12 +5,14 @@ import { getAddress, stringToHex } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { SIGNIN_CHAIN_IDS, SIWE_STATEMENT, SIWE_TTL_MS, shortAddress } from "@/lib/auth/shared";
 import { ArrowRight, Info, Shield } from "@/components/icons";
+import { connectWalletConnect, walletConnectEnabled } from "@/lib/wallet/walletconnect";
 
 // Sign in with an EVM wallet (Sign-In with Ethereum, EIP-4361).
 //
 // Wallets are discovered with EIP-6963, so every installed browser wallet (MetaMask,
 // Rabby, Coinbase Wallet, OKX, Phantom…) shows up by name, with a legacy window.ethereum
-// fallback. The flow: connect → make sure the wallet is on Ethereum or Base → fetch a
+// fallback, plus WalletConnect for phone and custody wallets when a Reown project ID is set.
+// The flow: connect → make sure the wallet is on Ethereum or Base → fetch a
 // one-time nonce → sign a plain-text message → the server verifies it and starts a session.
 
 interface Eip1193 {
@@ -104,45 +106,64 @@ export function WalletSignIn({ next, enabled }: { next: string | undefined; enab
     try {
       setStep("connecting");
       const accounts = (await w.provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (!accounts?.[0]) throw new Error("No account was shared by the wallet.");
-      const addr = getAddress(accounts[0]);
-      setAddress(addr);
-      const chainId = await ensureSupportedChain(w.provider, setStep);
-
-      const nonceRes = await fetch("/api/auth/nonce", { cache: "no-store" });
-      const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
-      if (!nonceRes.ok || !nonceBody.nonce) throw new Error(nonceBody.error ?? "Couldn't start sign-in.");
-
-      const now = Date.now();
-      const message = createSiweMessage({
-        address: addr,
-        chainId,
-        domain: window.location.host,
-        uri: window.location.origin,
-        version: "1",
-        nonce: nonceBody.nonce,
-        statement: SIWE_STATEMENT,
-        issuedAt: new Date(now),
-        expirationTime: new Date(now + SIWE_TTL_MS - 60_000),
-      });
-
-      setStep("signing");
-      const signature = await w.provider.request({ method: "personal_sign", params: [stringToHex(message), addr] });
-
-      setStep("verifying");
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, signature, next }),
-      });
-      const body = (await res.json()) as { ok?: boolean; next?: string; error?: string };
-      if (!res.ok || !body.ok || !body.next) throw new Error(body.error ?? "Sign-in failed.");
-      window.location.assign(body.next);
+      await finishSignIn(w.provider, accounts);
     } catch (e) {
       setError(errorText(e));
       setStep("idle");
       setActive(null);
     }
+  }
+
+  async function signInWithWalletConnect() {
+    setError(null);
+    setActive("walletconnect");
+    try {
+      setStep("connecting");
+      const { provider, accounts } = await connectWalletConnect();
+      await finishSignIn(provider as unknown as Eip1193, accounts);
+    } catch (e) {
+      setError(errorText(e));
+      setStep("idle");
+      setActive(null);
+    }
+  }
+
+  // The shared SIWE steps once a wallet (browser or WalletConnect) has shared an account.
+  async function finishSignIn(provider: Eip1193, accounts: string[]) {
+    if (!accounts?.[0]) throw new Error("No account was shared by the wallet.");
+    const addr = getAddress(accounts[0]);
+    setAddress(addr);
+    const chainId = await ensureSupportedChain(provider, setStep);
+
+    const nonceRes = await fetch("/api/auth/nonce", { cache: "no-store" });
+    const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
+    if (!nonceRes.ok || !nonceBody.nonce) throw new Error(nonceBody.error ?? "Couldn't start sign-in.");
+
+    const now = Date.now();
+    const message = createSiweMessage({
+      address: addr,
+      chainId,
+      domain: window.location.host,
+      uri: window.location.origin,
+      version: "1",
+      nonce: nonceBody.nonce,
+      statement: SIWE_STATEMENT,
+      issuedAt: new Date(now),
+      expirationTime: new Date(now + SIWE_TTL_MS - 60_000),
+    });
+
+    setStep("signing");
+    const signature = await provider.request({ method: "personal_sign", params: [stringToHex(message), addr] });
+
+    setStep("verifying");
+    const res = await fetch("/api/auth/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, signature, next }),
+    });
+    const body = (await res.json()) as { ok?: boolean; next?: string; error?: string };
+    if (!res.ok || !body.ok || !body.next) throw new Error(body.error ?? "Sign-in failed.");
+    window.location.assign(body.next);
   }
 
   if (!enabled) {
@@ -180,9 +201,26 @@ export function WalletSignIn({ next, enabled }: { next: string | undefined; enab
             {active === w.info.uuid && busy ? <span className="spinner" aria-hidden="true" /> : <ArrowRight size={15} style={{ color: "var(--text-dim)" }} />}
           </button>
         ))}
+        {walletConnectEnabled() && (
+          <button type="button" className="wallet-btn" disabled={busy} onClick={signInWithWalletConnect} aria-busy={active === "walletconnect"}>
+            <span className="wallet-fallback wc-mark" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 9.5c3.9-3.8 10.1-3.8 14 0" />
+                <path d="m3 12 3.5 3.5L10 12l2 2 2-2 3.5 3.5L21 12" />
+              </svg>
+            </span>
+            <span style={{ flex: 1, textAlign: "left" }}>
+              WalletConnect
+              <span className="dim" style={{ display: "block", fontSize: 12, fontWeight: 400 }}>Phone wallets, Fireblocks, Safe and other custody wallets</span>
+            </span>
+            {active === "walletconnect" && busy ? <span className="spinner" aria-hidden="true" /> : <ArrowRight size={15} style={{ color: "var(--text-dim)" }} />}
+          </button>
+        )}
         {ready && wallets.length === 0 && (
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
-            No browser wallet found. Install MetaMask, Rabby or Coinbase Wallet, or open this page in your wallet app:
+            {walletConnectEnabled()
+              ? "No browser wallet on this device. Use WalletConnect above to sign in from your phone or custody wallet, or open this page in your wallet app:"
+              : "No browser wallet found. Install MetaMask, Rabby or Coinbase Wallet, or open this page in your wallet app:"}
             <div className="row" style={{ gap: 8, marginTop: 10 }}>
               <a className="btn btn-ghost btn-sm" href={`https://metamask.app.link/dapp/${pageUrl.replace(/^https?:\/\//, "")}`}>Open in MetaMask</a>
               <a className="btn btn-ghost btn-sm" href={`https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(pageUrl)}`}>Open in Coinbase Wallet</a>

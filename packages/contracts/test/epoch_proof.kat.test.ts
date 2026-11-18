@@ -682,7 +682,7 @@ function katActivity(addr: bigint, depthBuckets: DepthBucketSample[]): AddressAc
     xferIn: 0n, xferOut: 0n, fromTreasury: 0n,
     swapBaseIn: 0n, swapBaseOut: 0n, swapQuoteIn: 0n, swapQuoteOut: 0n,
     depthBuckets, flowWindows: [],
-    lpFirstActiveBlock: KAT_RANGE.endBlock - 1_000_000, // old enough: not JIT
+    lpFirstActiveTs: KAT_RANGE.endTs - 1_000_000, // old enough: not JIT
   };
 }
 

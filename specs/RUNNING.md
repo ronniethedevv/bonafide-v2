@@ -52,6 +52,35 @@ pnpm --filter web build
 pnpm --filter web start -p 3000
 ```
 
+## Daily indexer (Trigger.dev)
+
+`apps/worker` holds the background tasks (invariant #1). `daily-index` runs at 01:10 UTC
+and indexes the previous UTC day for every chain with covered tokens; `index-epoch`
+indexes one day and can be run by hand from the Trigger.dev dashboard for backfills
+(payload `{"chainId": 8453, "date": "2026-11-16"}`).
+
+Task environment, set in the Trigger.dev dashboard (Production), never committed:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | the Neon connection string the web app uses |
+| `BASE_ARCHIVE_RPC_URL` | archive RPC with the key in the URL (e.g. Alchemy `…/v2/<key>`) |
+| `ETH_ARCHIVE_RPC_URL` | only if Ethereum tokens are covered |
+| `IPFS_PINNING_JWT` | Pinata JWT with Files: Write |
+| `MMR_COVERAGE_8453` | comma-separated base tokens to index on Base |
+| `MMR_COVERAGE_1` | the same for Ethereum (optional) |
+| `MMR_LOG_CHUNK_BLOCKS` | blocks per `eth_getLogs`: `10` on a free key, e.g. `2000` on a paid one |
+
+Deploys run from GitHub Actions (`.github/workflows/deploy-worker.yml`) on pushes to
+`main` that touch the worker or the code it bundles, once the repository has the
+`TRIGGER_ACCESS_TOKEN` secret (a Trigger.dev personal access token) and the
+`TRIGGER_PROJECT_REF` variable. Locally:
+
+```bash
+pnpm --filter @mmr/worker test                     # needs TEST_DATABASE_URL for the DB tests
+cd apps/worker && TRIGGER_PROJECT_REF=proj_… pnpm exec trigger dev   # run tasks against your machine
+```
+
 ## What needs a Midnight environment (not runnable here)
 
 `packages/contracts` holds Compact 0.31.x circuit/contract **skeletons**. They are

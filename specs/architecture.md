@@ -75,7 +75,8 @@ so an engagement never reveals its pool.
 - **Published:** full tree → IPFS before the root is signed.
 - **Final:** index only blocks past Base's L1 finality.
 - **Reference price:** winsorized 30-min TWAP from replayed pool state (not `observe()`).
-- **Anti-JIT:** positions alive < `K_min` blocks get no depth credit.
+- **Anti-JIT:** an LP whose position first went live < `kMinSeconds` (60 s, by block
+  timestamp) before the epoch end gets no depth credit (DD-31: seconds, not blocks).
 - **Signed:** 2-of-3 attesters sign `(epoch, root_of_roots, IPFS_CID)` with
   Jubjub Schnorr keys; then a 12-hour challenge window.
 

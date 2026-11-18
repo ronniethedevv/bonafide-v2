@@ -40,3 +40,4 @@ prisma/*.db
 # Vercel CLI
 .vercel
 .vercelignore
+.replay-data/

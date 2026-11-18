@@ -67,6 +67,8 @@ export interface EpochManifest {
   twapWindowSeconds: number;
   priceSampleSeconds: number;
   winsorFraction: number;
+  /** Anti-JIT window (DD-31): needed to recompute which depth series earn credit. */
+  kMinSeconds: number;
   poolCount: number;
   rootOfRootsHex: string;
   pools: PoolManifestEntry[];
@@ -77,6 +79,8 @@ export interface EpochManifest {
 export interface EpochResult {
   rootOfRoots: RootOfRoots;
   manifest: EpochManifest;
+  /** Content id of the published manifest (the `cid` the committee signs with the root). */
+  manifestCid: string;
   trees: Map<bigint, IndexedMerkleTree>;
 }
 
@@ -177,6 +181,7 @@ export async function buildEpoch(
     twapWindowSeconds: config.twapWindowSeconds,
     priceSampleSeconds: config.priceSampleSeconds,
     winsorFraction: config.winsorFraction,
+    kMinSeconds: config.kMinSeconds,
     poolCount: pools.length,
     rootOfRootsHex,
     pools: poolManifest,
@@ -192,6 +197,7 @@ export async function buildEpoch(
   return {
     rootOfRoots,
     manifest: { ...preManifest, votes },
+    manifestCid,
     trees,
   };
 }

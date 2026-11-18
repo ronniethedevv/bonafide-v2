@@ -70,7 +70,7 @@ function activity(addr: bigint, flowWindows: FlowWindowSample[]): AddressActivit
     swapQuoteOut: 0n,
     depthBuckets: [],
     flowWindows,
-    lpFirstActiveBlock: null,
+    lpFirstActiveTs: null,
   };
 }
 
