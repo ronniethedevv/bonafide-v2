@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressList, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, previousDay } from "./day.js";
+import { addressList, catchUpDays, catchUpWindow, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, previousDay } from "./day.js";
 
 describe("day helpers", () => {
   it("numbers epochs by UTC day and indexes the last closed day", () => {
@@ -21,6 +21,16 @@ describe("day helpers", () => {
     expect(coverage(env, 1)).toEqual([]);
     expect(coveredChains(env)).toEqual([8453]);
     expect(coveredChains({})).toEqual([]);
+  });
+
+  it("re-checks the last few closed days, oldest first", () => {
+    const d = dayFromDate("2026-11-16");
+    expect(catchUpDays(new Date("2026-11-17T01:10:00Z"), 3)).toEqual([d - 2, d - 1, d]);
+    expect(catchUpDays(new Date("2026-11-17T01:10:00Z"), 1)).toEqual([d]);
+    expect(catchUpWindow({})).toBe(3);
+    expect(catchUpWindow({ MMR_CATCHUP_DAYS: "7" })).toBe(7);
+    expect(() => catchUpDays(new Date(), 0)).toThrow(/1..14/);
+    expect(() => catchUpDays(new Date(), 30)).toThrow(/1..14/);
   });
 
   it("defaults log chunks to the free-plan limit", () => {

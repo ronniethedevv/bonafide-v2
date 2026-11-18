@@ -3,24 +3,26 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Durable background workers on Trigger.dev (invariant #1): the daily deterministic indexer.",
+  "description": "Background jobs (invariant #1): the daily deterministic indexer. Production runs on Trigger.dev; the demo runs it on GitHub Actions' scheduler.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "index": "tsx src/run-daily.ts",
     "dev": "trigger dev",
     "deploy": "trigger deploy"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
     "@mmr/indexer": "workspace:*",
-    "@trigger.dev/sdk": "4.8.3",
+    "@trigger.dev/sdk": "4.8.5",
     "pg": "8.23.1"
   },
   "devDependencies": {
     "@mmr/db": "workspace:*",
     "@types/node": "^22.10.2",
     "@types/pg": "8.23.1",
-    "trigger.dev": "4.8.3",
+    "trigger.dev": "4.8.5",
+    "tsx": "4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

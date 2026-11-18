@@ -106,6 +106,9 @@ forge — and the resulting reputation can't be traced back to any single client
   committed as offline KAT fixtures (`packages/watcher/fixtures/`).
 - **Real data adapters** — IPFS publisher (Pinata v3) and Postgres repository
   (`@mmr/db`), both behind clean interfaces.
+- **Daily indexer job** — `apps/worker` indexes each closed UTC day and stores the
+  root. Production runs it on **Trigger.dev**; for this demo it runs on **GitHub
+  Actions' scheduler** (`.github/workflows/daily-index.yml`).
 - **Market-maker witness-capture tool** — `@mmr/witness`: the MM's local, private
   per-epoch witness store. Each epoch it runs the I1–I8 oracle over the MM's own
   committed wallets, chains the carry-forward (lifetime-budget) commitment from the
@@ -160,6 +163,7 @@ packages/
 apps/
   web/           Public reputation profile + tear sheet + depth/uptime chart        [builds]
   api/           Read-model API for the UI's live backend path                      [TS]
+  worker/        Daily indexer job (Trigger.dev in production; GitHub Actions for this demo) [tested]
 ```
 
 ## Develop

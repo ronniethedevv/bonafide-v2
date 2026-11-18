@@ -52,33 +52,39 @@ pnpm --filter web build
 pnpm --filter web start -p 3000
 ```
 
-## Daily indexer (Trigger.dev)
+## Daily indexer
 
-`apps/worker` holds the background tasks (invariant #1). `daily-index` runs at 01:10 UTC
-and indexes the previous UTC day for every chain with covered tokens; `index-epoch`
-indexes one day and can be run by hand from the Trigger.dev dashboard for backfills
-(payload `{"chainId": 8453, "date": "2026-11-16"}`).
+`apps/worker` holds the indexer job (invariant #1: background job, never an HTTP handler).
 
-Task environment, set in the Trigger.dev dashboard (Production), never committed:
+- **Production:** Trigger.dev (`apps/worker/src/trigger`, deployed with
+  `pnpm --filter @mmr/worker deploy`), with the variables below set in the Trigger.dev
+  project.
+- **This demo:** GitHub Actions' scheduler. `.github/workflows/daily-index.yml` runs the
+  same job at 01:10 UTC for every chain with covered tokens, over the last
+  `MMR_CATCHUP_DAYS` (default 3) closed UTC days; stored days are skipped, so a missed run
+  is caught up by the next. Run it by hand (Actions → Daily index → Run workflow) for a
+  backfill: give a `date` and optionally a `chain`. It skips at once while no chain has
+  covered tokens.
 
-| Variable | Value |
-|---|---|
-| `DATABASE_URL` | the Neon connection string the web app uses |
-| `BASE_ARCHIVE_RPC_URL` | archive RPC with the key in the URL (e.g. Alchemy `…/v2/<key>`) |
-| `ETH_ARCHIVE_RPC_URL` | only if Ethereum tokens are covered |
-| `IPFS_PINNING_JWT` | Pinata JWT with Files: Write |
-| `MMR_COVERAGE_8453` | comma-separated base tokens to index on Base |
-| `MMR_COVERAGE_1` | the same for Ethereum (optional) |
-| `MMR_LOG_CHUNK_BLOCKS` | blocks per `eth_getLogs`: `10` on a free key, e.g. `2000` on a paid one |
+Repository settings → Secrets and variables → Actions:
 
-Deploys run from GitHub Actions (`.github/workflows/deploy-worker.yml`) on pushes to
-`main` that touch the worker or the code it bundles, once the repository has the
-`TRIGGER_ACCESS_TOKEN` secret (a Trigger.dev personal access token) and the
-`TRIGGER_PROJECT_REF` variable. Locally:
+| Name | Kind | Value |
+|---|---|---|
+| `DATABASE_URL` | secret | the Neon connection string the web app uses |
+| `BASE_ARCHIVE_RPC_URL` | secret | archive RPC with the key in the URL (e.g. Alchemy `…/v2/<key>`) |
+| `ETH_ARCHIVE_RPC_URL` | secret | only if Ethereum tokens are covered |
+| `IPFS_PINNING_JWT` | secret | Pinata JWT with Files: Write |
+| `MMR_COVERAGE_8453` | variable | comma-separated base tokens to index on Base |
+| `MMR_COVERAGE_1` | variable | the same for Ethereum (optional) |
+| `MMR_LOG_CHUNK_BLOCKS` | variable | blocks per `eth_getLogs`: `10` on a free key, e.g. `2000` on a paid one |
+| `MMR_CATCHUP_DAYS` | variable | optional, 1–14 (default 3) |
+
+Locally (same variables in the environment):
 
 ```bash
 pnpm --filter @mmr/worker test                     # needs TEST_DATABASE_URL for the DB tests
-cd apps/worker && TRIGGER_PROJECT_REF=proj_… pnpm exec trigger dev   # run tasks against your machine
+pnpm --filter @mmr/worker index                    # catch-up window on every covered chain
+MMR_INDEX_DATE=2026-11-16 MMR_INDEX_CHAIN=8453 pnpm --filter @mmr/worker index   # one day
 ```
 
 ## What needs a Midnight environment (not runnable here)

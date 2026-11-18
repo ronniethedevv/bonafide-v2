@@ -37,7 +37,7 @@ Midnight**, and **Base is read-only** (indexed, never written).
 | Frontend | Next.js (App Router) / React / TypeScript | SSR + reactive read-only views |
 | Styling | Tailwind + shadcn/ui | Utility-first, dark-theme tokens |
 | Backend | Node + TypeScript (Fastify) | Lightweight async API; WS for job status |
-| Async workers | Trigger.dev | Durable long-running indexing/proving (invariant #1) |
+| Async workers | Trigger.dev (demo: GitHub Actions scheduler, DD-33) | Durable long-running indexing/proving (invariant #1) |
 | Protocol | **Compact 0.31.x (ledger 8) on Midnight** | ZK contracts; `disclose()`-gated flows |
 | Chain (read) | **Base + Ethereum** archive RPC (Uniswap v3; Aerodrome on Base) | Deterministic source data; per-chain roots; no deploy |
 | ZK primitives | Jubjub Schnorr (attester sigs), Poseidon-family hash (trees) | Midnight-native |
@@ -138,7 +138,7 @@ The backend is a coordinator that never sees an MM's books:
 |---------|--------|-------|
 | User-facing API | Next.js route handlers (same Vercel project) | Auth, accounts, engagement registry metadata, client inbox. Short request/response only. |
 | Database | Postgres (Neon free plan via Vercel Marketplace); schema in Prisma, queries via `pg` | **Live:** accounts + engagement registry (id, MM, client, public commitment, status). Next: attestation status, read models. Never terms, wallets or salts. |
-| Long-running work | Trigger.dev workers (invariant #1) | Indexing, witness capture service, attester runs, proof orchestration, read-model projection. |
+| Long-running work | Trigger.dev workers (invariant #1); for the demo the daily indexer runs on GitHub Actions' scheduler (DD-33) | Indexing, witness capture service, attester runs, proof orchestration, read-model projection. |
 | Heavy payloads | IPFS via Pinata (invariant #3) | Published Merkle trees, attestation bundles. Content-addressed, so a second mirror can be added without changing CIDs. |
 | Client-visible figures | Encrypted MM → client | The MM's tool encrypts opened per-epoch figures to the client's key; the server stores ciphertext it cannot read. |
 | Public read API | `apps/api` (Fastify) or folded into Next | Serves the public projection only. |

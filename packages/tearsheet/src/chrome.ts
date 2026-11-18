@@ -15,7 +15,7 @@ export function findChrome(): string | null {
   const env = process.env.CHROME_PATH;
   if (env && existsSync(env)) return env;
 
-  // Playwright-style browser cache (used in the Claude Code cloud container).
+  // Playwright-style browser cache (used in cloud CI containers).
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers";
   try {
     for (const d of readdirSync(root)) {
