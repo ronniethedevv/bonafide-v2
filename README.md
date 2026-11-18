@@ -15,10 +15,9 @@ checked against a deterministic, public on-chain indexer that nobody can fake.
   sheet (`/mm/vega-mm/tear-sheet`). This shows **what** the product is, in plain language.
 - **Check it's really on Midnight** — the `epoch_proof` contract targets Midnight's
   current ledger 9 (Compact toolchain 0.36.1), and CI compiles it and runs all 135
-  known-answer tests against the compiled circuits on every change. Midnight relaunched
-  its Preview network as a new chain on 7 Nov 2026; the earlier Preview deployment
-  (`48e2cfce…2d9eb6`, 11/11 circuits verified) was on the retired chain, and the
-  redeploy to the new Preview is next.
+  known-answer tests against the compiled circuits on every change. It is **live on
+  Midnight's ledger-9 Preview** at `2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6`
+  (all 12 circuits' verifier keys on chain, deployed 18 Nov 2026).
 
 **One command, if you have a terminal** (the strongest proof — it recomputes a real
 on-chain epoch and checks it):
@@ -85,16 +84,17 @@ forge — and the resulting reputation can't be traced back to any single client
   identity-point, once-only claim — plus the **I8 attester-root registry** (2-of-3,
   on-chain) and the **funding-membership** proof. No invariant is trusted
   off-chain.
-- **Real zero-knowledge keys** — `zkir` keygen ran for every circuit of the ledger-8
-  build (`proveEpoch` k=20, `claim` k=19, `proveFunding` k=17, …); keys for the ledger-9
-  build are generated with the redeploy.
+- **Real zero-knowledge keys** — proving and verifier keys for all 12 circuits of the
+  ledger-9 build (`pnpm --filter @mmr/contracts compact:build`); the verifier keys are the
+  ones on chain.
 - **135 known-answer tests passing, all in CI** — they execute the *compiled* circuit
   through `@midnight-ntwrk/compact-runtime`; an honest witness passes and **every
   tampered witness reverts** (mutation-probed). CI installs the pinned compiler and
   fails if the build is missing, so none are skipped.
-- **Deployed to Midnight's Preview testnet** — batched deploy, **11/11 circuits
-  verified on chain**, `findDeployedContract()` attaches (on the pre-relaunch chain;
-  redeploy to the ledger-9 Preview is next).
+- **Deployed to Midnight's Preview testnet (ledger 9)** — the contract is too large for
+  one block, so it deploys with 7 circuits and the other 5 verifier keys are added by
+  signed maintenance updates: **12/12 circuits on chain**. The bond token is a test
+  shielded token deployed alongside it (`packages/dapp`, `pnpm --filter @mmr/dapp deploy`).
 - **Full lifecycle runs live on a real Midnight node** — `register → activate →
   publishRoot ×2 → proveFunding` as real on-chain calls; the heavy/time-gated
   circuits verified by the test suite. See [`specs/LIVE_LOCAL_LIFECYCLE.md`](./specs/LIVE_LOCAL_LIFECYCLE.md).
@@ -130,13 +130,11 @@ forge — and the resulting reputation can't be traced back to any single client
 This is a working protocol core, not yet a turnkey product. Clearly-scoped
 integration work remains, and one item is an external ecosystem issue:
 
-- **Live contract calls on public networks are currently blocked.** Deploys land
-  on Preview, but *calls* from a registration-funded wallet were dropped /
-  `NotNormalized` on the live ledger. We traced it end to end: a **byte-identical
-  local node accepts the same calls**, so it is not our contract or client — it is
-  isolated to the wallet's DUST and reported to Midnight. That chain has since been
-  relaunched on ledger 9, so this is retested with the redeploy. Full write-up and
-  reproduction: [`specs/CALL_SUBMISSION_BLOCKER.md`](./specs/CALL_SUBMISSION_BLOCKER.md).
+- **Live contract calls on Preview are next.** The contract and its maintenance
+  updates are on the ledger-9 Preview; the full lifecycle (register → bond → activate →
+  publishRoot → prove → settle → release) runs there next. On the retired ledger-8
+  chain, calls from a registration-funded wallet were dropped while a byte-identical
+  local node accepted them ([`specs/CALL_SUBMISSION_BLOCKER.md`](./specs/CALL_SUBMISSION_BLOCKER.md)).
 - **Witness capture — off-chain scope.** `@mmr/witness` captures per epoch and is wired
   to the live archive-RPC reader (`captureLiveEpoch` filters the pool index to the MM's
   committed wallets); what remains is extending capture to off-chain / CEX venues (zkTLS).

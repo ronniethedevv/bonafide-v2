@@ -93,6 +93,7 @@ leaf schema, root-of-roots).
 | 2026-11-18 | **Ledger 9 toolchain (DD-34)** — Compact 0.36.1 / runtime 0.21.0 in `contracts`, `merkle`, `worker`; Poseidon helper on the new casts; KAT harness on the async, `callContext` runtime API; CI compiles the contract (pinned by SHA-256) and requires the build. 123/123 contract KATs pass locally (previously 6 ran in CI); all package tests pass, pinned epoch roots unchanged | **done** |
 | 2026-11-18 | **Review fixes in the contract (DD-35)** — roots keyed by (chain, UTC day) with day-aligned epochs; public tier/chain/bond/beneficiary at registration with per-tier minimum bonds and a deploy-time bond token; owner-only, bond-first activation; `disputeRoot` (2 of 3) blocking settle/release/default; fixed 30-epoch engagements, 30-slot claim with the tier checked against the records and per-tier counters; dead identity check removed. KATs: harness drives the new flow (bond + owner activation + (chain, day) roots), 30-epoch tranche/bond/claim tests, +12 new (`dd35.kat.test.ts`: different-start-day proofs, cross-chain roots, registration rules, dispute votes and their effects; owner/bond/start-day activation; per-tier claim). 135/135 contract KATs, all packages green; engagement file and wizard fixed to 30 epochs; client dispute copy matches the contract | **done** |
 | 2026-11-18 | **Docs and licence (review #10)** — MIT `LICENSE`; README live link, ledger-9 status (Preview relaunched 2026-11-07; the earlier deployment was on the retired chain; redeploy next), 135 KATs run in CI, attesters as secret-knowledge votes + disputes (DD-26/35) instead of Jubjub-Schnorr; same in DEMO, BUILT_ON_MIDNIGHT, architecture, RUNNING, MIDNIGHT_SETUP (pin 0.36.1), project overview, contracts README (was "not compiled"); call-blocker report marked as recorded on the pre-relaunch chain; new `specs/README.md` index | **done** |
+| 2026-11-18 | **Deploy package on ledger 9 (DD-36)** — `@mmr/dapp` on Midnight.js 5.0.1 / wallet SDK 2.0.1 (seed-started wallet, byte hand-off, provider `config`); `deploy` publishes `test_bond_token` then `epoch_proof` with the committee and the token's color and records both in `.deploy/<network>.json`; `register-dust` stops with the faucet step when the wallet is empty; committee secrets derived from the seed; ledger-8 diagnostics (call-submission repro, batched deploy, pre-DD-35 `interact`) removed; full keys for both contracts built (`compact:build`); CI typechecks the dapp. **Deployed to Preview (ledger 9):** wallet funded from the faucet, DUST registered (tx `00bb9e00…`); `test_bond_token` `30cba593…31b61` (color `e371ca24…b146`); `epoch_proof` `2f663d74…c2b6` at block 168,424 with 7 circuits (deploy writes 54% of a block; all 12 would be 79%, over the ~65% one transaction may use), then 5 verifier-key inserts (~18 s each): 12/12 on chain. Next: the live lifecycle | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
@@ -504,6 +505,23 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   Removed `assertNotIdentity`: a `ZswapCoinPublicKey` is a SHA-256 hash of the coin secret
   key (no curve point), and the check was unused; the beneficiary must instead be non-zero.
   Not done: weekly claim batching (claim timing can still correlate with an engagement's end).
+- **DD-36** (deploy) **Preview deploy on the ledger-9 SDKs, with a test bond token.**
+  `@mmr/dapp` runs on Midnight.js 5.0.1 and wallet SDK 2.0.1: the wallet starts from seeds
+  derived from `DEPLOY_SEED`, transactions cross between Midnight.js and the wallet as
+  bytes (each decodes with its own ledger copy), and the providers carry
+  `config: { networkId, ttlSeconds }`. Preview's faucet hands out unshielded tNIGHT only,
+  while a bond is a shielded coin, so `test_bond_token.compact` (Preview scaffolding:
+  anyone can mint) is deployed first and `epoch_proof`'s bond token is its color,
+  `rawTokenType(pad(32, "mmr:bond:test"), tokenAddress)`; a production deploy names a real
+  shielded token instead. The demo committee's three secrets are derived from the deploy
+  seed (`sha256("mmr:attester:secret:v1" || seed || i)`); the earlier scripts used fixed
+  bytes anyone could reproduce, which on a public chain would let anyone publish or dispute
+  roots. In production each attester holds its own key. Proof server 9.0.0; full keys from
+  `pnpm --filter @mmr/contracts compact:build` (about 4 minutes, 1.1 GB).
+  Deploy is batched (Midnight's batched-deploy runbook): the full deploy writes 39,464 bytes
+  (79% of a block; one transaction may use ~65%), so `deploy` sends the constructor state
+  with 7 circuits' keys (54%) and adds the other 5 with `submitInsertVerifierKeyTx`, storing
+  the maintenance key before submitting and recording each step so a re-run resumes.
 
 ## Open decisions (carry from spec)
 

@@ -61,9 +61,9 @@ The Midnight/ZK core above is real and verified, and the circuit has **zero open
 in-circuit gaps**: I1–I10, the **I8 attester-root registry** (2-of-3, on-chain), and
 the **funding-membership** proof are all bound and KAT-covered (**135/135** tests,
 all run in CI against the compiled circuits). The contract targets ledger 9 (Compact
-0.36.1). The ledger-8 build was keyed and **deployed to Midnight Preview**
-(`48e2cfce…2d9eb6`, 11/11 circuits verified on chain) before Preview relaunched as a new
-ledger-9 chain on 7 Nov 2026; the ledger-9 redeploy is next. The full lifecycle
+0.36.1), and the ledger-9 build is **deployed to Midnight Preview** at
+`2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6` with all 12 circuits'
+verifier keys on chain (7 in the deploy, 5 added by maintenance updates, DD-36). The full lifecycle
 (`register → activate → publishRoot → proveFunding`) has **run live as real on-chain
 calls on a real Midnight node** (`specs/LIVE_LOCAL_LIFECYCLE.md`).
 

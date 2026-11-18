@@ -26,15 +26,15 @@ export interface DappConfig {
   indexerWsUrl: string;
   /** Local proof server URL (Docker, port 6300). */
   proofServerUrl: string;
-  /** Directory holding keys/*.prover|.verifier + zkir/*.bzkir for epoch_proof. */
+  /** Directory holding keys/, zkir/ and compiler/ for epoch_proof (`compact:build`). */
   zkConfigPath: string;
-  /** Per-circuit proof timeout, ms. proveEpoch at k=20 blows past the 5-min default. */
+  /** The same for the test bond token (Preview only). */
+  bondTokenZkConfigPath: string;
+  /** Per-circuit proof timeout, ms. The largest circuits can pass the 5-min default. */
   proofTimeoutMs: number;
   /**
    * How long to wait for the wallet to reach a synced state, ms. A first sync
-   * on Preview replays ~280k wallet indices from genesis (measured ~130/s
-   * shielded, ~60/s dust), so it runs 40-80 min; later runs are only faster if
-   * the wallet state is persisted.
+   * replays the chain from genesis; later runs resume from the cached state.
    */
   syncTimeoutMs: number;
   /** 24-word BIP-39 mnemonic (or 64-char hex seed) for the deploy wallet. */
@@ -83,6 +83,10 @@ export function loadConfig(): DappConfig {
     zkConfigPath: env(
       "MMR_ZK_CONFIG_PATH",
       resolve(here, "../../contracts/dist/epoch_proof"),
+    ),
+    bondTokenZkConfigPath: env(
+      "MMR_BOND_TOKEN_ZK_CONFIG_PATH",
+      resolve(here, "../../contracts/dist/test_bond_token"),
     ),
     proofTimeoutMs: Number(env("MMR_PROOF_TIMEOUT_MS", String(45 * 60 * 1000))),
     syncTimeoutMs: Number(env("MMR_SYNC_TIMEOUT_MS", String(90 * 60 * 1000))),

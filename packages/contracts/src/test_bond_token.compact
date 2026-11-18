@@ -1,0 +1,16 @@
+pragma language_version 0.28.0;
+
+import CompactStandardLibrary;
+
+// Test scaffolding for Preview: a shielded token anyone can mint, so a market maker
+// on a test network has a coin to post as its bond. Never deploy it as a real
+// currency. epoch_proof is deployed with this token's color as its bond token
+// (DD-35): rawTokenType(pad(32, "mmr:bond:test"), <this contract's address>).
+
+export ledger mints: Counter;
+
+export circuit mint(recipient: ZswapCoinPublicKey, amount: Uint<64>, nonce: Bytes<32>): [] {
+  mintShieldedToken(pad(32, "mmr:bond:test"), disclose(amount), disclose(nonce),
+                    left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient)));
+  mints.increment(1);
+}

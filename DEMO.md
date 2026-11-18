@@ -112,27 +112,31 @@ output, non-empty, in `build/epoch_proof/keys`.
 
 ## Demo C — also live on the public Preview testnet (supporting)
 
-The contract was **deployed to Midnight's Preview testnet** — all 11 circuits of the
-ledger-8 build, via a batched deploy (the contract is too large for one block, so 8
-circuits deploy in one tx and 3 verifier keys are inserted via maintenance updates) — at
-`48e2cfceccd0a7b771f5bb71337455f2df03540aadcaf0bc3687d310e52d9eb6`. Midnight relaunched
-Preview as a new ledger-9 chain on 7 Nov 2026, which retired that deployment; the
-contract now builds with Compact 0.36.1 for ledger 9, and its redeploy to the new Preview
-is next.
-- The batched-deploy diagnosis and tooling (`measure-deploy-cost.mjs`, `batch-deploy.ts`)
-  is in [`specs/TESTNET_DEPLOY.md`](specs/TESTNET_DEPLOY.md) Phase 3.5.
+The ledger-9 build is **deployed to Midnight's Preview testnet** at
+`2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6`, all 12 circuits. It is
+too large for one block (its deploy would write ~79% of a block; one transaction may use
+~65%), so 7 circuits deploy in one transaction and the other 5 verifier keys are added by
+signed maintenance updates. A test shielded bond token
+(`30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61`) is deployed with it,
+because Preview's faucet hands out only unshielded tNIGHT.
 
-### Why the live lifecycle runs locally, not on Preview
+```bash
+pnpm --filter @mmr/contracts compact:build   # circuits + proving keys (~4 min)
+pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
+pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
+```
 
-Contract **calls** currently do not get included on Preview, while **deploys** and
-maintenance updates from the same wallet and client do. This was traced to the end: the
+### Why Demo B's lifecycle ran locally
+
+On the retired ledger-8 Preview chain, contract **calls** did not get included, while
+**deploys** and maintenance updates from the same wallet and client did. This was traced to the end: the
 **identical node binary** (`1.0.400-87c0fbdb`, ledger `=8.1.3`) accepts the same calls on
 a **local** node — so the cause is **not** the contract, the ZK, the compiler, or the
 ledger version. It is isolated to the Preview **wallet's DUST/fee structure** (its DUST
 came from registration), matching a known `NotNormalized` DUST-action edge case. It is
 written up in [`specs/CALL_SUBMISSION_BLOCKER.md`](specs/CALL_SUBMISSION_BLOCKER.md) and
-escalated to Midnight. It does not affect the protocol — the byte-identical local node
-runs the whole thing — which is why the primary live lifecycle (Demo B) runs locally.
+escalated to Midnight. It did not affect the protocol — the byte-identical local node
+runs the whole thing. The lifecycle now runs on the ledger-9 Preview deployment next.
 
 ---
 
@@ -155,13 +159,13 @@ verify.
 Real and verified: the whole Midnight/ZK core (one Compact 0.36.1 contract for ledger 9,
 all I1–I10 bound in-circuit, 135 known-answer tests that execute the *compiled* circuit
 and revert on any tampered witness, all run in CI), real `zkir` proving/verifying keys
-(ledger-8 build), the deterministic indexer, the independent watcher, the Preview deploy
-(pre-relaunch chain), and — in Demo B — **5 real on-chain
+(all 12 circuits), the deterministic indexer, the independent watcher, the ledger-9 Preview
+deploy (12/12 circuits on chain), and — in Demo B — **5 real on-chain
 lifecycle calls** (`register → proveFunding`) plus the heavy and time-gated circuits
 (`proveEpoch`, `settle`/`release`/`claim`) executed through the real compiled circuit. The
 IPFS publisher (Pinata v3) and Postgres repository (`@mmr/db`) are real behind their
 interfaces.
 
 Still to wire: the three attester operators' daily `publishRoot` / `disputeRoot` votes
-(the contract side, secret-knowledge votes at 2 of 3, is done) and the ledger-9 Preview
-redeploy. Full detail: [`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).
+(the contract side, secret-knowledge votes at 2 of 3, is done) and the live lifecycle on
+the Preview deployment. Full detail: [`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).

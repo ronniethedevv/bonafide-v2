@@ -1,18 +1,18 @@
 // @mmr/dapp — Binding between the compiled epoch_proof module and its ZK assets.
 //
-// midnight-js 4.1.1 takes a compact-js CompiledContract, not a `new Contract(w)`
-// instance: make(tag, Contract).pipe(withWitnesses, withCompiledFileAssets).
-// CompiledContract is imported from midnight-js-protocol/compact-js (the copy
-// midnight-js compiles against) and the combinators are used in `.pipe` form —
-// the nested form fails to type-check against generated witness types on 4.1.1.
+// Midnight.js 5 takes a compact-js CompiledContract for a ledger 9 contract
+// (compactc 0.36, runtime 0.21): make(tag, Contract).pipe(withWitnesses,
+// withCompiledFileAssets). CompiledContract comes from the protocol package's
+// v9 subpath, the copy Midnight.js itself compiles against.
 //
 // Witness values are carried in the private state rather than closed over, so
-// the deploy (whose constructor needs none) and the interact layer can share one
+// the deploy (whose constructor needs none) and the call scripts can share one
 // binding: each witness reads its slot and throws if a run left it unset. The
 // shapes mirror packages/contracts/test/harness.ts, which assembles I1-I10.
 
-import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
+import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-js";
 import { Contract, type Witnesses } from "@mmr/contracts/epoch_proof";
+import { Contract as BondToken } from "@mmr/contracts/test_bond_token";
 
 /** Every witness epoch_proof declares, as optional private-state slots. */
 export interface EpochProofPrivateState {
@@ -91,8 +91,20 @@ export function compiledEpochProof(zkConfigPath: string) {
   );
 }
 
-/** The 11 circuit ids, for typing the ZK config provider. */
+/** The 12 circuit ids, for typing the ZK config provider. */
 export type EpochProofCircuitId =
-  | "register" | "postBond" | "activate" | "publishRoot" | "proveFunding"
+  | "register" | "postBond" | "activate" | "publishRoot" | "disputeRoot" | "proveFunding"
   | "proveEpoch" | "settleEpoch" | "releaseEpoch" | "voidUnfunded"
   | "defaultEngagement" | "claim";
+
+/** The domain separator the test bond token mints under (test_bond_token.compact). */
+export const BOND_TOKEN_DOMAIN = new Uint8Array(32);
+BOND_TOKEN_DOMAIN.set(new TextEncoder().encode("mmr:bond:test"));
+
+/** The test bond token (Preview only): no witnesses, its own ZK assets. */
+export function compiledTestBondToken(zkConfigPath: string) {
+  return CompiledContract.make<BondToken>("test_bond_token", BondToken).pipe(
+    CompiledContract.withVacantWitnesses,
+    CompiledContract.withCompiledFileAssets(zkConfigPath),
+  );
+}

@@ -55,14 +55,17 @@ jobs:
           chmod +x "$RUNNER_TEMP"/compactc/*
           echo "$RUNNER_TEMP/compactc" >> "$GITHUB_PATH"
 
-      - name: Compile the contract
+      # build/ feeds the KATs; dist/ gives @mmr/dapp the contracts' types (the deploy
+      # itself needs the proving keys from `compact:build`, which CI does not make).
+      - name: Compile the contracts
         working-directory: packages/contracts
-        run: compactc --skip-zk src/epoch_proof.compact build/epoch_proof
+        run: |
+          compactc --skip-zk src/epoch_proof.compact build/epoch_proof
+          mkdir -p dist && cp -r build/epoch_proof dist/epoch_proof
+          compactc --skip-zk src/test_bond_token.compact dist/test_bond_token
 
-      # @mmr/dapp (deploy + live calls) is checked separately until it moves to
-      # Midnight.js 5 for ledger 9.
       - name: Typecheck
-        run: pnpm -r --filter='!@mmr/dapp' typecheck
+        run: pnpm -r typecheck
 
       - name: Test
         run: pnpm -r --filter='!@mmr/dapp' test
