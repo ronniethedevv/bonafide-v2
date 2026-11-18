@@ -32,6 +32,7 @@ import { nextTranche } from "@mmr/protocol";
 import * as Rx from "rxjs";
 import { deriveAttesterSecrets, deriveSecret } from "./committee.js";
 import { loadConfig } from "./config.js";
+import { useEnvProxy } from "./net.js";
 import { PRIVATE_STATE_ID, compiledEpochProofFrom, compiledTestBondToken } from "./contract.js";
 import { buildProviders } from "./providers.js";
 import { buildHeadlessWallet, toMasterSeed } from "./wallet.js";
@@ -62,6 +63,7 @@ const now = () => BigInt(Math.floor(Date.now() / 1000));
 const dayLabel = (d: bigint) => new Date(Number(d * DAY) * 1000).toISOString().slice(0, 10);
 
 async function main(): Promise<void> {
+  useEnvProxy();
   const cfg = loadConfig();
   const here = dirname(fileURLToPath(import.meta.url));
   const deployment = JSON.parse(readFileSync(resolve(here, "..", "deployments", `${cfg.networkId}.json`), "utf8")) as {
