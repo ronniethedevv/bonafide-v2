@@ -24,14 +24,14 @@ no round-trips) with **zero-knowledge proofs on Midnight**, verified against a
 
 ## Source of truth
 
-- **Product spec:** `Market-Maker Reputation Record — v1 Spec` (Claude Docs
-  artifact). The artifact is authoritative for *what* the product does.
+- **Product spec:** `Market-Maker Reputation Record — v1 Spec`. The spec is
+  authoritative for *what* the product does.
 - **Engineering method:** `Technical Architecture Blueprint: Multi-Tier
   High-Security Decentralized Exchange Protocol`. The blueprint is authoritative
   for *how* we build (spec-first, decoupled tiers, invariants, CI/CD,
   security-in-depth).
 
-Where they differ on the contract tier, the artifact wins: the protocol layer
+Where they differ on the contract tier, the product spec wins: the protocol layer
 is **Compact on Midnight** (not Solidity/EVM). **Base and Ethereum are read-only**
 in v1 — we index them (per-chain, Uniswap v3 on both; Aerodrome on Base), we deploy
 nothing to them.
@@ -39,7 +39,8 @@ nothing to them.
 ## Non-negotiable systemic invariants (from the blueprint, §1.2)
 
 1. **Asynchronous execution isolation** — indexing, proving, analytics run in
-   durable background workers (Trigger.dev), never inside HTTP handlers.
+   durable background workers (Trigger.dev), never inside HTTP handlers. For this
+   demo the daily indexer runs on GitHub Actions' scheduler (DD-33).
 2. **Governance** — attester-committee and bond actions follow explicit
    threshold rules (2-of-3 attesters in v1).
 3. **Storage segregation** — minimal markers on-chain; heavy payloads (full

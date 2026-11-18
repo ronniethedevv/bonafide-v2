@@ -1,5 +1,6 @@
-// Trigger.dev tasks (invariant #1: indexing runs in durable background workers, never in
-// an HTTP handler).
+// Trigger.dev tasks: the production runner for the daily indexer (invariant #1: durable
+// background workers, never an HTTP handler). The demo runs the same indexDay on GitHub
+// Actions' scheduler (src/run-daily.ts, DD-33).
 //
 //   daily-index   01:10 UTC every day: index yesterday on every covered chain.
 //   index-epoch   one (chain, day); also run by hand from the dashboard for backfills,

@@ -18,6 +18,23 @@ export function previousDay(now: Date): number {
   return Math.floor(now.getTime() / 1000 / DAY_SECONDS) - 1;
 }
 
+/**
+ * The last `n` closed UTC days before `now`, oldest first. Each run re-checks a few days
+ * back, so a day missed by a failed or skipped run is picked up by the next one (stored
+ * days are skipped at once).
+ */
+export function catchUpDays(now: Date, n: number): number[] {
+  if (!Number.isInteger(n) || n < 1 || n > 14) throw new Error(`catch-up window must be 1..14 days, got ${n}`);
+  const last = previousDay(now);
+  return Array.from({ length: n }, (_, i) => last - (n - 1) + i);
+}
+
+/** Days to look back each run (MMR_CATCHUP_DAYS, default 3). */
+export function catchUpWindow(env: Record<string, string | undefined>): number {
+  const raw = env.MMR_CATCHUP_DAYS;
+  return raw === undefined || raw === "" ? 3 : Number(raw);
+}
+
 /** "2026-11-16" for a unix day number. */
 export function dayLabel(day: number): string {
   return new Date(day * DAY_SECONDS * 1000).toISOString().slice(0, 10);

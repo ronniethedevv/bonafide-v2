@@ -1,0 +1,96 @@
+name: Daily index
+
+# The daily deterministic indexer for the demo (DD-33); production runs it on Trigger.dev.
+# Every covered chain, the last few closed UTC days (stored days are skipped, so a missed
+# run is caught up by the next). Runs at 01:10 UTC, once each day's last block is final;
+# run it by hand for a backfill. Skips at once while no chain has covered tokens.
+#
+# Settings → Secrets and variables → Actions
+#   Secrets:   DATABASE_URL, BASE_ARCHIVE_RPC_URL (archive RPC with the key in the URL),
+#              IPFS_PINNING_JWT; ETH_ARCHIVE_RPC_URL only if Ethereum is covered
+#   Variables: MMR_COVERAGE_8453 (base tokens to index on Base; MMR_COVERAGE_1 for
+#              Ethereum), MMR_LOG_CHUNK_BLOCKS (10 on a free RPC key, e.g. 2000 on a paid
+#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_TREASURY_8453
+
+on:
+  schedule:
+    - cron: "10 1 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "One UTC day to index (YYYY-MM-DD). Leave empty for the usual catch-up window."
+        required: false
+        default: ""
+      chain:
+        description: "Chain id (8453 Base, 1 Ethereum). Leave empty for every covered chain."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BASE_ARCHIVE_RPC_URL: ${{ secrets.BASE_ARCHIVE_RPC_URL }}
+      ETH_ARCHIVE_RPC_URL: ${{ secrets.ETH_ARCHIVE_RPC_URL }}
+      IPFS_PINNING_JWT: ${{ secrets.IPFS_PINNING_JWT }}
+      MMR_COVERAGE_8453: ${{ vars.MMR_COVERAGE_8453 }}
+      MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 }}
+      MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 }}
+      MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 }}
+      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS }}
+      MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS }}
+      MMR_INDEX_DATE: ${{ inputs.date }}
+      MMR_INDEX_CHAIN: ${{ inputs.chain }}
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$MMR_COVERAGE_8453$MMR_COVERAGE_1" ]; then
+            echo "::notice::No covered tokens yet (MMR_COVERAGE_8453 / MMR_COVERAGE_1 variables); nothing to index."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=""
+          for name in DATABASE_URL IPFS_PINNING_JWT; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$MMR_COVERAGE_8453" ] && [ -z "$BASE_ARCHIVE_RPC_URL" ]; then missing="$missing BASE_ARCHIVE_RPC_URL"; fi
+          if [ -n "$MMR_COVERAGE_1" ] && [ -z "$ETH_ARCHIVE_RPC_URL" ]; then missing="$missing ETH_ARCHIVE_RPC_URL"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Tokens are covered but these secrets are missing:$missing"
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ready == 'true'
+
+      - name: Install pnpm
+        if: steps.cfg.outputs.ready == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.cfg.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile --filter "@mmr/worker..."
+
+      - name: Index
+        if: steps.cfg.outputs.ready == 'true'
+        run: pnpm --filter @mmr/worker index
