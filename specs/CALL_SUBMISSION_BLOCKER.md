@@ -1,7 +1,9 @@
 # Blocker: contract **calls** are never included on Preview (deploys and updates are)
 
-**Status:** open, unresolved. Suspected ecosystem gap, not an `mm-reputation` bug.
-**Recorded:** 2026-11-01. **Network:** Midnight Preview.
+**Status:** recorded on the ledger-8 Preview chain, which Midnight relaunched as a new
+ledger-9 chain on 2026-11-07; to be retested there with the ledger-9 (Compact 0.36.1)
+redeploy. Suspected ecosystem gap, not an `mm-reputation` bug.
+**Recorded:** 2026-11-01. **Network:** Midnight Preview (pre-relaunch).
 
 Every contract **call** we have submitted — from two different contracts, deployed two
 different ways — fails to reach a block. Every **deploy** and **maintenance update** from

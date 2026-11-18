@@ -2,6 +2,7 @@
   "name": "mm-reputation",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Privacy-preserving reputation record for crypto market makers (ZK on Midnight, deterministic Base indexer).",
   "packageManager": "pnpm@10.28.0",

@@ -94,7 +94,7 @@ compiled circuit** via `@midnight-ntwrk/compact-runtime` — every `transientHas
 node's AURA consensus cannot do on-chain without 24 h of real time:
 
 ```bash
-pnpm --filter @mmr/contracts test        # 123 KATs, 7 files: full lifecycle incl. proveEpoch + claim
+pnpm --filter @mmr/contracts test        # 135 KATs, 8 files: full lifecycle incl. proveEpoch + claim
 ```
 
 > **Why the split:** midnight-node advances block time only in real time (fixed AURA
@@ -112,14 +112,13 @@ output, non-empty, in `build/epoch_proof/keys`.
 
 ## Demo C — also live on the public Preview testnet (supporting)
 
-The same contract is **deployed to Midnight's public Preview testnet** and verifiable on
-chain — all 11 circuits, via a batched deploy (the contract is too large for one block,
-so 8 circuits deploy in one tx and 3 verifier keys are inserted via maintenance updates):
-
-- **Contract:** `48e2cfceccd0a7b771f5bb71337455f2df03540aadcaf0bc3687d310e52d9eb6`
-- **To confirm it on chain:** open the [Midnight Explorer](https://midnightexplorer.com),
-  switch the network selector to **Preview**, and paste the contract address — all 11
-  circuits are present, and `findDeployedContract()` attaches successfully.
+The contract was **deployed to Midnight's Preview testnet** — all 11 circuits of the
+ledger-8 build, via a batched deploy (the contract is too large for one block, so 8
+circuits deploy in one tx and 3 verifier keys are inserted via maintenance updates) — at
+`48e2cfceccd0a7b771f5bb71337455f2df03540aadcaf0bc3687d310e52d9eb6`. Midnight relaunched
+Preview as a new ledger-9 chain on 7 Nov 2026, which retired that deployment; the
+contract now builds with Compact 0.36.1 for ledger 9, and its redeploy to the new Preview
+is next.
 - The batched-deploy diagnosis and tooling (`measure-deploy-cost.mjs`, `batch-deploy.ts`)
   is in [`specs/TESTNET_DEPLOY.md`](specs/TESTNET_DEPLOY.md) Phase 3.5.
 
@@ -153,15 +152,16 @@ verify.
 
 ## What's real vs. stubbed
 
-Real and verified: the whole Midnight/ZK core (one Compact 0.31.1 contract, all I1–I10
-bound in-circuit, 123 known-answer tests that execute the *compiled* circuit and revert on
-any tampered witness), real `zkir` proving/verifying keys, the deterministic indexer, the
-independent watcher, the **live Preview deploy**, and — in Demo B — **5 real on-chain
+Real and verified: the whole Midnight/ZK core (one Compact 0.36.1 contract for ledger 9,
+all I1–I10 bound in-circuit, 135 known-answer tests that execute the *compiled* circuit
+and revert on any tampered witness, all run in CI), real `zkir` proving/verifying keys
+(ledger-8 build), the deterministic indexer, the independent watcher, the Preview deploy
+(pre-relaunch chain), and — in Demo B — **5 real on-chain
 lifecycle calls** (`register → proveFunding`) plus the heavy and time-gated circuits
 (`proveEpoch`, `settle`/`release`/`claim`) executed through the real compiled circuit. The
 IPFS publisher (Pinata v3) and Postgres repository (`@mmr/db`) are real behind their
 interfaces.
 
-Clearly-labelled and still to wire: a live Base archive-RPC reader and real
-Jubjub-Schnorr attester signing. These are interface stubs and do not touch the contract
-logic. Full detail: [`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).
+Still to wire: the three attester operators' daily `publishRoot` / `disputeRoot` votes
+(the contract side, secret-knowledge votes at 2 of 3, is done) and the ledger-9 Preview
+redeploy. Full detail: [`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).
