@@ -29,7 +29,7 @@ import {
 } from "@mmr/merkle";
 import { PoseidonHasher, digestToField } from "@mmr/merkle/poseidon";
 import {
-  type EngagementTerms, MAX_EPOCHS, ZERO_CARRY, carryStep, genesisCarry, type CarryTotals,
+  type EngagementTerms, ZERO_CARRY, carryStep, genesisCarry, type CarryTotals,
 } from "@mmr/prover";
 import {
   DEFAULT_CONFIG, type DepthBucketSample, type FlowWindowSample,
@@ -285,7 +285,7 @@ export function buildScenario(
         floor_price_P: 2n, loan_L0: 1_000n, quote_start_Q0: 5n,
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
-        min_uptime_buckets: 40n, epochs_total: 3n,
+        min_uptime_buckets: 40n, epochs_total: 30n,
       },
       termsSalt: fill32(0x7e),
       carryPrev: { ...ZERO_CARRY_W }, carryPrevSalt: fill32(0), carryNewSalt: fill32(0xc1), // genesis
@@ -314,9 +314,23 @@ export interface ProveResult {
   carryCommitment: Uint8Array | undefined;
   /** Contract state after the call; pass to the next runProveEpoch to chain epochs. */
   state: rt.ChargedState;
+  /** DD-35: the engagement's registered tier, carried in its epoch record. */
+  tier: bigint;
 }
 
 const COIN_PK = "0".repeat(64);
+
+/** Default block time for circuits that read it (H3): 2023-11-14T22:13:20Z. */
+export const BLOCK_TIME = 1_700_000_000n;
+/** DD-35: the protocol bond token fixed at deploy (a shielded token type). */
+export const BOND_TOKEN = new Uint8Array(32).fill(3);
+/** DD-35: every engagement runs exactly this many epochs. */
+export const CONTRACT_EPOCHS = 30;
+/** DD-35: the start day recorded by activate at `ts`: the UTC day after it. */
+export const startDayFor = (ts: bigint): bigint => ts / 86_400n + 1n;
+const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
+/** Engagement secrets by id, recorded by runRegister: activate is the owner's (DD-35). */
+const SECRETS = new Map<string, Uint8Array>();
 
 /** A struct descriptor from (field, descriptor) pairs, as the compiler emits them. */
 function structType<T extends object>(
@@ -333,6 +347,15 @@ const U192 = new rt.CompactTypeUnsignedInteger((1n << 192n) - 1n, 24);
 /** epoch_proof EpochRef { id: Bytes<32>, epoch: Uint<64> } — the epochUptime key preimage. */
 const EPOCH_REF = structType<{ id: Uint8Array; epoch: bigint }>(
   [["id", new rt.CompactTypeBytes(32)], ["epoch", U64]]);
+/** DD-35: published-root key RootRef { chain, day } and per-tier profile key ProfileTier. */
+const ROOT_REF = structType<{ chain: bigint; day: bigint }>([["chain", U64], ["day", U64]]);
+const PROFILE_TIER = structType<{ profile: Uint8Array; tier: bigint }>(
+  [["profile", new rt.CompactTypeBytes(32)], ["tier", new rt.CompactTypeUnsignedInteger(255n, 1)]]);
+/** The contract's rootKey(chain, day). */
+export const rootKey = (chain: bigint, day: bigint): Uint8Array => rt.persistentHash(ROOT_REF, { chain, day });
+/** The contract's per-tier profile counter key. */
+export const profileTierKey = (profile: Uint8Array, tier: bigint): Uint8Array =>
+  rt.persistentHash(PROFILE_TIER, { profile, tier });
 /** epoch_proof CarryTotals (M2(b)). */
 export const CARRY_TOTALS = structType<CarryTotalsW>(
   [["xfer_in", U192], ["xfer_out", U192], ["from_treasury", U192]]);
@@ -368,6 +391,8 @@ export async function runProveEpoch(
     }
     state = reg.state;
   }
+  // DD-35: proving needs an activated engagement (bond posted, start day recorded).
+  state = await activateIfRegistered(state, id);
   if (opts.publish !== false) state = await publishRoot(state, epoch, rootOfRoots);
   const mod = await import(BUILD_DIR);
   const witnesses = {
@@ -401,7 +426,24 @@ export async function runProveEpoch(
     uptime: out.uptime, walletCommit: out.walletCommit, termsCommit: out.termsCommit, ledgerUptime,
     carryCommitment: led.carryCommitment?.member(id) ? led.carryCommitment.lookup(id) as Uint8Array : undefined,
     state: after,
+    tier: led.tier.lookup(id) as bigint,
   };
+}
+
+/**
+ * DD-35: a registered engagement must be activated before it can prove: post its bond
+ * (the registered amount, in the bond token) and activate it at BLOCK_TIME as its owner.
+ * No-op for an engagement that is not Registered or whose secret the harness never saw.
+ */
+async function activateIfRegistered(state: rt.ChargedState, id: Uint8Array): Promise<rt.ChargedState> {
+  const mod = await import(BUILD_DIR);
+  const led = mod.ledger(state);
+  if (!led.status.member(id) || Number(led.status.lookup(id)) !== Status.Registered) return state;
+  if (!SECRETS.has(hex(id))) return state;
+  if (!led.escrowed.member(id)) {
+    state = (await runLifecycle("postBond", [id], { state, coin: { ...BOND_COIN, value: led.bondRequired.lookup(id) as bigint } })).state;
+  }
+  return (await runLifecycle("activate", [id, KAT_START_DAY, BLOCK_TIME], { state, blockTime: BLOCK_TIME })).state;
 }
 
 const unusedWitness = (name: string) => () => { throw new Error(`witness ${name} not supplied for this circuit`); };
@@ -417,7 +459,7 @@ export const stubWitnesses = (): Record<string, unknown> =>
 const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
 
 interface CompiledContract {
-  initialState(ctx: unknown, committee: Uint8Array[]): Promise<{ currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown }>;
+  initialState(ctx: unknown, committee: Uint8Array[], bondToken: Uint8Array): Promise<{ currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown }>;
 }
 
 // --- I8: attester committee (DD-26) -------------------------------------------------
@@ -439,32 +481,58 @@ export function cidBytes(cid: string): Uint8Array {
 }
 export const KAT_CID = cidBytes("bafy-kat-epoch-tree");
 
-/** One member's publishRoot transaction (authenticated by its secret). */
+/**
+ * DD-35: roots are published per (chain, UTC day). Every KAT engagement is activated on
+ * BLOCK_TIME's day, so its epoch e is day KAT_START_DAY + e - 1 on KAT_CHAIN; the helpers
+ * below take that engagement epoch and publish under its (chain, day) key.
+ */
+export const KAT_CHAIN = 8453n;
+export const KAT_START_DAY = BLOCK_TIME / 86_400n + 1n;
+export const dayOfEpoch = (epoch: bigint): bigint => KAT_START_DAY + epoch - 1n;
+
+/** One member's publishRoot transaction (authenticated by its secret) for KAT epoch `epoch`. */
 export async function runPublishRoot(
   secret: Uint8Array,
   epoch: bigint,
   root: Uint8Array,
   state: rt.ChargedState,
   cid: Uint8Array = KAT_CID,
+  chain: bigint = KAT_CHAIN,
 ): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
-  const res = await contract.circuits.publishRoot(await freshContext(contract, "publishRoot", state), epoch, root, cid);
+  const day = dayOfEpoch(epoch);
+  const res = await contract.circuits.publishRoot(await freshContext(contract, "publishRoot", state), chain, day, root, cid);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
+  const k = rootKey(chain, day);
   return {
     state: after,
-    published: led.publishedRoot.member(epoch) ? led.publishedRoot.lookup(epoch) : undefined,
-    cid: led.publishedCid.member(epoch) ? led.publishedCid.lookup(epoch) : undefined,
+    published: led.publishedRoot.member(k) ? led.publishedRoot.lookup(k) : undefined,
+    cid: led.publishedCid.member(k) ? led.publishedCid.lookup(k) : undefined,
   };
 }
 
-/** 2-of-3 publication of `root` for `epoch` (members 0 and 1), unless already published. */
-export async function publishRoot(state: rt.ChargedState, epoch: bigint, root: Uint8Array): Promise<rt.ChargedState> {
+/** 2-of-3 publication of `root` for KAT epoch `epoch` (members 0 and 1), unless already published. */
+export async function publishRoot(state: rt.ChargedState, epoch: bigint, root: Uint8Array,
+                                  chain: bigint = KAT_CHAIN): Promise<rt.ChargedState> {
   const mod = await import(BUILD_DIR);
-  if (mod.ledger(state).publishedRoot.member(epoch)) return state;
-  const a = await runPublishRoot(ATTESTERS[0]!, epoch, root, state);
-  return (await runPublishRoot(ATTESTERS[1]!, epoch, root, a.state)).state;
+  if (mod.ledger(state).publishedRoot.member(rootKey(chain, dayOfEpoch(epoch)))) return state;
+  const a = await runPublishRoot(ATTESTERS[0]!, epoch, root, state, KAT_CID, chain);
+  return (await runPublishRoot(ATTESTERS[1]!, epoch, root, a.state, KAT_CID, chain)).state;
+}
+
+/** DD-35: one member's disputeRoot vote on KAT epoch `epoch`'s published root. */
+export async function runDisputeRoot(
+  secret: Uint8Array,
+  epoch: bigint,
+  state: rt.ChargedState,
+): Promise<{ state: rt.ChargedState; disputed: boolean }> {
+  const mod = await import(BUILD_DIR);
+  const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
+  const res = await contract.circuits.disputeRoot(await freshContext(contract, "disputeRoot", state), KAT_CHAIN, dayOfEpoch(epoch));
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
+  return { state: after, disputed: mod.ledger(after).disputedRoot.member(rootKey(KAT_CHAIN, dayOfEpoch(epoch))) };
 }
 
 /**
@@ -496,14 +564,12 @@ export const FUNDED_A = { xferIn: 1_004n, fromTreasury: 1_000n } as const;
 export async function freshState(): Promise<rt.ChargedState> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract(stubWitnesses());
-  return (await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE)).currentContractState.data;
+  return (await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE, BOND_TOKEN)).currentContractState.data;
 }
 
-/** Default block time for circuits that read it (H3): 2023-11-14T22:13:20Z. */
-export const BLOCK_TIME = 1_700_000_000n;
 
 async function freshContext(contract: CompiledContract, circuitId: string, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
-  const init = await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE);
+  const init = await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE, BOND_TOKEN);
   // H3: `time` is the trusted "now" — what blockTimeLt/Gte compare against on-chain.
   return rt.createCircuitContext({
     circuitId,
@@ -547,6 +613,8 @@ export async function runRegister(
   registeredTs: bigint = BLOCK_TIME,
   blockTime: bigint = BLOCK_TIME,
   state?: rt.ChargedState,
+  /** DD-35: the public registration terms (defaults: tier A on Base, the tier-A bond, CLIENT_PK). */
+  pub: { tier?: bigint; chain?: bigint; bond?: bigint; beneficiary?: Uint8Array } = {},
 ): Promise<Registered> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({
@@ -554,8 +622,11 @@ export async function runRegister(
     engagementSecret: wit(engagementSecret), committedWallets: wit(w.committedWallets),
     walletSalt: wit(w.walletSalt), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
   });
-  const res = await contract.circuits.register(await freshContext(contract, "register", state, blockTime), 1n, registeredTs);
+  const res = await contract.circuits.register(await freshContext(contract, "register", state, blockTime),
+    pub.tier ?? KAT_TIER, pub.chain ?? KAT_CHAIN, pub.bond ?? REQUIRED_BOND, { bytes: pub.beneficiary ?? CLIENT_PK },
+    registeredTs);
   const id = res.result as Uint8Array;
+  SECRETS.set(hex(id), engagementSecret);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
   return {
@@ -604,11 +675,15 @@ export const BOND_CALLER_PK = new Uint8Array(32);
 export async function runLifecycle(
   circuit: LifecycleCircuit,
   args: readonly unknown[],
-  opts: { state?: rt.ChargedState | undefined; blockTime?: bigint; coin?: CoinW; record?: EpochRecordW } = {},
+  opts: { state?: rt.ChargedState | undefined; blockTime?: bigint; coin?: CoinW; record?: EpochRecordW;
+          secret?: Uint8Array } = {},
 ): Promise<BondRun> {
   const mod = await import(BUILD_DIR);
   const values: Record<string, unknown> = {};
   if (opts.coin) values.bondCoin = wit(opts.coin);
+  // DD-35: activate is the owner's; default to the secret the engagement was registered with.
+  const known = circuit === "activate" ? SECRETS.get(hex(args[0] as Uint8Array)) : undefined;
+  if (opts.secret ?? known) values.engagementSecret = wit(opts.secret ?? known);
   if (opts.record && opts.state) {
     const records = mod.ledger(opts.state).epochRecords;
     const genesis = records.findPathForLeaf(GENESIS_RECORD);
@@ -642,16 +717,20 @@ export const T = {
 export interface Engagement {
   id: Uint8Array;
   reg: Registered;
-  /** activatedAt[id]: epoch e ends at activatedAt + e * EPOCH. */
+  /** activatedAt[id]: when the engagement was activated. */
   activatedAt: bigint;
+  /** DD-35: startDay[id]: epoch e is UTC day startDay + e - 1 and ends at (startDay + e) * EPOCH. */
+  startDay: bigint;
   state: rt.ChargedState;
   records: EpochRecordW[];
   scenario: Scenario;
 }
 
-export const BOND_COIN: CoinW = { nonce: new Uint8Array(32).fill(7), color: new Uint8Array(32).fill(3), value: 1_000n };
-export const CLIENT_PK = new Uint8Array(32).fill(0xbe); // slash beneficiary
-export const TIER_MIN = 500n;
+/** DD-35: the protocol bond token fixed at deploy, the KAT tier (A) and its minimum bond. */
+export const KAT_TIER = 1n;
+export const REQUIRED_BOND = 10_000n;
+export const BOND_COIN: CoinW = { nonce: new Uint8Array(32).fill(7), color: BOND_TOKEN, value: REQUIRED_BOND };
+export const CLIENT_PK = new Uint8Array(32).fill(0xbe); // slash beneficiary (registered)
 
 /**
  * register (at BLOCK_TIME) -> postBond -> activate (at BLOCK_TIME + 100) -> prove epochs
@@ -665,11 +744,11 @@ export async function runningEngagement(
   const reg = await runRegister(scenario.witness, opts.secret ?? new Uint8Array(32).fill(0x99));
   let state = reg.state;
   if (opts.coin !== null) {
-    state = (await runLifecycle("postBond", [reg.id, TIER_MIN, { bytes: CLIENT_PK }],
-      { state, coin: opts.coin ?? BOND_COIN })).state;
+    state = (await runLifecycle("postBond", [reg.id], { state, coin: opts.coin ?? BOND_COIN })).state;
   }
   const activatedAt = BLOCK_TIME + 100n;
-  state = (await runLifecycle("activate", [reg.id, new Uint8Array(32), activatedAt],
+  const startDay = startDayFor(activatedAt);
+  state = (await runLifecycle("activate", [reg.id, startDay, activatedAt],
     { state, blockTime: activatedAt })).state;
   // I8: the committee publishes a root for every epoch of the contract, proven or not
   // (roots are per indexer epoch, independent of any MM). opts.publish: false skips it.
@@ -684,11 +763,11 @@ export async function runningEngagement(
     const r = await proveEpochs(Array.from({ length: n }, () => scenario), reg.id, new CompactHasher(), state);
     state = r.state; records = r.records;
   }
-  return { id: reg.id, reg, activatedAt, state, records, scenario };
+  return { id: reg.id, reg, activatedAt, startDay, state, records, scenario };
 }
 
-/** End of epoch `e` and its last settlement moment for an engagement. */
-export const epochEndOf = (g: Engagement, e: bigint): bigint => g.activatedAt + e * T.EPOCH;
+/** End of epoch `e` and its last settlement moment for an engagement (DD-35: UTC days). */
+export const epochEndOf = (g: Engagement, e: bigint): bigint => (g.startDay + e) * T.EPOCH;
 export const graceDeadlineOf = (g: Engagement, e: bigint): bigint => epochEndOf(g, e) + T.AFTER_END;
 
 /** settleEpoch(e) at `blockTime` recording `settledTs` (default: = blockTime). */
@@ -701,9 +780,9 @@ export function settle(g: Engagement, state: rt.ChargedState, e: bigint, blockTi
 // --- H4: a run of proven epochs, then claim ----------------------------------------
 
 /** epoch_proof EpochRecord (the epochRecords tree leaf). */
-export interface EpochRecordW { id: Uint8Array; epoch: bigint; uptime: bigint; termsCommit: Uint8Array }
+export interface EpochRecordW { id: Uint8Array; epoch: bigint; uptime: bigint; termsCommit: Uint8Array; tier: bigint }
 export const GENESIS_RECORD: EpochRecordW =
-  { id: new Uint8Array(32), epoch: 0n, uptime: 0n, termsCommit: new Uint8Array(32) };
+  { id: new Uint8Array(32), epoch: 0n, uptime: 0n, termsCommit: new Uint8Array(32), tier: 0n };
 
 /**
  * Prove epochs 1..n for one engagement on one ledger, threading the M2(b) carry
@@ -734,7 +813,7 @@ export async function proveEpochs(
     w.carryPrevSalt = prevSalt;
     w.carryNewSalt = newSalt;
     const r = await runProveEpoch(w, id, rootOfRoots, epoch, state);
-    records.push({ id, epoch, uptime: r.uptime, termsCommit: r.termsCommit });
+    records.push({ id, epoch, uptime: r.uptime, termsCommit: r.termsCommit, tier: r.tier });
     state = r.state; prev = step.newTotals; prevSalt = newSalt; prevCommitment = step.newCommitment;
   }
   return { state: state!, records };
@@ -757,6 +836,8 @@ export interface ClaimArgs {
   present: ReadonlyMap<number, EpochRecordW>;
   epochsPassed: bigint;
   epochsTotal: bigint;
+  /** DD-35: the tier claimed (default the KAT tier); routes the per-tier counters. */
+  tier?: bigint;
 }
 
 export interface ClaimResult {
@@ -778,7 +859,7 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
   const genesis = pathFor(GENESIS_RECORD);
   const presentFlags: boolean[] = [];
   const paths: unknown[] = [];
-  for (let e = 0; e < MAX_EPOCHS; e++) {
+  for (let e = 0; e < CONTRACT_EPOCHS; e++) {
     const rec = a.present.get(e + 1);
     presentFlags.push(rec !== undefined);
     // a presented record not on the ledger gets a forged path (leaf swapped into a real one)
@@ -790,10 +871,11 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     engagementSecret: wit(a.engagementSecret), profileSecret: wit(a.profileSecret),
     claimRecordPresent: wit(presentFlags), claimRecordPaths: wit(paths),
   });
-  const res = await contract.circuits.claim(await freshContext(contract, "claim", state), a.engagementId, 1n, a.epochsPassed, a.epochsTotal);
+  const tier = a.tier ?? KAT_TIER;
+  const res = await contract.circuits.claim(await freshContext(contract, "claim", state), a.engagementId, tier, a.epochsPassed, a.epochsTotal);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const l2 = mod.ledger(after);
-  const pid = rt.persistentHash(new rt.CompactTypeBytes(32), a.profileSecret);
+  const pid = profileTierKey(rt.persistentHash(new rt.CompactTypeBytes(32), a.profileSecret), tier);
   return {
     state: after,
     completed: l2.completedCount.lookup(pid).read() as bigint,

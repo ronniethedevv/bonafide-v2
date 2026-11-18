@@ -13,7 +13,7 @@ import {
   type BondRun, type Engagement,
 } from "./harness.js";
 
-const E = 3; // buildScenario terms.epochs_total
+const E = 30; // every engagement runs 30 epochs (DD-35)
 
 const eq = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 const sentTo = (r: BondRun, pk: Uint8Array) =>
@@ -49,7 +49,8 @@ describe.skipIf(!HAVE_BUILD)("M3b: release tranches follow the proven-epoch sche
     let s = state;
     let paid = 0n;
     // any settled epoch may go first; the k-th release always pays the k-th step
-    for (const [k, e] of [3n, 1n, 2n].entries()) {
+    const order = [3n, 1n, 2n, ...Array.from({ length: E - 3 }, (_, i) => BigInt(i + 4))];
+    for (const [k, e] of order.entries()) {
       const amount = nextTranche(BOND_COIN.value, E, k);
       const r = await release(e, amount, s);
       expect(sentTo(r, BOND_CALLER_PK)).toBe(amount);
@@ -87,45 +88,46 @@ describe.skipIf(!HAVE_BUILD)("M3b: release tranches follow the proven-epoch sche
   });
 
   it("no epoch beyond the contract can settle, release or default", async () => {
-    await expect(settle(g, state, 4n, epochEndOf(g, 4n), undefined, { ...g.records[0]!, epoch: 4n }))
+    await expect(settle(g, state, 31n, epochEndOf(g, 31n), undefined, { ...g.records[0]!, epoch: 31n }))
       .rejects.toThrow(/epoch outside the contract \(M3b\)/);
-    await expect(release(4n, 333n)).rejects.toThrow(/epoch not settled \(H3b\)/);
-    await expect(runLifecycle("defaultEngagement", [g.id, 4n], { state, blockTime: graceDeadlineOf(g, 4n) }))
+    await expect(release(31n, 333n)).rejects.toThrow(/epoch not settled \(H3b\)/);
+    await expect(runLifecycle("defaultEngagement", [g.id, 31n], { state, blockTime: graceDeadlineOf(g, 31n) }))
       .rejects.toThrow(/epoch outside the contract \(M3b\)/);
   });
 
   it("a completed engagement cannot be defaulted afterwards", async () => {
     let s = state;
-    for (const [k, e] of [1n, 2n, 3n].entries()) s = (await release(e, nextTranche(BOND_COIN.value, E, k), s)).state;
-    await expect(runLifecycle("defaultEngagement", [g.id, 3n], { state: s, blockTime: graceDeadlineOf(g, 3n) }))
+    for (let k = 0; k < E; k++) s = (await release(BigInt(k + 1), nextTranche(BOND_COIN.value, E, k), s)).state;
+    await expect(runLifecycle("defaultEngagement", [g.id, 30n], { state: s, blockTime: graceDeadlineOf(g, 30n) }))
       .rejects.toThrow(/engagement not running/);
   });
 });
 
 describe.skipIf(!HAVE_BUILD)("M3b: an uneven bond still sums exactly to the escrow", () => {
-  it("B = 1001 over 3 epochs pays 333 + 334 + 334 and empties escrow", async () => {
-    const bond = 1_001n;
+  it("B = 10,001 over 30 epochs pays the floor(B·k/E) steps and empties escrow", async () => {
+    const bond = 10_001n;
     const { g, state, at } = await settledEngagement(bond);
     let s = state;
     const paid: bigint[] = [];
-    for (const [k, e] of [1n, 2n, 3n].entries()) {
+    for (let k = 0; k < E; k++) {
       const amount = nextTranche(bond, E, k);
-      const r = await runLifecycle("releaseEpoch", [g.id, e, amount], { state: s, blockTime: at });
+      const r = await runLifecycle("releaseEpoch", [g.id, BigInt(k + 1), amount], { state: s, blockTime: at });
       paid.push(sentTo(r, BOND_CALLER_PK));
       s = r.state;
       if (k === E - 1) expect(r.escrowed).toBeUndefined();
     }
-    expect(paid).toEqual([333n, 334n, 334n]);
+    expect(paid).toEqual(Array.from({ length: E }, (_, k) => nextTranche(bond, E, k)));
+    expect(paid.slice(0, 3)).toEqual([333n, 333n, 334n]);
     expect(paid.reduce((a, x) => a + x, 0n)).toBe(bond);
   });
 });
 
 describe.skipIf(!HAVE_BUILD)("M3b: the contract length is fixed at registration", () => {
-  it("register rejects epochs_total outside 1..90", async () => {
-    for (const bad of [0n, 91n]) {
+  it("register accepts only the standard 30-epoch length (DD-35)", async () => {
+    for (const bad of [0n, 29n, 31n, 90n]) {
       const w = cloneWitness(buildScenario().witness);
       w.terms.epochs_total = bad;
-      await expect(runRegister(w, new Uint8Array(32).fill(0x99))).rejects.toThrow(/epochs_total out of range \(M3b\)/);
+      await expect(runRegister(w, new Uint8Array(32).fill(0x99))).rejects.toThrow(/engagements run 30 epochs \(DD-35\)/);
     }
   });
 });

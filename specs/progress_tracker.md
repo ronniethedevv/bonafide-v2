@@ -91,6 +91,7 @@ leaf schema, root-of-roots).
 | 2026-11-17 | **DD-31 resolved: anti-JIT in seconds** — `kMinSeconds = 60` replaces `kMinBlocks = 30`; `AddressActivity.lpFirstActiveTs` (block timestamp, fetched by the provider) replaces `lpFirstActiveBlock`; `isJit` = `endTs − lpFirstActiveTs < kMinSeconds`; `kMinSeconds` added to the epoch manifest and validated in `assertConfig`. New tests: 60 s / 59 s boundary, block numbers irrelevant, and a block-by-block check that it equals the old 30-block rule on 2 s blocks (so pre-switch roots are unchanged). Fixtures in indexer, prover, watcher, witness, agent and contract KAT moved to timestamps. Also: RPC cache writes are now atomic (temp + rename); the agent refuses pre-DD-31 replay files; the running VIRTUAL/USDC replay was restarted on the new code (resumed from cache, no epochs had been written). All package tests pass (tearsheet PDF test excluded: Chromium hangs on a fresh profile on this build host). Live re-check: re-indexing the pinned Base epoch (BROOMY/WETH 0.3%, 2026-10-21, 89 leaves) with the new rule reproduces root `0x5a3a6373…04461` exactly, built twice | **done** |
 | 2026-11-18 | **Daily indexer: demo scheduler (DD-33)** — PR #12 merged (agent v1, WalletConnect, indexer, DD-31); production applied migrations `0003`/`0004`; unused second Vercel project removed (the live project keeps the Neon store). Demo runner: `apps/worker/src/run-daily.ts` (`pnpm --filter @mmr/worker index`: covered chains × last `MMR_CATCHUP_DAYS` days, or one `MMR_INDEX_DATE`/`MMR_INDEX_CHAIN`) and `.github/workflows/daily-index.yml` (01:10 UTC + manual backfill, skips at once without coverage, fails clearly on missing secrets). Production runner: the Trigger.dev tasks in `apps/worker/src/trigger` (SDK/CLI 4.8.5). Tests: 9 worker tests (catch-up window, run plan, indexDay on Postgres); the real command against a migrated database skips a stored day without RPC/IPFS; filtered install (`--filter "@mmr/worker..."`) runs in a clean checkout | **done** |
 | 2026-11-18 | **Ledger 9 toolchain (DD-34)** — Compact 0.36.1 / runtime 0.21.0 in `contracts`, `merkle`, `worker`; Poseidon helper on the new casts; KAT harness on the async, `callContext` runtime API; CI compiles the contract (pinned by SHA-256) and requires the build. 123/123 contract KATs pass locally (previously 6 ran in CI); all package tests pass, pinned epoch roots unchanged | **done** |
+| 2026-11-18 | **Review fixes in the contract (DD-35)** — roots keyed by (chain, UTC day) with day-aligned epochs; public tier/chain/bond/beneficiary at registration with per-tier minimum bonds and a deploy-time bond token; owner-only, bond-first activation; `disputeRoot` (2 of 3) blocking settle/release/default; fixed 30-epoch engagements, 30-slot claim with the tier checked against the records and per-tier counters; dead identity check removed. KATs: harness drives the new flow (bond + owner activation + (chain, day) roots), 30-epoch tranche/bond/claim tests, +12 new (`dd35.kat.test.ts`: different-start-day proofs, cross-chain roots, registration rules, dispute votes and their effects; owner/bond/start-day activation; per-tier claim). 135/135 contract KATs, all packages green; engagement file and wizard fixed to 30 epochs; client dispute copy matches the contract | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
@@ -479,6 +480,29 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   byte. CI installs the checksum-pinned compiler and compiles the contract, so all 123
   contract KATs run there (`KAT_REQUIRE_BUILD=1` fails the run if the build is missing).
   `@mmr/dapp` moves to Midnight.js 5 with the redeploy.
+- **DD-35** (contract) **Review fixes: roots by (chain, day), bond and tier rules, a real
+  dispute, fixed length.** (1) Published roots are keyed by `rootKey(chain, day)`; `activate`
+  records `startDay` (the UTC day after activation, range-checked against the
+  block-time-checked `activatedTs`), epoch e is day `startDay + e - 1` and ends at
+  `(startDay + e) · 86400`, so engagements that start on different days prove against their
+  own day's root and Base/Ethereum roots never collide. (2) `register` fixes tier (1 A,
+  2 B, 3 C), chain (1 or 8453), the required bond and the beneficiary publicly, with a fixed
+  per-tier minimum bond (A 10,000 / B 5,000 / C 2,500 in the bond token); the bond token is
+  a deploy-time constant; `postBond` checks token and amount; `activate` needs the
+  engagement secret (only the MM starts the clock) and a posted bond. These values are
+  public, not in the committed terms: the bond and beneficiary were already public once
+  posted, the client checks them before accepting, and the terms commitment and every TS
+  encoder of it stay unchanged. (3) `disputeRoot(chain, day)`: committee members vote; at
+  2 of 3 the root is disputed and no epoch on it settles, releases or defaults (the MM is
+  not slashed for a bad root; its tranche for that day stays escrowed). The client UI asks
+  the committee to recheck instead of offering a bond-backed challenge. (4) Engagements run
+  exactly 30 epochs (register and claim), so length links nothing; `claim` loops 30 slots,
+  checks the claimed tier against each presented record's tier (`EpochRecord.tier`, written
+  by `proveEpoch` from the registered tier) and keeps counters per (profile, tier). A claim
+  presenting no records cannot have its tier verified; it only adds misses to that tier.
+  Removed `assertNotIdentity`: a `ZswapCoinPublicKey` is a SHA-256 hash of the coin secret
+  key (no curve point), and the check was unused; the beneficiary must instead be non-zero.
+  Not done: weekly claim batching (claim timing can still correlate with an engagement's end).
 
 ## Open decisions (carry from spec)
 

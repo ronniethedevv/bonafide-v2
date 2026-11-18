@@ -13,7 +13,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { nextTranche } from "@mmr/protocol";
 import {
-  BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, CLIENT_PK, HAVE_BUILD, Status, T, TIER_MIN,
+  BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, CLIENT_PK, HAVE_BUILD, REQUIRED_BOND, Status, T,
   buildScenario, epochEndOf, graceDeadlineOf, runLifecycle, runRegister, runningEngagement, settle,
   type BondRun, type CoinW, type Engagement, type Registered,
 } from "./harness.js";
@@ -43,45 +43,53 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
     releaseAt = epochEndOf(g, 3n) + T.CHALLENGE;
   });
   const post = (coin: CoinW = BOND_COIN, state = reg.state) =>
-    runLifecycle("postBond", [reg.id, TIER_MIN, { bytes: CLIENT_PK }], { coin, state });
-  /** Release epoch `e`'s tranche, the k-th one out (k = tranches already released). */
+    runLifecycle("postBond", [reg.id], { coin, state });
+  /** Release epoch `e`'s tranche, the k-th one out (k = tranches already released) of 30. */
   const release = (e: bigint, k: number, state = settled) =>
-    runLifecycle("releaseEpoch", [g.id, e, nextTranche(BOND_COIN.value, 3, k)], { state, blockTime: releaseAt });
+    runLifecycle("releaseEpoch", [g.id, e, nextTranche(BOND_COIN.value, 30, k)], { state, blockTime: releaseAt });
 
   it("posting escrows the coin: received into the contract, held as a qualified coin", async () => {
     const r = await post();
     expect(r.outputs).toHaveLength(1);
     expect(r.outputs[0]!.recipient.is_left).toBe(false); // to the contract itself
-    expect(r.outputs[0]!.coinInfo.value).toBe(1_000n);
-    expect(r.escrowed).toMatchObject({ value: 1_000n, color: BOND_COIN.color, nonce: BOND_COIN.nonce });
+    expect(r.outputs[0]!.coinInfo.value).toBe(10_000n);
+    expect(r.escrowed).toMatchObject({ value: 10_000n, color: BOND_COIN.color, nonce: BOND_COIN.nonce });
   });
 
-  it("rejects a bond below the tier minimum, a second bond, and a bond for an unregistered id", async () => {
-    await expect(post({ ...BOND_COIN, value: TIER_MIN - 1n })).rejects.toThrow(/bond below tier minimum/);
+  it("rejects a bond below the registered amount or in another token, a second bond, and an unregistered id", async () => {
+    await expect(post({ ...BOND_COIN, value: REQUIRED_BOND - 1n })).rejects.toThrow(/bond below the registered amount \(DD-35\)/);
+    await expect(post({ ...BOND_COIN, color: new Uint8Array(32).fill(9) })).rejects.toThrow(/not the protocol bond token \(DD-35\)/);
     const { state } = await post();
     await expect(post({ ...BOND_COIN, nonce: new Uint8Array(32).fill(8) }, state)).rejects.toThrow(/bond already posted/);
-    await expect(runLifecycle("postBond", [new Uint8Array(32).fill(0x42), 0n, { bytes: CLIENT_PK }],
+    await expect(runLifecycle("postBond", [new Uint8Array(32).fill(0x42)],
       { coin: BOND_COIN, state: reg.state })).rejects.toThrow(/engagement not open for a bond/);
   });
 
-  it("release returns each tranche to the owner; change stays escrowed; the last drains escrow", async () => {
+  it("the beneficiary is the one registered (the MM cannot redirect a slash)", async () => {
+    const { ledger } = await post();
+    expect(ledger.bondBeneficiary.lookup(reg.id).bytes).toEqual(CLIENT_PK);
+  });
+
+  it("release returns each tranche to the owner; change stays escrowed", async () => {
     const r1 = await release(1n, 0, allSettled);
-    expect(r1.inputs.map((c) => c.value)).toEqual([1_000n]); // the escrowed coin is spent
+    expect(r1.inputs.map((c) => c.value)).toEqual([10_000n]); // the escrowed coin is spent
     expect(sentTo(r1, BOND_CALLER_PK)).toBe(333n);
-    expect(toContract(r1)).toBe(667n);
-    expect(r1.escrowed?.value).toBe(667n);
+    expect(toContract(r1)).toBe(9_667n);
+    expect(r1.escrowed?.value).toBe(9_667n);
 
     const r2 = await release(2n, 1, r1.state);
     expect(sentTo(r2, BOND_CALLER_PK)).toBe(333n);
     const r3 = await release(3n, 2, r2.state);
     expect(sentTo(r3, BOND_CALLER_PK)).toBe(334n);
-    expect(r3.escrowed).toBeUndefined();
-    expect(r3.status).toBe(Status.Settled);
+    // 3 of 30 tranches: the rest stays escrowed and the engagement keeps running
+    // (draining on the last tranche is covered in tranche.kat.test.ts).
+    expect(r3.escrowed?.value).toBe(9_000n);
+    expect(r3.status).toBe(Status.Funded);
   });
 
   it("slash redirects the whole bond to the beneficiary; no later release", async () => {
     const r = await runLifecycle("defaultEngagement", [g.id, 2n], { state: settled, blockTime: graceDeadlineOf(g, 2n) });
-    expect(sentTo(r, CLIENT_PK)).toBe(1_000n);
+    expect(sentTo(r, CLIENT_PK)).toBe(10_000n);
     expect(sentTo(r, BOND_CALLER_PK)).toBe(0n);
     expect(r.escrowed).toBeUndefined();
     expect(r.slashed).toBe(true);
@@ -93,13 +101,13 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
   it("slash after a partial release takes only what is still escrowed", async () => {
     const r1 = await release(1n, 0);
     const r2 = await runLifecycle("defaultEngagement", [g.id, 2n], { state: r1.state, blockTime: graceDeadlineOf(g, 2n) });
-    expect(sentTo(r2, CLIENT_PK)).toBe(667n);
+    expect(sentTo(r2, CLIENT_PK)).toBe(9_667n);
   });
 
   it("void returns the whole bond to the owner", async () => {
     const { state } = await post();
     const r = await runLifecycle("voidUnfunded", [reg.id], { state, blockTime: BLOCK_TIME + T.FUNDING });
-    expect(sentTo(r, BOND_CALLER_PK)).toBe(1_000n);
+    expect(sentTo(r, BOND_CALLER_PK)).toBe(10_000n);
     expect(r.escrowed).toBeUndefined();
     expect(r.status).toBe(Status.Voided);
   });

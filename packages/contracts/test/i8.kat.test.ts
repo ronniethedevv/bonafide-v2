@@ -9,7 +9,11 @@ import * as rt from "@midnight-ntwrk/compact-runtime";
 import { AttesterCommitteeMembers, attesterId as protoAttesterId, cidBytes as protoCidBytes } from "@mmr/protocol";
 import {
   ATTESTERS,
+  BOND_TOKEN,
   BUILD_DIR,
+  KAT_CHAIN,
+  dayOfEpoch,
+  rootKey,
   HAVE_BUILD,
   KAT_CID,
   KAT_COMMITTEE,
@@ -53,7 +57,7 @@ describe.skipIf(!HAVE_BUILD)("I8: publishRoot (2-of-3 committee fixed at deploy)
     const mod = await import(BUILD_DIR);
     const c = new mod.Contract(stubWitnesses());
     const dup = [KAT_COMMITTEE[0]!, KAT_COMMITTEE[0]!, KAT_COMMITTEE[2]!];
-    await expect(c.initialState(rt.createConstructorContext({}, "0".repeat(64)), dup))
+    await expect(c.initialState(rt.createConstructorContext({}, "0".repeat(64)), dup, BOND_TOKEN))
       .rejects.toThrow(/committee members must be distinct \(I8\)/);
   });
 
@@ -139,7 +143,7 @@ describe.skipIf(!HAVE_BUILD)("I8: proveEpoch opens against the published root", 
 describe.skipIf(!HAVE_BUILD)("I8: settle and default gate on a published root", () => {
   it("settleEpoch reverts until the epoch's root is published", async () => {
     const g = await runningEngagement({ proven: 0, publish: false });
-    const fake = { id: g.id, epoch: 1n, uptime: 48n, termsCommit: g.reg.termsCommit };
+    const fake = { id: g.id, epoch: 1n, uptime: 48n, termsCommit: g.reg.termsCommit, tier: 1n };
     await expect(settle(g, g.state, 1n, epochEndOf(g, 1n), undefined, fake)).rejects.toThrow(/epoch root not published \(I8\)/);
     // once published (and funding proven, DD-27), the next gate (the record) is what stops it
     const s = await publishRoot(g.state, 1n, g.scenario.rootOfRoots);
@@ -189,13 +193,13 @@ describe.skipIf(!HAVE_BUILD)("I8: the protocol committee drives the compiled pub
 
   it("two online members publish the root on-chain; the votes name their committee ids", async () => {
     const { votes, led } = await runCommittee([0, 2]);
-    expect(led.publishedRoot.lookup(3n)).toEqual(R1);
-    expect(led.publishedCid.lookup(3n)).toEqual(protoCidBytes("bafy-epoch-3"));
+    expect(led.publishedRoot.lookup(rootKey(KAT_CHAIN, dayOfEpoch(3n)))).toEqual(R1);
+    expect(led.publishedCid.lookup(rootKey(KAT_CHAIN, dayOfEpoch(3n)))).toEqual(protoCidBytes("bafy-epoch-3"));
     expect(votes.map((v) => v.attester)).toEqual([0, 2].map((i) => `0x${Buffer.from(KAT_COMMITTEE[i]!).toString("hex")}`));
   });
 
   it("one online member is not enough", async () => {
     const { led } = await runCommittee([1]);
-    expect(led.publishedRoot.member(3n)).toBe(false);
+    expect(led.publishedRoot.member(rootKey(KAT_CHAIN, dayOfEpoch(3n)))).toBe(false);
   });
 });

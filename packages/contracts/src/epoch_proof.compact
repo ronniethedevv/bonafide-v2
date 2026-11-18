@@ -107,7 +107,14 @@ struct CarryTotals { xfer_in: Uint<192>, xfer_out: Uint<192>, from_treasury: Uin
 // prove a record PRIVATELY (Merkle path to a historic root), so a claim never reveals
 // which engagement it credits. termsCommit ties the record to the accepted terms, so the
 // claim's threshold and contract length are the committed ones.
-struct EpochRecord { id: Bytes<32>, epoch: Uint<64>, uptime: Uint<32>, termsCommit: Bytes<32> }
+// DD-35: `tier` is the engagement's registered tier, so claim can check the tier it
+// credits privately (it never reveals which engagement it claims).
+struct EpochRecord { id: Bytes<32>, epoch: Uint<64>, uptime: Uint<32>, termsCommit: Bytes<32>, tier: Uint<8> }
+
+// DD-35: published roots are keyed by (chain, UTC day), matching the daily indexer.
+struct RootRef { chain: Uint<64>, day: Uint<64> }
+// DD-35: profile counters are kept per tier, so sandbox (C) engagements show separately.
+struct ProfileTier { profile: Bytes<32>, tier: Uint<8> }
 
 export ledger epochUptime: Map<Bytes<32>, Uint<32>>;
 // M2(b): engagement id -> salted commitment to its cumulative CarryTotals. Absent = genesis
@@ -120,9 +127,12 @@ export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
 // claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
 // I8 (DD-26): the attester committee is fixed at deploy — three member ids
 // attesterId(secret_i); there is no circuit that changes it.
-constructor(members: Vector<3, Bytes<32>>) {
+// DD-35: the protocol's bond token (a shielded token type) is fixed at deploy too, so the
+// per-tier bond minimums are in one known unit.
+constructor(members: Vector<3, Bytes<32>>, token: Bytes<32>) {
   epochRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
-                                    termsCommit: default<Bytes<32>> });
+                                    termsCommit: default<Bytes<32>>, tier: 0 });
+  bondToken = disclose(token);
   assert(members[0] != members[1] && members[0] != members[2] && members[1] != members[2],
          "committee members must be distinct (I8)");
   for (const i of 0..3) {
@@ -164,12 +174,13 @@ witness carryPrev(): CarryTotals;
 witness carryPrevSalt(): Bytes<32>;
 witness carryNewSalt(): Bytes<32>;
 
-// claim (H4 / I10) witnesses. Slot e (0..89) is epoch e + 1: whether the MM presents its
-// record, and the record's path in epochRecords. Never disclosed.
+// claim (H4 / I10) witnesses. Slot e (0..29) is epoch e + 1 of the fixed 30-epoch
+// engagement (DD-35): whether the MM presents its record, and the record's path in
+// epochRecords. Never disclosed.
 witness engagementSecret(): Bytes<32>;
 witness profileSecret(): Bytes<32>;
-witness claimRecordPresent(): Vector<90, Boolean>;
-witness claimRecordPaths(): Vector<90, MerkleTreePath<20, EpochRecord>>;
+witness claimRecordPresent(): Vector<30, Boolean>;
+witness claimRecordPaths(): Vector<30, MerkleTreePath<20, EpochRecord>>;
 
 // C1 witnesses: Merkle paths that bind every slot leaf and the pool root to rootOfRoots.
 // slotPaths: one depth-16 indexed-Merkle path per slot (mirrors IndexedMerkleTree depth 16).
@@ -694,14 +705,20 @@ export circuit proveEpoch(
   // committee published for this epoch (2-of-3 votes, publishRoot). Without this, a
   // prover could open against a self-made root and still settle once the real root is
   // published. Proofs come after publication (attester window, then challenge/proving).
+  // DD-35: epoch e of an engagement is the UTC day startDay + e - 1 on its registered
+  // chain, so the root is looked up by (chain, day) — the key the indexer publishes under.
   const pe8 = disclose(epoch);
-  assert(publishedRoot.member(pe8) && publishedRoot.lookup(pe8) == disclose(rootOfRoots),
+  assert(pe8 >= 1 && pe8 <= 30, "epoch outside the contract (DD-35)");
+  assert(startDay.member(disclose(id)), "engagement not activated (DD-35)");
+  const rk = epochRootKey(disclose(id), pe8);
+  assert(publishedRoot.member(rk) && publishedRoot.lookup(rk) == disclose(rootOfRoots),
          "rootOfRoots is not the epoch's published root (I8)");
 
   const epochKey = persistentHash<EpochRef>(EpochRef { id: id, epoch: epoch });
   epochUptime.insert(disclose(epochKey), disclose(uptime as Uint<32>));
   epochRecords.insert(disclose(EpochRecord {
-    id: id, epoch: epoch, uptime: uptime as Uint<32>, termsCommit: tc }));
+    id: id, epoch: epoch, uptime: uptime as Uint<32>, termsCommit: tc,
+    tier: tier.lookup(disclose(id)) }));
 
   // uptime bucket count + C2 commitments; verdict (all-pass) implied by no revert
   return disclose(EpochResult { uptime: uptime, walletCommit: wc, termsCommit: tc });
@@ -747,49 +764,48 @@ export circuit claim(
   // H4: the committed terms (opened privately; the commitment is in each record).
   const t = terms();
   const tc = persistentCommit<Terms>(t, termsSalt());
-  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (H4)");
+  assert(t.epochs_total == 30, "engagements run 30 epochs (DD-35)");
+  // DD-35: the tier is public (it routes the per-tier counters) and must be the tier
+  // every presented record was proven under.
+  const tr = disclose(tier);
+  assert(tr >= 1 && tr <= 3, "unknown tier (DD-35)");
 
   // Every slot's path must reach a historic epochRecords root, unconditionally: the ledger
   // check is in the public transcript, so doing it only for presented epochs would leak
-  // which epochs exist and epochs_total. An unpresented slot carries any on-ledger path
-  // (the genesis record always exists). A PRESENTED slot's record must be this
-  // engagement's, for epoch e + 1, under these committed terms.
+  // which epochs exist. An unpresented slot carries any on-ledger path (the genesis
+  // record always exists). A PRESENTED slot's record must be this engagement's, for
+  // epoch e + 1, under these committed terms and this tier.
   const present = claimRecordPresent();
   const paths = claimRecordPaths();
-  for (const e of 0..90) {
+  for (const e of 0..30) {
     assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(paths[e]))),
            "epoch record not on the ledger (H4)");
-    if (e < t.epochs_total && present[e]) {
+    if (present[e]) {
       const rec = paths[e].leaf;
-      assert(rec.id == engagementId && rec.epoch == e + 1 && rec.termsCommit == tc,
+      assert(rec.id == engagementId && rec.epoch == e + 1 && rec.termsCommit == tc && rec.tier == tier,
              "record is not this engagement's epoch (H4)");
     }
   }
-  const epochIdx: Vector<90, Uint<7>> = [
-     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
-    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-    36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
-    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
-    72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89];
-  const hits = map((e: Uint<7>, pr: Boolean, p: MerkleTreePath<20, EpochRecord>): Uint<1> =>
-                     (e < t.epochs_total && pr && p.leaf.uptime >= t.min_uptime_buckets) ? 1 : 0,
-                   epochIdx, present, paths);
-  const passed = fold((acc: Uint<7>, h: Uint<1>): Uint<7> => (acc + h) as Uint<7>, 0 as Uint<7>, hits);
+  const hits = map((pr: Boolean, p: MerkleTreePath<20, EpochRecord>): Uint<1> =>
+                     (pr && p.leaf.uptime >= t.min_uptime_buckets) ? 1 : 0,
+                   present, paths);
+  const passed = fold((acc: Uint<6>, h: Uint<1>): Uint<6> => (acc + h) as Uint<6>, 0 as Uint<6>, hits);
   assert(epochsPassed == passed, "epochsPassed does not match the epoch records (H4)");
-  assert(epochsTotal == t.epochs_total, "epochsTotal is not the committed contract length (H4)");
+  assert(epochsTotal == 30, "epochsTotal is not the contract length (H4)");
 
+  // I10: counters only grow (Counter is monotonic by construction). DD-35: one set per
+  // (profile, tier); every engagement adds the same total (30), so totals cannot link a
+  // claim to its registration.
   const pid = disclose(profileId(profileSecret()));
-  if (!completedCount.member(pid)) {
-    completedCount.insertDefault(pid);
-    kpiHits.insertDefault(pid);
-    kpiTotal.insertDefault(pid);
+  const pk = persistentHash<ProfileTier>(ProfileTier { profile: pid, tier: tr });
+  if (!completedCount.member(pk)) {
+    completedCount.insertDefault(pk);
+    kpiHits.insertDefault(pk);
+    kpiTotal.insertDefault(pk);
   }
-  // I10: counters only grow. Counter is monotonic by construction.
-  completedCount.lookup(pid).increment(1 as Uint<16>);
-  kpiHits.lookup(pid).increment(disclose(epochsPassed) as Uint<16>);
-  kpiTotal.lookup(pid).increment(disclose(epochsTotal) as Uint<16>);
-  // `tier` is a public argument so sandbox (C) engagements show separately from the
-  // headline record; the caller routes it to the right per-tier counter.
+  completedCount.lookup(pk).increment(1 as Uint<16>);
+  kpiHits.lookup(pk).increment(disclose(epochsPassed) as Uint<16>);
+  kpiTotal.lookup(pk).increment(30 as Uint<16>);
 }
 
 // --- Engagement lifecycle: registration + bond (H3b, DD-17) ----------------------
@@ -850,15 +866,6 @@ witness bondCoin(): ShieldedCoinInfo;  // the shielded USDM the MM posts
 // its tree are on the ledger; the path only proves it is there).
 witness settleRecordPath(): MerkleTreePath<20, EpochRecord>;
 
-// I9: reject the Jubjub identity point as a key. In 0.31.x the standard
-// signature check does not do this, so we check explicitly.
-// The Jubjub identity (0,1) compresses to LE bytes [0x01, 0x00, ..., 0x00],
-// which as a big-endian Compact Bytes<32> equals 2^248 cast via Field.
-circuit assertNotIdentity(pk: ZswapCoinPublicKey): [] {
-  const identityBytes = (452312848583266388373324160190187140051835877600158453279131187530910662656 as Field) as Bytes<32>;
-  assert(pk.bytes != identityBytes, "identity-point key rejected (I9)");
-}
-
 // Derive the public engagement id deterministically from the secret, so the MM
 // can recompute it but observers cannot link it to the MM.
 circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
@@ -870,9 +877,22 @@ circuit deriveEngagementId(secret: Bytes<32>): Bytes<32> {
 // publishedRoot (I8) records that a root was published, not when, so the MM gets the
 // most lenient anchor) + challenge (12h) + proving (24h) + grace (24h). Timing from
 // specs/architecture.md.
+// DD-35: epochs are UTC days (DD-32): epoch e is day startDay + e - 1 and ends at the
+// start of day startDay + e.
 circuit epochEnd(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
-  const EPOCH: Uint<64> = 86400;   // 24h
-  return (activatedAt.lookup(id) + epoch * EPOCH) as Uint<64>;
+  const DAY: Uint<64> = 86400;
+  return ((startDay.lookup(id) + epoch) * DAY) as Uint<64>;
+}
+// DD-35: the published-root key of epoch e (e >= 1) of an activated engagement.
+circuit epochRootKey(id: Bytes<32>, epoch: Uint<64>): Bytes<32> {
+  return rootKey(chainOf.lookup(id), (startDay.lookup(id) + epoch - 1) as Uint<64>);
+}
+circuit rootKey(chain: Uint<64>, day: Uint<64>): Bytes<32> {
+  return persistentHash<RootRef>(RootRef { chain: chain, day: day });
+}
+// DD-35: minimum bond per tier, in the protocol bond token's smallest unit.
+circuit tierMinBond(t: Uint<8>): Uint<128> {
+  return t == 1 ? 10000 as Uint<128> : (t == 2 ? 5000 as Uint<128> : 2500 as Uint<128>);
 }
 circuit graceDeadline(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
   const AFTER_END: Uint<64> = 237600;   // 6h + 12h + 24h + 24h
@@ -883,7 +903,10 @@ circuit graceDeadline(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
 // timestamp to record is an argument that is CHECKED against the block's own time:
 // block time - REG_TS_TOLERANCE < registeredTs <= block time. A caller can no longer
 // backdate (or postdate) registeredAt beyond the tolerance.
-export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32> {
+// DD-35: tier, chain, the required bond and the beneficiary (the client) are fixed here
+// and public, so the client checks them before accepting and the MM cannot change them.
+export circuit register(declaredTier: Uint<8>, chainId: Uint<64>, requiredBond: Uint<128>,
+                        beneficiary: ZswapCoinPublicKey, registeredTs: Uint<64>): Bytes<32> {
   const REG_TS_TOLERANCE: Uint<64> = 600;   // 10 min: proof build -> block inclusion
   const ts = disclose(registeredTs);
   assert(blockTimeGte(ts), "registeredTs is in the future (H3)");
@@ -897,16 +920,28 @@ export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32
   const wc = persistentCommit<Vector<16, Uint<160>>>(committedWallets(), walletSalt());
   const t = terms();
   const tc = persistentCommit<Terms>(t, termsSalt());
-  // M3b (DD-18): the contract length is public from here on — it sets the bond's
-  // tranche size, which every release reveals anyway (bond value is public, M3).
-  assert(t.epochs_total >= 1 && t.epochs_total <= 90, "epochs_total out of range (M3b)");
+  // DD-35: every engagement runs 30 epochs, so the contract length links nothing.
+  assert(t.epochs_total == 30, "engagements run 30 epochs (DD-35)");
+  const tr = disclose(declaredTier);
+  assert(tr >= 1 && tr <= 3, "unknown tier (DD-35)");
+  const bond = disclose(requiredBond);
+  assert(bond >= tierMinBond(tr), "bond below the tier minimum (DD-35)");
+  const chain = disclose(chainId);
+  assert(chain == 1 || chain == 8453, "unsupported chain (DD-35)");
+  const ben = disclose(beneficiary);
+  // A ZswapCoinPublicKey is a hash of the coin secret key (no curve point to check); the
+  // all-zero key is the unset default, so refuse it.
+  assert(ben.bytes != default<Bytes<32>>, "beneficiary not set (DD-35)");
 
   status.insert(disclose(id), Status.Registered);
   walletCommit.insert(disclose(id), disclose(wc));
   termsCommit.insert(disclose(id), disclose(tc));
   registeredAt.insert(disclose(id), ts);
-  tier.insert(disclose(id), disclose(declaredTier));
+  tier.insert(disclose(id), tr);
   contractEpochs.insert(disclose(id), disclose(t.epochs_total));
+  chainOf.insert(disclose(id), chain);
+  bondRequired.insert(disclose(id), bond);
+  bondBeneficiary.insert(disclose(id), ben);
   return disclose(id);
 }
 
@@ -916,20 +951,30 @@ export circuit register(declaredTier: Uint<8>, registeredTs: Uint<64>): Bytes<32
 // H3b: records activatedAt (block-time-checked like registeredAt), the anchor of the
 // epoch schedule; only inside the funding window, so activate and voidUnfunded are
 // mutually exclusive.
-export circuit activate(id: Bytes<32>, rootOfRoots: Bytes<32>, activatedTs: Uint<64>): [] {
+// DD-35: only the engagement's owner (the holder of its secret, as for claim) can start
+// the epoch clock, only once the bond is posted, and the start day is the UTC day after
+// activation (checked against activatedTs, which is checked against block time).
+export circuit activate(id: Bytes<32>, firstDay: Uint<64>, activatedTs: Uint<64>): [] {
   const TS_TOLERANCE: Uint<64> = 600;
   const FUNDING_WINDOW: Uint<64> = 259200;   // 72h
+  const DAY: Uint<64> = 86400;
   const key = disclose(id);
+  assert(deriveEngagementId(engagementSecret()) == id, "only the engagement owner can activate (DD-35)");
   const ts = disclose(activatedTs);
   assert(blockTimeGte(ts), "activatedTs is in the future (H3b)");
   assert(blockTimeLt((ts + TS_TOLERANCE) as Uint<64>), "activatedTs too far in the past (H3b)");
   assert(status.member(key) && status.lookup(key) == Status.Registered, "not awaiting funding");
   assert(blockTimeLt((registeredAt.lookup(key) + FUNDING_WINDOW) as Uint<64>), "funding window closed (H3b)");
+  assert(escrowed.member(key), "bond not posted (DD-35)");
+  const sd = disclose(firstDay);
+  assert(sd >= 1, "start day out of range (DD-35)");
+  assert((sd - 1) * DAY <= ts && ts < sd * DAY, "start day is not the day after activation (DD-35)");
   // The loan's arrival is evidenced by epoch-1 indexed data, which does not exist yet:
   // it is proven later by proveFunding against epoch 1's published root (DD-27), and
-  // settleEpoch requires it. rootOfRoots is not read here.
+  // settleEpoch requires it.
   status.insert(key, Status.Funded);
   activatedAt.insert(key, ts);
+  startDay.insert(key, sd);
 }
 
 // Pay `amount` out of id's escrowed coin to `to`; the change (if any) stays escrowed.
@@ -946,18 +991,19 @@ circuit payOut(id: Bytes<32>, to: ZswapCoinPublicKey, amount: Uint<128>): [] {
 
 // Post a shielded bond for a registered engagement: the coin moves into this contract's
 // custody. `beneficiary` (the client) receives the bond if the engagement defaults.
-export circuit postBond(id: Bytes<32>, tierMin: Uint<128>, beneficiary: ZswapCoinPublicKey): [] {
+// DD-35: the coin must be the protocol bond token and at least the registered amount;
+// the beneficiary was fixed at registration.
+export circuit postBond(id: Bytes<32>): [] {
   const key = disclose(id);
-  assert(status.member(key) && (status.lookup(key) == Status.Registered || status.lookup(key) == Status.Funded),
-         "engagement not open for a bond");
+  assert(status.member(key) && status.lookup(key) == Status.Registered, "engagement not open for a bond");
   assert(!escrowed.member(key), "bond already posted");
   // Declared disclosure: a contract can only take custody of a coin it can see.
   const coin = disclose(bondCoin());
-  assert(coin.value >= tierMin, "bond below tier minimum");
+  assert(coin.color == bondToken, "bond is not the protocol bond token (DD-35)");
+  assert(coin.value >= bondRequired.lookup(key), "bond below the registered amount (DD-35)");
   receiveShielded(coin);
   escrowed.insertCoin(key, coin, right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bondOwner.insert(key, ownPublicKey());
-  bondBeneficiary.insert(key, disclose(beneficiary));
   bondValue.insert(key, coin.value);
   releasedEpochs.insert(key, 0);
   releasedTotal.insert(key, 0);
@@ -978,7 +1024,8 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   // I8 (DD-26): only an epoch whose root the committee published can be settled.
-  assert(publishedRoot.member(e), "epoch root not published (I8)");
+  assert(publishedRoot.member(epochRootKey(key, e)), "epoch root not published (I8)");
+  assert(!disputedRoot.member(epochRootKey(key, e)), "epoch root disputed (DD-35)");
   // DD-27: no epoch settles (so no tranche releases) until the loan is proven landed.
   assert(fundingProven.member(key), "funding not proven (DD-27)");
   assert(blockTimeGte(epochEnd(key, e)), "epoch has not ended (H3b)");
@@ -1007,6 +1054,8 @@ export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): 
   const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: disclose(epoch) });
   assert(settledAt.member(ek), "epoch not settled (H3b)");
   assert(blockTimeGte((settledAt.lookup(ek) + CHALLENGE) as Uint<64>), "challenge window open");
+  // DD-35: a root the committee disputed inside the window releases nothing.
+  assert(!disputedRoot.member(epochRootKey(key, disclose(epoch))), "epoch root disputed (DD-35)");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
   assert(escrowed.member(key), "no bond escrowed (M3)");
   assert(!epochReleased.member(ek), "epoch tranche already released (M3b)");
@@ -1052,7 +1101,8 @@ export circuit defaultEngagement(id: Bytes<32>, epoch: Uint<64>): [] {
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
   assert(!settledAt.member(persistentHash<EpochRef>(EpochRef { id: key, epoch: e })), "epoch was settled");
-  assert(publishedRoot.member(e), "epoch root never published: not defaultable (I8)");
+  assert(publishedRoot.member(epochRootKey(key, e)), "epoch root never published: not defaultable (I8)");
+  assert(!disputedRoot.member(epochRootKey(key, e)), "epoch root disputed: not defaultable (DD-35)");
   assert(blockTimeGte(graceDeadline(key, e)), "proving window open");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
   slashed.insert(key, true);
@@ -1079,12 +1129,12 @@ export ledger committee: Set<Bytes<32>>;
 export ledger memberVote: Map<Bytes<32>, Bytes<32>>;
 // persistentHash(RootVote) -> distinct members that voted for exactly that triple.
 export ledger rootVoteCount: Map<Bytes<32>, Counter>;
-// epoch -> the root (and its tree's cid) that reached the threshold.
-export ledger publishedRoot: Map<Uint<64>, Bytes<32>>;
-export ledger publishedCid: Map<Uint<64>, Bytes<64>>;
+// rootKey(chain, day) -> the root (and its tree's cid) that reached the threshold.
+export ledger publishedRoot: Map<Bytes<32>, Bytes<32>>;
+export ledger publishedCid: Map<Bytes<32>, Bytes<64>>;
 
-struct MemberEpoch { member: Bytes<32>, epoch: Uint<64> }
-struct RootVote { epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64> }
+struct MemberRoot { member: Bytes<32>, key: Bytes<32> }
+struct RootVote { key: Bytes<32>, root: Bytes<32>, cid: Bytes<64> }
 
 // The submitting member's secret. Never disclosed; only attesterId(secret) is.
 witness attesterSecret(): Bytes<32>;
@@ -1094,13 +1144,14 @@ circuit attesterId(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "mmr:attester:v1"), secret]);
 }
 
-export circuit publishRoot(epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64>): [] {
+// DD-35: roots are published per (chain, UTC day), the key the daily indexer stores.
+export circuit publishRoot(chain: Uint<64>, day: Uint<64>, root: Bytes<32>, cid: Bytes<64>): [] {
   const THRESHOLD: Uint<64> = 2;
   const member = disclose(attesterId(attesterSecret()));
   assert(committee.member(member), "not a committee attester (I8)");
-  const e = disclose(epoch);
-  const vk = persistentHash<MemberEpoch>(MemberEpoch { member: member, epoch: e });
-  const ck = persistentHash<RootVote>(RootVote { epoch: e, root: disclose(root), cid: disclose(cid) });
+  const e = rootKey(disclose(chain), disclose(day));
+  const vk = persistentHash<MemberRoot>(MemberRoot { member: member, key: e });
+  const ck = persistentHash<RootVote>(RootVote { key: e, root: disclose(root), cid: disclose(cid) });
   if (memberVote.member(vk)) {
     assert(memberVote.lookup(vk) == ck, "attester already voted another root for this epoch (I8)");
   } else {
@@ -1112,6 +1163,33 @@ export circuit publishRoot(epoch: Uint<64>, root: Bytes<32>, cid: Bytes<64>): []
     if (rootVoteCount.lookup(ck).read() >= THRESHOLD && !publishedRoot.member(e)) {
       publishedRoot.insert(e, disclose(root));
       publishedCid.insert(e, disclose(cid));
+    }
+  }
+}
+
+// DD-35: the challenge window made real. A committee member whose watcher recomputes a
+// published root and gets a different one votes to dispute it; at 2 of 3 the root is
+// disputed, and no epoch on that (chain, day) settles, releases or defaults. One vote
+// per member per root.
+export ledger disputeVote: Set<Bytes<32>>;
+export ledger disputeCount: Map<Bytes<32>, Counter>;
+export ledger disputedRoot: Set<Bytes<32>>;
+
+export circuit disputeRoot(chain: Uint<64>, day: Uint<64>): [] {
+  const THRESHOLD: Uint<64> = 2;
+  const member = disclose(attesterId(attesterSecret()));
+  assert(committee.member(member), "not a committee attester (I8)");
+  const k = rootKey(disclose(chain), disclose(day));
+  assert(publishedRoot.member(k), "no published root to dispute (DD-35)");
+  const vk = persistentHash<MemberRoot>(MemberRoot { member: member, key: k });
+  if (!disputeVote.member(vk)) {
+    disputeVote.insert(vk);
+    if (!disputeCount.member(k)) {
+      disputeCount.insertDefault(k);
+    }
+    disputeCount.lookup(k).increment(1);
+    if (disputeCount.lookup(k).read() >= THRESHOLD && !disputedRoot.member(k)) {
+      disputedRoot.insert(k);
     }
   }
 }
@@ -1131,7 +1209,8 @@ export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
   const key = disclose(id);
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(!fundingProven.member(key), "funding already proven (DD-27)");
-  assert(publishedRoot.member(1) && publishedRoot.lookup(1) == disclose(rootOfRoots),
+  const rk = epochRootKey(key, 1);
+  assert(publishedRoot.member(rk) && publishedRoot.lookup(rk) == disclose(rootOfRoots),
          "funding root is not epoch-1's attested root (DD-27)");
 
   const w = committedWallets();
@@ -1161,3 +1240,9 @@ export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
   assert(sumSlots16(fromTreasuryVec, pf) >= t.loan_L0, "loan not received by the committed wallets (DD-27)");
   fundingProven.insert(key);
 }
+
+// --- DD-35: registration terms made public, and the epoch schedule on UTC days ------
+export ledger bondToken: Bytes<32>;                    // the protocol bond token (deploy-time)
+export ledger chainOf: Map<Bytes<32>, Uint<64>>;       // the engagement's chain (1 or 8453)
+export ledger bondRequired: Map<Bytes<32>, Uint<128>>; // the bond the MM must post
+export ledger startDay: Map<Bytes<32>, Uint<64>>;      // UTC day number of epoch 1

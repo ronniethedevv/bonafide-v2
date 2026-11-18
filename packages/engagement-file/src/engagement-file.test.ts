@@ -58,6 +58,7 @@ describe("commitments are byte-exact with @mmr/prover (and so with the Compact c
     expect(() => walletSlots([WALLETS[0]!, WALLETS[0]!.toUpperCase().replace("0X", "0x")])).toThrow("duplicate");
     expect(() => walletSlots(["0x0000000000000000000000000000000000000000"])).toThrow();
     await expect(termsCommit({ ...TERMS, epochsTotal: 91 }, salt(1))).rejects.toThrow();
+    await expect(termsCommit({ ...TERMS, epochsTotal: 29 }, salt(1))).rejects.toThrow(/run 30 epochs/);
     await expect(termsCommit({ ...TERMS, floorPriceP: 1n << 64n }, salt(1))).rejects.toThrow();
   });
 

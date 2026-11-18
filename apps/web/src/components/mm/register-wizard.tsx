@@ -166,8 +166,8 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
               <Field label="Min uptime" err={errors.minUptime} suffix="% of buckets">
                 <input className="inp" inputMode="numeric" placeholder="90" value={f.minUptime} onChange={(e) => set("minUptime", e.target.value)} />
               </Field>
-              <Field label="Contract length" err={errors.epochs} suffix="epochs (1–90)">
-                <input className="inp" inputMode="numeric" placeholder="30" value={f.epochs} onChange={(e) => set("epochs", e.target.value)} />
+              <Field label="Contract length" err={errors.epochs} suffix="epochs (fixed)">
+                <input className="inp" value="30" readOnly aria-readonly="true" title="Every engagement runs 30 daily epochs" />
               </Field>
             </div>
             <Field label="Round-trip cap" err={errors.roundtrip} suffix="% of volume">
@@ -267,7 +267,9 @@ function validate(f: Form, wallets: string[], persist: boolean, pool: Pool): Rec
   if (!pos(f.loan) || !amount(f.loan, pool.base)) e.loan = `Enter an amount of ${pool.base.symbol} (up to ${pool.base.decimals} decimals).`;
   if (!pos(f.depthTarget) || !amount(f.depthTarget, pool.quote)) e.depthTarget = `Enter an amount of ${pool.quote.symbol} (up to ${pool.quote.decimals} decimals).`;
   if (!pct(f.minUptime)) e.minUptime = "0–100.";
-  if (!(Number.isInteger(Number(f.epochs)) && Number(f.epochs) >= 1 && Number(f.epochs) <= 90)) e.epochs = "1–90 epochs.";
+  // Every engagement runs 30 daily epochs (the contract enforces it), so length can't
+  // link a profile claim back to its engagement.
+  if (f.epochs !== "30") e.epochs = "Engagements run 30 epochs.";
   if (!pct(f.roundtrip)) e.roundtrip = "0–100.";
   if (!pos(f.bond)) e.bond = "Enter a bond amount.";
   for (const k of ["outflowCap", "netSellCap"] as const) {
