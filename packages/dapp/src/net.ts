@@ -4,7 +4,8 @@
 // Node's global network dispatcher. Loading the npm `undici` package (the indexer uses it)
 // replaces that dispatcher with a plain agent that ignores proxy settings, so behind a
 // proxy the wallet's connections fail. Call this after the imports: with HTTPS_PROXY set it
-// installs a proxy-aware agent; without one it changes nothing.
+// installs a proxy-aware agent; without one it changes nothing. (Midnight.js's indexer client
+// uses Node's http/https modules, which honour the proxy with NODE_USE_ENV_PROXY=1.)
 
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
