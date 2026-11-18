@@ -41,6 +41,11 @@ export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
   ? `${process.env.KAT_EPOCH_BUILD}/contract/index.js`
   : fileURLToPath(new URL("../build/epoch_proof/contract/index.js", import.meta.url));
 export const HAVE_BUILD = existsSync(BUILD_DIR);
+// CI compiles the contract and sets KAT_REQUIRE_BUILD, so a missing build fails loudly
+// instead of silently skipping the circuit KATs.
+if (process.env.KAT_REQUIRE_BUILD === "1" && !HAVE_BUILD) {
+  throw new Error(`KAT_REQUIRE_BUILD is set but the compiled contract is missing: ${BUILD_DIR}`);
+}
 
 export const SLOTS = 16;
 export const BUCKETS = 48;
@@ -386,8 +391,8 @@ export async function runProveEpoch(
     carryNewSalt: (c: { privateState: unknown }) => [c.privateState, w.carryNewSalt],
   };
   const contract = new mod.Contract(witnesses);
-  const res = contract.circuits.proveEpoch(freshContext(contract, state), id, rootOfRoots, epoch);
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const res = await contract.circuits.proveEpoch(await freshContext(contract, "proveEpoch", state), id, rootOfRoots, epoch);
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
   const epochKey = rt.persistentHash(EPOCH_REF, { id, epoch });
   const ledgerUptime = led.epochUptime.member(epochKey) ? led.epochUptime.lookup(epochKey) as bigint : undefined;
@@ -412,7 +417,7 @@ export const stubWitnesses = (): Record<string, unknown> =>
 const wit = (v: unknown) => (c: { privateState: unknown }) => [c.privateState, v];
 
 interface CompiledContract {
-  initialState(ctx: unknown, committee: Uint8Array[]): { currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown };
+  initialState(ctx: unknown, committee: Uint8Array[]): Promise<{ currentContractState: { data: rt.ChargedState }; currentPrivateState: unknown }>;
 }
 
 // --- I8: attester committee (DD-26) -------------------------------------------------
@@ -444,8 +449,8 @@ export async function runPublishRoot(
 ): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
-  const res = contract.circuits.publishRoot(freshContext(contract, state), epoch, root, cid);
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const res = await contract.circuits.publishRoot(await freshContext(contract, "publishRoot", state), epoch, root, cid);
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
   return {
     state: after,
@@ -479,8 +484,8 @@ export async function runProveFunding(
     slotLeaves: wit(w.slotLeaves), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
     slotPaths: wit(w.slotPaths), poolEntry: wit(w.poolEntry), poolPath: wit(w.poolPath),
   });
-  const res = contract.circuits.proveFunding(freshContext(contract, state), id, rootOfRoots);
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const res = await contract.circuits.proveFunding(await freshContext(contract, "proveFunding", state), id, rootOfRoots);
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   return { state: after, proven: mod.ledger(after).fundingProven.member(id) };
 }
 
@@ -491,20 +496,23 @@ export const FUNDED_A = { xferIn: 1_004n, fromTreasury: 1_000n } as const;
 export async function freshState(): Promise<rt.ChargedState> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract(stubWitnesses());
-  return contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE).currentContractState.data;
+  return (await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE)).currentContractState.data;
 }
 
 /** Default block time for circuits that read it (H3): 2023-11-14T22:13:20Z. */
 export const BLOCK_TIME = 1_700_000_000n;
 
-function freshContext(contract: CompiledContract, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
-  const init = contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE);
-  const ctx = rt.createCircuitContext(
-    rt.dummyContractAddress(), COIN_PK, state ?? init.currentContractState.data, init.currentPrivateState,
-  );
-  // H3: the trusted "now" — what blockTimeLt/Gte compare against on-chain.
-  ctx.currentQueryContext.block = { ...ctx.currentQueryContext.block, secondsSinceEpoch: blockTime };
-  return ctx;
+async function freshContext(contract: CompiledContract, circuitId: string, state?: rt.ChargedState, blockTime = BLOCK_TIME) {
+  const init = await contract.initialState(rt.createConstructorContext({}, COIN_PK), KAT_COMMITTEE);
+  // H3: `time` is the trusted "now" — what blockTimeLt/Gte compare against on-chain.
+  return rt.createCircuitContext({
+    circuitId,
+    contractAddress: rt.dummyContractAddress(),
+    coinPublicKeyOrZswapState: COIN_PK,
+    contractState: state ?? init.currentContractState.data,
+    privateState: init.currentPrivateState,
+    time: Number(blockTime),
+  });
 }
 
 // --- Engagement lifecycle: register / activate / bond / settle (H3, H3b, M3) -------
@@ -546,9 +554,9 @@ export async function runRegister(
     engagementSecret: wit(engagementSecret), committedWallets: wit(w.committedWallets),
     walletSalt: wit(w.walletSalt), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
   });
-  const res = contract.circuits.register(freshContext(contract, state, blockTime), 1n, registeredTs);
+  const res = await contract.circuits.register(await freshContext(contract, "register", state, blockTime), 1n, registeredTs);
   const id = res.result as Uint8Array;
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
   return {
     id, walletCommit: led.walletCommit.lookup(id), termsCommit: led.termsCommit.lookup(id),
@@ -607,11 +615,11 @@ export async function runLifecycle(
     values.settleRecordPath = wit(records.findPathForLeaf(opts.record) ?? { ...genesis, leaf: opts.record });
   }
   const contract = new mod.Contract({ ...stubWitnesses(), ...values });
-  const res = contract.circuits[circuit](freshContext(contract, opts.state, opts.blockTime), ...args);
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const res = await contract.circuits[circuit](await freshContext(contract, circuit, opts.state, opts.blockTime), ...args);
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
   const id = args[0] as Uint8Array;
-  const z = res.context.currentZswapLocalState as { outputs: ZswapOutputW[]; inputs: CoinW[] };
+  const z = res.context.callContext.currentZswapLocalState as { outputs: ZswapOutputW[]; inputs: CoinW[] };
   return {
     state: after, outputs: z.outputs, inputs: z.inputs,
     escrowed: led.escrowed.member(id) ? led.escrowed.lookup(id) : undefined,
@@ -782,8 +790,8 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     engagementSecret: wit(a.engagementSecret), profileSecret: wit(a.profileSecret),
     claimRecordPresent: wit(presentFlags), claimRecordPaths: wit(paths),
   });
-  const res = contract.circuits.claim(freshContext(contract, state), a.engagementId, 1n, a.epochsPassed, a.epochsTotal);
-  const after = res.context.currentQueryContext.state as rt.ChargedState;
+  const res = await contract.circuits.claim(await freshContext(contract, "claim", state), a.engagementId, 1n, a.epochsPassed, a.epochsTotal);
+  const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const l2 = mod.ledger(after);
   const pid = rt.persistentHash(new rt.CompactTypeBytes(32), a.profileSecret);
   return {

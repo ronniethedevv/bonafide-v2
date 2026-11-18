@@ -99,8 +99,8 @@ importers:
   apps/worker:
     dependencies:
       '@midnight-ntwrk/compact-runtime':
-        specifier: 0.16.0
-        version: 0.16.0
+        specifier: 0.21.0
+        version: 0.21.0
       '@mmr/indexer':
         specifier: workspace:*
         version: link:../../packages/indexer
@@ -199,8 +199,8 @@ importers:
         version: link:../watcher
     devDependencies:
       '@midnight-ntwrk/compact-runtime':
-        specifier: 0.16.0
-        version: 0.16.0
+        specifier: 0.21.0
+        version: 0.21.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -350,8 +350,8 @@ importers:
   packages/merkle:
     dependencies:
       '@midnight-ntwrk/compact-runtime':
-        specifier: 0.16.0
-        version: 0.16.0
+        specifier: 0.21.0
+        version: 0.21.0
     devDependencies:
       fast-check:
         specifier: 3.23.1
@@ -1124,6 +1124,9 @@ packages:
   '@midnight-ntwrk/compact-runtime@0.16.0':
     resolution: {integrity: sha512-UR8+MI5zol+gkne17ZZru8xmZNf11xMgQJkiLT9KWsF+QD8Wuz1WONaqQLL0RAZ2aN2XlRsBFd0ViKDVh8prFw==}
 
+  '@midnight-ntwrk/compact-runtime@0.21.0':
+    resolution: {integrity: sha512-M0tAjLul3nUhdAz8ZLV7BrNGR59Rg2l05pMOBwywPKlyJGqxsVhwB6+mpXXb6hnsgIJlwNQoezqLmaqnFM4S0g==}
+
   '@midnight-ntwrk/dapp-connector-api@4.0.1':
     resolution: {integrity: sha512-IstRo8xfmlJlGgUcAJeRzPUmGCp0/xZR3/bfTOk33MHrzbGmB79r/zYziGavcclo1pkkoBHAodX4vz3xgFxczw==}
 
@@ -1218,6 +1221,9 @@ packages:
 
   '@midnight-ntwrk/zkir-v2@2.1.1':
     resolution: {integrity: sha512-U3sh3kM8bj3BPqWov5o6ewLcq6SJ/tscJD5wATG6LVzqlKWUVudeb7QzUUHXmzeV8XMGgt97+lol/Gnc101Eqw==}
+
+  '@midnightntwrk/onchain-runtime-v4@4.0.2':
+    resolution: {integrity: sha512-Y5IcEZjr3LvQbQSGaiZsaVjGtHSLWS5rF9HsYZnjKDmbPxmW3XzjvHrHOkKxVKLmNohb8NPUrFTx1USwsE7jWw==}
 
   '@midnightntwrk/wallet-sdk-abstractions@2.1.0':
     resolution: {integrity: sha512-56ErAc2eoJIICFXCe64x1uM0Xw6xfAoZwDqN1Nks5ZrQQvmPrNArS3s4SOEXhSR9X9TJ66T2KBx6M/jepyesfg==}
@@ -5631,6 +5637,14 @@ snapshots:
       '@types/object-inspect': 1.13.0
       object-inspect: 1.13.4
 
+  '@midnight-ntwrk/compact-runtime@0.21.0':
+    dependencies:
+      '@midnightntwrk/onchain-runtime-v4': 4.0.2
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
+      '@types/object-inspect': 1.13.0
+      object-inspect: 1.13.4
+
   '@midnight-ntwrk/dapp-connector-api@4.0.1': {}
 
   '@midnight-ntwrk/ledger-v8@8.1.0': {}
@@ -5956,6 +5970,8 @@ snapshots:
   '@midnight-ntwrk/zkir-v2@2.1.0': {}
 
   '@midnight-ntwrk/zkir-v2@2.1.1': {}
+
+  '@midnightntwrk/onchain-runtime-v4@4.0.2': {}
 
   '@midnightntwrk/wallet-sdk-abstractions@2.1.0':
     dependencies:

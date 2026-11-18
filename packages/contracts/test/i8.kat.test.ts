@@ -53,8 +53,8 @@ describe.skipIf(!HAVE_BUILD)("I8: publishRoot (2-of-3 committee fixed at deploy)
     const mod = await import(BUILD_DIR);
     const c = new mod.Contract(stubWitnesses());
     const dup = [KAT_COMMITTEE[0]!, KAT_COMMITTEE[0]!, KAT_COMMITTEE[2]!];
-    expect(() => c.initialState(rt.createConstructorContext({}, "0".repeat(64)), dup))
-      .toThrow(/committee members must be distinct \(I8\)/);
+    await expect(c.initialState(rt.createConstructorContext({}, "0".repeat(64)), dup))
+      .rejects.toThrow(/committee members must be distinct \(I8\)/);
   });
 
   it("one vote does not publish; a second distinct member does (root + cid)", async () => {

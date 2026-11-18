@@ -21,7 +21,7 @@
 //   - Max Uint width is 248; floor_price_P is bounded to Uint<64> so that
 //     16 slots × (quote_end + lp_quote) × P ≤ 16 × 2^128 × 2^64 = 2^196 < 2^248.
 
-pragma language_version 0.23.0;
+pragma language_version 0.28.0;
 
 import CompactStandardLibrary;
 

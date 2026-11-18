@@ -44,11 +44,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # @mmr/dapp is excluded from CI: it imports the compiled contract module
-      # (@mmr/contracts/epoch_proof), a gitignored `compact compile` artifact that
-      # isn't present in CI (no Compact toolchain, like the skipped contract KATs).
-      # It is typechecked + run on the laptop against Midnight Preview, where the
-      # generated module exists.
+      # The Compact compiler (toolchain 0.36.1, ledger 9), pinned by checksum, so every
+      # contract KAT runs against the compiled circuits.
+      - name: Install Compact compiler
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/compactc.zip" \
+            https://github.com/midnightntwrk/compact/releases/download/compactc-v0.36.1/compactc_v0.36.1_x86_64-unknown-linux-musl.zip
+          echo "9d5fedfec9ae775a1e47d5c6f785130b314c1c5c52cd1a4eb9fc56d1fc61d23a  $RUNNER_TEMP/compactc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/compactc.zip" -d "$RUNNER_TEMP/compactc"
+          chmod +x "$RUNNER_TEMP"/compactc/*
+          echo "$RUNNER_TEMP/compactc" >> "$GITHUB_PATH"
+
+      - name: Compile the contract
+        working-directory: packages/contracts
+        run: compactc --skip-zk src/epoch_proof.compact build/epoch_proof
+
+      # @mmr/dapp (deploy + live calls) is checked separately until it moves to
+      # Midnight.js 5 for ledger 9.
       - name: Typecheck
         run: pnpm -r --filter='!@mmr/dapp' typecheck
 
@@ -56,6 +68,7 @@ jobs:
         run: pnpm -r --filter='!@mmr/dapp' test
         env:
           TEST_DATABASE_URL: postgresql://mmr:mmr@localhost:5432/mmr
+          KAT_REQUIRE_BUILD: "1"
 
       - name: Build web
         run: pnpm --filter web build

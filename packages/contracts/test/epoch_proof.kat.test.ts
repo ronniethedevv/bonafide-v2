@@ -85,7 +85,7 @@ describe("PoseidonHasher matches compact-runtime transientHash", () => {
     const l = 123456789n, r = rt.MAX_FIELD - 7n;
     const f = rt.transientHash(new rt.CompactTypeVector(2, F), [l, r]);
     const d = h.hashNode(fieldToDigest(l), fieldToDigest(r));
-    expect(d).toEqual(rt.convertFieldToBytes(32, f, "kat"));
+    expect(d).toEqual(rt.convertBigintToBytes(32, f, "kat"));
     expect(d[0]).toBe(Number(f & 0xffn)); // little-endian
     expect(digestToField(d)).toBe(f);
   });

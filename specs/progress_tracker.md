@@ -90,6 +90,7 @@ leaf schema, root-of-roots).
 | 2026-11-17 | **Daily indexer on Trigger.dev** — new `apps/worker` (`@mmr/worker`, SDK 4.8.3): `daily-index` schedule (01:10 UTC) triggers `index-epoch` per covered chain with a global idempotency key; `index-epoch` (concurrency 1, small-2x, 6 h max, 4 retries with 10–60 min backoff for not-yet-final days and RPC outages) runs `indexDay`: skip if stored, restore the position registry from Postgres, `runLiveEpoch` with the Pinata publisher and configurable log chunk (`MMR_LOG_CHUNK_BLOCKS`, 10 on a free key), save the registry, store the root. Migration `0004_indexer.sql` (`indexed_epoch`, `worker_state`). `runLiveEpoch` now takes a publisher and activity options and returns the manifest CID. `.github/workflows/deploy-worker.yml` deploys on main (skips until the `TRIGGER_ACCESS_TOKEN` secret and `TRIGGER_PROJECT_REF` variable exist). Tests: 3 day/coverage tests, 2 `indexDay` tests on Postgres (index once, idempotent re-run, registry carried across days, no-coverage skip, conflicting root rejected); task module and an esbuild bundle import cleanly in Node. Not yet deployed (needs the token, project ref and the task env vars in the Trigger.dev dashboard). Cost note: on a free RPC key a post-DD-31 Base day is ~43k `eth_getLogs` calls per scan, so daily runs need a paid key (larger chunks) to be practical | **built, not deployed** |
 | 2026-11-17 | **DD-31 resolved: anti-JIT in seconds** — `kMinSeconds = 60` replaces `kMinBlocks = 30`; `AddressActivity.lpFirstActiveTs` (block timestamp, fetched by the provider) replaces `lpFirstActiveBlock`; `isJit` = `endTs − lpFirstActiveTs < kMinSeconds`; `kMinSeconds` added to the epoch manifest and validated in `assertConfig`. New tests: 60 s / 59 s boundary, block numbers irrelevant, and a block-by-block check that it equals the old 30-block rule on 2 s blocks (so pre-switch roots are unchanged). Fixtures in indexer, prover, watcher, witness, agent and contract KAT moved to timestamps. Also: RPC cache writes are now atomic (temp + rename); the agent refuses pre-DD-31 replay files; the running VIRTUAL/USDC replay was restarted on the new code (resumed from cache, no epochs had been written). All package tests pass (tearsheet PDF test excluded: Chromium hangs on a fresh profile on this build host). Live re-check: re-indexing the pinned Base epoch (BROOMY/WETH 0.3%, 2026-10-21, 89 leaves) with the new rule reproduces root `0x5a3a6373…04461` exactly, built twice | **done** |
 | 2026-11-18 | **Daily indexer: demo scheduler (DD-33)** — PR #12 merged (agent v1, WalletConnect, indexer, DD-31); production applied migrations `0003`/`0004`; unused second Vercel project removed (the live project keeps the Neon store). Demo runner: `apps/worker/src/run-daily.ts` (`pnpm --filter @mmr/worker index`: covered chains × last `MMR_CATCHUP_DAYS` days, or one `MMR_INDEX_DATE`/`MMR_INDEX_CHAIN`) and `.github/workflows/daily-index.yml` (01:10 UTC + manual backfill, skips at once without coverage, fails clearly on missing secrets). Production runner: the Trigger.dev tasks in `apps/worker/src/trigger` (SDK/CLI 4.8.5). Tests: 9 worker tests (catch-up window, run plan, indexDay on Postgres); the real command against a migrated database skips a stored day without RPC/IPFS; filtered install (`--filter "@mmr/worker..."`) runs in a clean checkout | **done** |
+| 2026-11-18 | **Ledger 9 toolchain (DD-34)** — Compact 0.36.1 / runtime 0.21.0 in `contracts`, `merkle`, `worker`; Poseidon helper on the new casts; KAT harness on the async, `callContext` runtime API; CI compiles the contract (pinned by SHA-256) and requires the build. 123/123 contract KATs pass locally (previously 6 ran in CI); all package tests pass, pinned epoch roots unchanged | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
@@ -466,6 +467,18 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   `.github/workflows/daily-index.yml` for the demo), always outside HTTP handlers
   (invariant #1). The job is re-runnable: stored days are skipped, the position registry
   lives in Postgres, and each run re-checks the last `MMR_CATCHUP_DAYS` (3) days.
+- **DD-34** (toolchain) **Ledger 9: Compact toolchain 0.36.1, runtime 0.21.0.** Midnight moved
+  every network to ledger 9 (Preview relaunched as a new chain on 2026-11-07), so new
+  deploys need toolchain 0.36.x. The contract compiles unchanged apart from
+  `pragma language_version 0.28.0`; all 11 circuits build and the compiler now emits
+  `contract-manifest.json`. Runtime 0.21 renamed the casts (`Field as Bytes<32>` →
+  `convertBigintToBytes`; `Bytes<32> as Field` → range-checked `convertBytesToUint`
+  bounded by `MAX_FIELD`), made `initialState` and circuits async, and moved query and
+  zswap state under `context.callContext` with block time set by `createCircuitContext({ time })`.
+  Hashes are unchanged: the pinned Base and Ethereum epoch roots still recompute byte for
+  byte. CI installs the checksum-pinned compiler and compiles the contract, so all 123
+  contract KATs run there (`KAT_REQUIRE_BUILD=1` fails the run if the build is missing).
+  `@mmr/dapp` moves to Midnight.js 5 with the redeploy.
 
 ## Open decisions (carry from spec)
 
