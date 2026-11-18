@@ -1,0 +1,17 @@
+{
+  "network": "preview",
+  "contractAddress": "2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6",
+  "sample": "A sample engagement over the contract tests' sample day tree (two wallets, one pool); not real trading data.",
+  "tier": 1,
+  "chain": 8453,
+  "bond": 10000,
+  "steps": [
+    {
+      "step": "mint bond tokens",
+      "txId": "00135279a50f28180604bed0e5a346b748e2a7f43c2355150cb0969ae7fa25c2a9",
+      "blockHeight": 169367,
+      "seconds": 31.4,
+      "at": "2026-11-18T20:00:56.777Z"
+    }
+  ]
+}
