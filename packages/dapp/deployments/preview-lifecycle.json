@@ -12,6 +12,57 @@
       "blockHeight": 169367,
       "seconds": 31.4,
       "at": "2026-11-18T20:00:56.777Z"
+    },
+    {
+      "step": "register",
+      "txId": "0042d7d469a9004adf76d58b8bfd21729fe5b6b8c5c8269932642cf506e91af71b",
+      "blockHeight": 169372,
+      "seconds": 29.2,
+      "at": "2026-11-18T20:01:26.001Z"
+    },
+    {
+      "step": "postBond",
+      "txId": "00686f12967dc90713b85109661cc94c07ecbfb9be27f83fa54a489db1eefbbe4b",
+      "blockHeight": 169378,
+      "seconds": 35.8,
+      "at": "2026-11-18T20:02:02.093Z"
+    },
+    {
+      "step": "activate",
+      "txId": "00accded0e5a083ce4f6359bde1ddf178937920b56b77ce34dba01b33b8e32ddd0",
+      "blockHeight": 169382,
+      "seconds": 23.9,
+      "at": "2026-11-18T20:02:26.200Z"
+    },
+    {
+      "step": "publishRoot (attester 1)",
+      "txId": "00be895cfc8b1ed6315c523b4c41319155d656e21708b93324e004e7f0dcd6e4b8",
+      "blockHeight": 169386,
+      "seconds": 23.8,
+      "at": "2026-11-18T20:02:50.190Z"
+    },
+    {
+      "step": "publishRoot (attester 2)",
+      "txId": "002b5499721874afeebea47a951d5e8a970c1d14d8c11143561bd0c1bc289a00a2",
+      "blockHeight": 169390,
+      "seconds": 23.7,
+      "at": "2026-11-18T20:03:14.119Z"
+    },
+    {
+      "step": "proveFunding",
+      "txId": "006cdefd00b9e72a411cba04653bf7ded7d631e4bbf65fe1ca387b96024458d9ad",
+      "blockHeight": 169397,
+      "seconds": 41.3,
+      "at": "2026-11-18T20:03:55.583Z"
+    },
+    {
+      "step": "proveEpoch (day 1)",
+      "txId": "00fd85076ffced29427ba6a37af0e67c960a9ee9ea61e7772a4385ab785c6e4f5e",
+      "blockHeight": 169413,
+      "seconds": 96,
+      "at": "2026-11-18T20:05:31.799Z"
     }
-  ]
+  ],
+  "engagementId": "4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18",
+  "startDay": 20776
 }

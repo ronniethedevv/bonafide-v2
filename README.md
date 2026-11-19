@@ -77,6 +77,29 @@ different source would produce different keys. Preview explorers:
 [Subscan](https://midnight-preview.subscan.io/),
 [1AM](https://explorer.1am.xyz/?network=preview).
 
+### A sample engagement, live on Preview
+
+One engagement runs through the deployed contract as real, proven transactions. It uses the
+contract tests' sample day (two committed wallets, one pool), not real trading data, because an
+engagement's day 1 is always the day after activation.
+
+| Step | Circuit | Block | Transaction | Proof and inclusion |
+|---|---|---|---|---|
+| Market maker receives 10,000 test bond tokens | `test_bond_token.mint` | 169,367 | `00135279…fa25c2a9` | 31.4 s |
+| Register: wallet and terms commitments; tier A, Base, 10,000 bond | `register` | 169,372 | `0042d7d4…e91af71b` | 29.2 s |
+| Bond held by the contract | `postBond` | 169,378 | `00686f12…eefbbe4b` | 35.8 s |
+| Market maker starts the clock; day 1 is 19 Nov 2026 | `activate` | 169,382 | `00accded…8e32ddd0` | 23.9 s |
+| Attester 1 votes for day 1's root | `publishRoot` | 169,386 | `00be895c…dcd6e4b8` | 23.8 s |
+| Attester 2 votes; the root is published | `publishRoot` | 169,390 | `002b5499…289a00a2` | 23.7 s |
+| The loan reached the committed wallets | `proveFunding` | 169,397 | `006cdefd…4458d9ad` | 41.3 s |
+| Day 1 met the terms: 48 of 48 buckets | `proveEpoch` | 169,413 | `00fd8507…5c6e4f5e` | 96.0 s |
+
+Engagement `4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18`. Settlement opens when
+day 1 ends (00:00 UTC, 20 Nov), and the release of day 1's share of the bond 12 hours after that.
+Every transaction id: [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+Run it again, or carry it forward, with `pnpm --filter @mmr/dapp lifecycle`: each step reads the
+contract's state first and is skipped if it already landed.
+
 ## Why privacy is the requirement
 
 - **A market maker's wallets are its strategy.** Publishing them shows every position and invites
@@ -210,6 +233,7 @@ The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts k
 pnpm --filter @mmr/contracts compact:build   # circuits and proving keys (about 4 minutes)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
 pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
+pnpm --filter @mmr/dapp lifecycle            # the sample engagement, as far as the clock allows
 ```
 
 It needs a proof server 9.0.0 on port 6300 (`pnpm --filter @mmr/dapp proof-server`) and a
@@ -236,10 +260,10 @@ package and runs every test against the compiled circuits; a missing build fails
 
 ## Scope and limits
 
-- **The lifecycle on Preview is next.** On Preview today: the deploy and its maintenance updates.
-  The lifecycle from registration to funding has run as real transactions on a local Midnight node
-  ([`specs/LIVE_LOCAL_LIFECYCLE.md`](specs/LIVE_LOCAL_LIFECYCLE.md)), and every circuit runs in the
-  tests.
+- **The lifecycle on Preview is in progress.** On Preview so far: the deploy, its maintenance
+  updates, and a sample engagement from registration to day 1's proof. Settlement and release
+  follow on 20 Nov, as the contract's clock allows. A claim needs all 30 days, so it has not run on
+  chain; every circuit, `claim` included, runs in the tests.
 - **One operator holds the three attester keys** in this deployment, derived from one seed. In
   production each attester is a separate party; the job that casts their daily votes is next.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
@@ -273,10 +297,11 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Roadmap
 
 - **This wave (first submission):** the contract on ledger 9 with every invariant enforced in a
-  circuit; deployed to Preview with all 12 circuits; the deterministic indexer and independent
-  watcher on real Base and Ethereum data; the daily indexer job; the public profile, tear sheet and
+  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview from
+  registration to day 1's proof; the deterministic indexer and independent watcher on real Base and
+  Ethereum data; the daily indexer job; the public profile, tear sheet and
   dashboards.
-- **Next:** the full lifecycle on Preview, from registration to claim; three independent attester
+- **Next:** settlement and release on Preview, then a claim after the 30 days; three independent attester
   operators casting daily votes; Aerodrome on Base; weekly claim batching; a DUST fee sponsor so a
   market maker needs no NIGHT of its own.
 
