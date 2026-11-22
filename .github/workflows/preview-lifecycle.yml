@@ -1,21 +1,28 @@
 name: Preview lifecycle
 
-# Carries the sample engagement on Midnight Preview forward every day: the attester
-# committee votes for each ended day's root (2 of 3), the market maker proves the day,
-# settles it inside its window, and releases its share of the bond after the 12-hour
-# challenge window. `pnpm --filter @mmr/dapp lifecycle` reads the contract's state first
-# and does only what is due, so a run that finds nothing to do changes nothing.
+# Carries the engagement on Midnight Preview forward on real Base data. The attester
+# committee recomputes each day the indexer stored (manifest and pool trees from IPFS)
+# and votes for its root (2 of 3), or disputes a published root that does not
+# recompute; the market maker proves each ended day from the published tree and series,
+# settles it inside its window, and releases its share of the bond once the day's
+# dispute window closes. `pnpm --filter @mmr/dapp lifecycle` reads the contract's state
+# first and does only what is due, so a run that finds nothing to do changes nothing.
 #
-#   02:40 UTC  after a day ends: publish its root, prove it, settle it
-#   15:10 UTC  after the challenge window of that settlement: release
+#   after each Daily index run   vote for the new day's root, prove it, settle it
+#   02:40 UTC                    the same, if the index run was late
+#   18:20 UTC                    release days whose dispute window closed at 18:00 UTC
 #
 # Settings → Secrets and variables → Actions → Secrets: DEPLOY_SEED (the deploy wallet's
-# seed; it pays the fees and derives the committee's and the engagement's secrets).
+# seed; it pays the fees, derives the committee's keys and opens the engagement file) and
+# DATABASE_URL (the indexer's database). Optional variable: MMR_IPFS_GATEWAY.
 
 on:
+  workflow_run:
+    workflows: ["Daily index"]
+    types: [completed]
   schedule:
     - cron: "40 2 * * *"
-    - cron: "10 15 * * *"
+    - cron: "20 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +38,8 @@ jobs:
     timeout-minutes: 120
     env:
       DEPLOY_SEED: ${{ secrets.DEPLOY_SEED }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MMR_IPFS_GATEWAY: ${{ vars.MMR_IPFS_GATEWAY }}
       NETWORK_ID: preview
     steps:
       - name: Check configuration
@@ -108,13 +117,16 @@ jobs:
         run: |
           node -e '
             const fs = require("fs");
-            const r = JSON.parse(fs.readFileSync("packages/dapp/deployments/preview-lifecycle.json", "utf8"));
+            const path = "packages/dapp/deployments/preview-lifecycle.json";
+            if (!fs.existsSync(path)) { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "No lifecycle record yet.\n"); process.exit(0); }
+            const r = JSON.parse(fs.readFileSync(path, "utf8"));
             const since = new Date(Date.now() - 3 * 3600e3).toISOString();
             const rows = r.steps.filter((s) => s.at >= since)
               .map((s) => `| ${s.step} | ${s.blockHeight} | \`${s.txId}\` | ${s.seconds} s |`);
+            const notes = (r.notes || []).filter((n) => n.at >= since).map((n) => `- ${n.note}`);
             const out = ["### Preview lifecycle", "",
               rows.length ? "| Step | Block | Transaction | Proof and inclusion |\n|---|---|---|---|\n" + rows.join("\n")
-                          : "Nothing was due in this run."];
+                          : "Nothing was due in this run.", "", ...notes];
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");
           '
 
