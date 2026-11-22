@@ -90,12 +90,23 @@ engagement's day 1 is always the day after activation.
 | Bond held by the contract | `postBond` | 169,378 | `00686f12…eefbbe4b` | 35.8 s |
 | Market maker starts the clock; day 1 is 19 Nov 2026 | `activate` | 169,382 | `00accded…8e32ddd0` | 23.9 s |
 | Attester 1 votes for day 1's root | `publishRoot` | 169,386 | `00be895c…dcd6e4b8` | 23.8 s |
-| Attester 2 votes; the root is published | `publishRoot` | 169,390 | `002b5499…289a00a2` | 23.7 s |
+| Attester 2 votes; day 1's root is published | `publishRoot` | 169,390 | `002b5499…289a00a2` | 23.7 s |
 | The loan reached the committed wallets | `proveFunding` | 169,397 | `006cdefd…4458d9ad` | 41.3 s |
 | Day 1 met the terms: 48 of 48 buckets | `proveEpoch` | 169,413 | `00fd8507…5c6e4f5e` | 96.0 s |
+| Day 2's root: attester 1 votes | `publishRoot` | 226,692 | `0088be1c…5f601139` | 23.9 s |
+| Day 2's root: attester 2 votes; published | `publishRoot` | 226,696 | `00f54316…f6676168` | 24.1 s |
+| Day 2 met the terms, outflow totals carried from day 1 | `proveEpoch` | 226,712 | `00a60d48…91ff208b` | 95.6 s |
+| Day 2 settled; its 12-hour challenge window starts | `settleEpoch` | 226,716 | `00f22da0…da3348c9` | 23.9 s |
+| Day 3's root: attester 1 votes | `publishRoot` | 226,720 | `00e0dc68…0f8ef66a` | 22.4 s |
+| Day 3's root: attester 2 votes; published | `publishRoot` | 226,724 | `002e5c57…359eae02` | 23.9 s |
+| Day 3 met the terms, outflow totals carried from day 2 | `proveEpoch` | 226,737 | `00f31cec…dcb9e82b` | 78.6 s |
+| Day 3 settled | `settleEpoch` | 226,741 | `00bcb910…d6885c03` | 23.7 s |
 
-Engagement `4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18`. Settlement opens when
-day 1 ends (00:00 UTC, 20 Nov), and the release of day 1's share of the bond 12 hours after that.
+Engagement `4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18`. Days 2 and 3 are proven
+and settled; their shares of the bond are released after the 12-hour challenge window. Day 1 is
+proven but was not settled inside its window (the run due on 20 Nov did not start), so under the
+contract's rules day 1 is now defaultable: anyone may call `defaultEngagement`, which sends the bond
+to the client. A day's settlement belongs in a scheduled job, not a manual run.
 Every transaction id: [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 Run it again, or carry it forward, with `pnpm --filter @mmr/dapp lifecycle`: each step reads the
 contract's state first and is skipped if it already landed.
@@ -261,9 +272,9 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Scope and limits
 
 - **The lifecycle on Preview is in progress.** On Preview so far: the deploy, its maintenance
-  updates, and a sample engagement from registration to day 1's proof. Settlement and release
-  follow on 20 Nov, as the contract's clock allows. A claim needs all 30 days, so it has not run on
-  chain; every circuit, `claim` included, runs in the tests.
+  updates, and a sample engagement with three days proven and two settled; the releases follow
+  their challenge windows. Day 1 missed its settlement window and is defaultable. A claim needs all
+  30 days, so it has not run on chain; every circuit, `claim` included, runs in the tests.
 - **One operator holds the three attester keys** in this deployment, derived from one seed. In
   production each attester is a separate party; the job that casts their daily votes is next.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
@@ -297,8 +308,8 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Roadmap
 
 - **This wave (first submission):** the contract on ledger 9 with every invariant enforced in a
-  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview from
-  registration to day 1's proof; the deterministic indexer and independent watcher on real Base and
+  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview with three days
+  proven and two settled; the deterministic indexer and independent watcher on real Base and
   Ethereum data; the daily indexer job; the public profile, tear sheet and
   dashboards.
 - **Next:** settlement and release on Preview, then a claim after the 30 days; three independent attester

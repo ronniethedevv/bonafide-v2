@@ -127,8 +127,8 @@ pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in b
 pnpm --filter @mmr/dapp lifecycle            # a sample engagement, as far as the clock allows
 ```
 
-A sample engagement has run on the deployment from registration to day 1's proof (8 transactions,
-blocks 169,367 to 169,413); its record is
+A sample engagement runs on the deployment: three days proven and two settled so far (16
+transactions, blocks 169,367 to 226,741); its record is
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 ### Why Demo B's lifecycle ran locally
