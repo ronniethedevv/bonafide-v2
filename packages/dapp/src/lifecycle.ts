@@ -119,6 +119,9 @@ async function main(): Promise<void> {
       contractAddress: deployment.contractAddress,
       compiledContract: compiledEpochProofFrom(cfg.zkConfigPath, supply),
       privateStateId: PRIVATE_STATE_ID,
+      // The witnesses read `inputs`, not the private state; this lets a fresh machine (a
+      // scheduled job) attach without a store from the deploy.
+      initialPrivateState: {},
     });
     const tokenProviders = buildProviders<"mint">(cfg, wallet, wallet.unshieldedAddress, cfg.bondTokenZkConfigPath);
     const token = await findDeployedContract(tokenProviders, {

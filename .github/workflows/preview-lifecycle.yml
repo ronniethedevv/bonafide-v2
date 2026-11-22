@@ -1,0 +1,127 @@
+name: Preview lifecycle
+
+# Carries the sample engagement on Midnight Preview forward every day: the attester
+# committee votes for each ended day's root (2 of 3), the market maker proves the day,
+# settles it inside its window, and releases its share of the bond after the 12-hour
+# challenge window. `pnpm --filter @mmr/dapp lifecycle` reads the contract's state first
+# and does only what is due, so a run that finds nothing to do changes nothing.
+#
+#   02:40 UTC  after a day ends: publish its root, prove it, settle it
+#   15:10 UTC  after the challenge window of that settlement: release
+#
+# Settings → Secrets and variables → Actions → Secrets: DEPLOY_SEED (the deploy wallet's
+# seed; it pays the fees and derives the committee's and the engagement's secrets).
+
+on:
+  schedule:
+    - cron: "40 2 * * *"
+    - cron: "10 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DEPLOY_SEED: ${{ secrets.DEPLOY_SEED }}
+      NETWORK_ID: preview
+    steps:
+      - name: Check configuration
+        run: |
+          if [ -z "$DEPLOY_SEED" ]; then
+            echo "::error::The DEPLOY_SEED secret is not set."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "@mmr/dapp..."
+
+      # Same pinned compiler as CI. Key generation is deterministic, so the keys built here
+      # are byte for byte the ones on chain (`pnpm --filter @mmr/dapp check-deployment`).
+      - name: Install Compact compiler
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/compactc.zip" \
+            https://github.com/midnightntwrk/compact/releases/download/compactc-v0.36.1/compactc_v0.36.1_x86_64-unknown-linux-musl.zip
+          echo "9d5fedfec9ae775a1e47d5c6f785130b314c1c5c52cd1a4eb9fc56d1fc61d23a  $RUNNER_TEMP/compactc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/compactc.zip" -d "$RUNNER_TEMP/compactc"
+          chmod +x "$RUNNER_TEMP"/compactc/*
+          echo "$RUNNER_TEMP/compactc" >> "$GITHUB_PATH"
+
+      - name: Restore proving keys
+        id: keys
+        uses: actions/cache@v4
+        with:
+          path: packages/contracts/dist
+          key: proving-keys-compactc-0.36.1-${{ hashFiles('packages/contracts/src/*.compact') }}
+
+      - name: Build circuits and proving keys
+        if: steps.keys.outputs.cache-hit != 'true'
+        working-directory: packages/contracts
+        run: |
+          compactc src/epoch_proof.compact dist/epoch_proof
+          compactc src/test_bond_token.compact dist/test_bond_token
+
+      - name: Restore proof server parameters
+        uses: actions/cache@v4
+        with:
+          path: ~/zk-params
+          key: proof-server-9.0.0-params
+
+      - name: Start the proof server
+        run: |
+          mkdir -p ~/zk-params
+          docker run -d --name proof-server -p 127.0.0.1:6300:6300 \
+            -v ~/zk-params:/.cache/midnight midnightntwrk/proof-server:9.0.0
+          for i in $(seq 1 120); do
+            if curl -sf http://127.0.0.1:6300/health > /dev/null; then echo "proof server up"; exit 0; fi
+            sleep 5
+          done
+          docker logs proof-server | tail -20
+          echo "::error::The proof server did not start."
+          exit 1
+
+      - name: Run the lifecycle
+        run: pnpm --filter @mmr/dapp lifecycle
+
+      - name: Summary
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs");
+            const r = JSON.parse(fs.readFileSync("packages/dapp/deployments/preview-lifecycle.json", "utf8"));
+            const since = new Date(Date.now() - 3 * 3600e3).toISOString();
+            const rows = r.steps.filter((s) => s.at >= since)
+              .map((s) => `| ${s.step} | ${s.blockHeight} | \`${s.txId}\` | ${s.seconds} s |`);
+            const out = ["### Preview lifecycle", "",
+              rows.length ? "| Step | Block | Transaction | Proof and inclusion |\n|---|---|---|---|\n" + rows.join("\n")
+                          : "Nothing was due in this run."];
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");
+          '
+
+      - name: Keep the record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-lifecycle-${{ github.run_id }}
+          path: packages/dapp/deployments/preview-lifecycle.json
+          retention-days: 90

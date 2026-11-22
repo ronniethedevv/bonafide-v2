@@ -106,7 +106,10 @@ Engagement `4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18`. D
 and settled; their shares of the bond are released after the 12-hour challenge window. Day 1 is
 proven but was not settled inside its window (the run due on 20 Nov did not start), so under the
 contract's rules day 1 is now defaultable: anyone may call `defaultEngagement`, which sends the bond
-to the client. A day's settlement belongs in a scheduled job, not a manual run.
+to the client. Since then a scheduled job carries the engagement forward every day
+([`.github/workflows/preview-lifecycle.yml`](.github/workflows/preview-lifecycle.yml)): at 02:40 UTC
+the committee votes for the ended day's root and the day is proven and settled; at 15:10 UTC, after
+the challenge window, its share of the bond is released.
 Every transaction id: [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 Run it again, or carry it forward, with `pnpm --filter @mmr/dapp lifecycle`: each step reads the
 contract's state first and is skipped if it already landed.
@@ -275,8 +278,8 @@ package and runs every test against the compiled circuits; a missing build fails
   updates, and a sample engagement with three days proven and two settled; the releases follow
   their challenge windows. Day 1 missed its settlement window and is defaultable. A claim needs all
   30 days, so it has not run on chain; every circuit, `claim` included, runs in the tests.
-- **One operator holds the three attester keys** in this deployment, derived from one seed. In
-  production each attester is a separate party; the job that casts their daily votes is next.
+- **One operator holds the three attester keys** in this deployment, derived from one seed, and
+  the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
   out of scope: proving off-chain fills needs zkTLS.
 - **Linkability:** the bond records the coin key of the wallet that posted it, so engagements bonded
@@ -308,13 +311,13 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Roadmap
 
 - **This wave (first submission):** the contract on ledger 9 with every invariant enforced in a
-  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview with three days
-  proven and two settled; the deterministic indexer and independent watcher on real Base and
+  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview, carried forward
+  daily by a scheduled job; the deterministic indexer and independent watcher on real Base and
   Ethereum data; the daily indexer job; the public profile, tear sheet and
   dashboards.
-- **Next:** settlement and release on Preview, then a claim after the 30 days; three independent attester
-  operators casting daily votes; Aerodrome on Base; weekly claim batching; a DUST fee sponsor so a
-  market maker needs no NIGHT of its own.
+- **Next:** the daily job carries the engagement to day 30 (19 Dec), then the claim into a public
+  profile; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
+  fee sponsor so a market maker needs no NIGHT of its own.
 
 ## License
 
