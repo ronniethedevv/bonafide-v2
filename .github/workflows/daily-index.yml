@@ -11,6 +11,7 @@ name: Daily index
 #   Variables: MMR_COVERAGE_8453 (base tokens to index on Base; MMR_COVERAGE_1 for
 #              Ethereum), MMR_LOG_CHUNK_BLOCKS (10 on a free RPC key, e.g. 2000 on a paid
 #              one), optional MMR_CATCHUP_DAYS (default 3), MMR_TREASURY_8453
+#              (each is read from a variable, or from a secret of the same name)
 
 on:
   schedule:
@@ -42,12 +43,12 @@ jobs:
       BASE_ARCHIVE_RPC_URL: ${{ secrets.BASE_ARCHIVE_RPC_URL }}
       ETH_ARCHIVE_RPC_URL: ${{ secrets.ETH_ARCHIVE_RPC_URL }}
       IPFS_PINNING_JWT: ${{ secrets.IPFS_PINNING_JWT }}
-      MMR_COVERAGE_8453: ${{ vars.MMR_COVERAGE_8453 }}
-      MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 }}
-      MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 }}
-      MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 }}
-      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS }}
-      MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS }}
+      MMR_COVERAGE_8453: ${{ vars.MMR_COVERAGE_8453 || secrets.MMR_COVERAGE_8453 }}
+      MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 || secrets.MMR_COVERAGE_1 }}
+      MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 || secrets.MMR_TREASURY_8453 }}
+      MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 || secrets.MMR_TREASURY_1 }}
+      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS || secrets.MMR_LOG_CHUNK_BLOCKS }}
+      MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS || secrets.MMR_CATCHUP_DAYS }}
       MMR_INDEX_DATE: ${{ inputs.date }}
       MMR_INDEX_CHAIN: ${{ inputs.chain }}
     steps:

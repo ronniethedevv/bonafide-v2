@@ -3,6 +3,7 @@ import { RootOfRoots, Sha256Hasher, digestToHex, parseAddr } from "@mmr/merkle";
 import { PoseidonHasher } from "@mmr/merkle/poseidon";
 import { DEFAULT_CONFIG, assertConfig, type IndexerConfig } from "./config.js";
 import { buildEpoch, InMemoryPublisher } from "./epoch.js";
+import { parsePoolSeries, seriesOf, seriesRoots } from "./series.js";
 import { activityToLeaf, isJit } from "./leaves.js";
 import { commitDepth } from "./commit.js";
 import type {
@@ -106,9 +107,36 @@ describe("buildEpoch", () => {
       const proof = res.rootOfRoots.poolProof(pool);
       expect(RootOfRoots.verifyPoolProof(hasher, res.rootOfRoots.root, proof)).toBe(true);
     }
-    // 2 trees + 1 manifest published
-    expect(publisher.count).toBe(3);
+    // 2 trees, 2 series documents and 1 manifest published
+    expect(publisher.count).toBe(5);
     expect(res.manifest.pools[0]!.referencePrice).toBe("100");
+  });
+
+  it("publishes each pool's committed series: every leaf's depth and flow roots rebuild from it", async () => {
+    const publisher = new InMemoryPublisher();
+    // 0x22 is a JIT position (live 10 s before the end): its depth commits to an empty series
+    class JitProvider extends FakeProvider {
+      override async poolActivity(pool: PoolDescriptor): Promise<AddressActivity[]> {
+        return pool.poolAddr === POOL_A
+          ? [activity(0x11n), activity(0x22n, { lpFirstActiveTs: range.endTs - 10 }), activity(0x44n, { depthBuckets: [], flowWindows: [] })]
+          : [activity(0x33n)];
+      }
+    }
+    const res = await buildEpoch({ provider: new JitProvider(), publisher, hasher }, DEFAULT_CONFIG, range);
+    for (const entry of res.manifest.pools) {
+      const { bandsBps, series } = parsePoolSeries(publisher.get(entry.seriesCid!)!);
+      expect(bandsBps).toEqual(DEFAULT_CONFIG.bandsBps);
+      const tree = res.trees.get(parseAddr(entry.poolAddr))!;
+      for (const leaf of tree.leaves.filter((l) => l.addr !== 0n)) {
+        const roots = seriesRoots(new PoseidonHasher(), seriesOf(series, leaf.addr), bandsBps); // the default commit hasher
+        expect(digestToHex(roots.depthRoot)).toBe(digestToHex(leaf.depthRoot));
+        expect(digestToHex(roots.flowRoot)).toBe(digestToHex(leaf.flowRoot));
+      }
+      if (entry.poolAddr.endsWith("a1")) {
+        expect(series.get(0x22n)!.depth).toEqual([]); // anti-JIT applied before publishing
+        expect(series.has(0x44n)).toBe(false); // empty series are left out
+      }
+    }
   });
 
   it("is deterministic across independent runs", async () => {

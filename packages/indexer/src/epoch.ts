@@ -2,7 +2,7 @@
 //
 // Pipeline (deterministic end to end):
 //   pools above floor -> per-address leaves -> per-pool indexed tree
-//   -> publish each tree to the content store -> epoch root-of-roots
+//   -> publish each tree and its committed series to the content store -> epoch root-of-roots
 //   -> (optional) the attester committee's publishRoot votes on (epoch, root, cid).
 //
 // Everything that touches the network is injected (ChainProvider, TreePublisher,
@@ -27,6 +27,7 @@ import {
   type TreePublisher,
 } from "./provider.js";
 import { activityToLeaf } from "./leaves.js";
+import { serializePoolSeries } from "./series.js";
 import { winsorizedTwap } from "./twap.js";
 
 export interface EpochDeps {
@@ -46,6 +47,11 @@ export interface PoolManifestEntry {
   poolAddr: string;
   rootHex: string;
   cid: string;
+  /**
+   * The pool's committed depth and flow series (series.ts), so a wallet's leaf can be
+   * opened from public data. Absent in manifests published before it was added.
+   */
+  seriesCid?: string;
   leafCount: number;
   referencePrice: string;
 }
@@ -132,6 +138,7 @@ export async function buildEpoch(
     trees.set(pool.poolAddr, tree);
 
     const cid = await deps.publisher.publish(serializePoolTree(tree));
+    const seriesCid = await deps.publisher.publish(serializePoolSeries(activity, config, range));
 
     const samples = await deps.provider.poolPriceSamples(
       pool,
@@ -150,6 +157,7 @@ export async function buildEpoch(
       poolAddr: formatAddr(pool.poolAddr),
       rootHex: digestToHex(tree.root),
       cid,
+      seriesCid,
       leafCount: tree.size,
       referencePrice: referencePrice.toString(),
     });
