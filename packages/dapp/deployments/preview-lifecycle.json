@@ -68,6 +68,13 @@
       "blockHeight": 226692,
       "seconds": 23.9,
       "at": "2026-11-22T19:38:14.541Z"
+    },
+    {
+      "step": "publishRoot day 2 (attester 2)",
+      "txId": "00f54316ef73850d36f1f67713d45fbf760d2042d4b4ba6e0a3cfd8d18f6676168",
+      "blockHeight": 226696,
+      "seconds": 24.1,
+      "at": "2026-11-22T19:38:38.814Z"
     }
   ],
   "engagementId": "4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18",
