@@ -11,6 +11,7 @@
 // earned tranche (M3b; schedule KAT in tranche.kat.test.ts).
 
 import { beforeAll, describe, expect, it } from "vitest";
+import * as rt from "@midnight-ntwrk/compact-runtime";
 import { nextTranche } from "@mmr/protocol";
 import {
   BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, CLIENT_PK, HAVE_BUILD, REQUIRED_BOND, Status, T,
@@ -32,7 +33,7 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
   /** Ledger with epoch 1 settled at its end, and with all 3 epochs settled at theirs. */
   let settled: BondRun["state"];
   let allSettled: BondRun["state"];
-  /** When every settled epoch's challenge window has closed. */
+  /** When every settled epoch's day has passed its deadline (DD-37). */
   let releaseAt: bigint;
   beforeAll(async () => {
     reg = await runRegister(buildScenario().witness, new Uint8Array(32).fill(0x99));
@@ -40,7 +41,7 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
     settled = (await settle(g, g.state, 1n, epochEndOf(g, 1n))).state;
     allSettled = settled;
     for (const e of [2n, 3n]) allSettled = (await settle(g, allSettled, e, epochEndOf(g, e))).state;
-    releaseAt = epochEndOf(g, 3n) + T.CHALLENGE;
+    releaseAt = graceDeadlineOf(g, 3n);
   });
   const post = (coin: CoinW = BOND_COIN, state = reg.state) =>
     runLifecycle("postBond", [reg.id], { coin, state });
@@ -61,8 +62,10 @@ describe.skipIf(!HAVE_BUILD)("M3: bond takes real shielded custody", () => {
     await expect(post({ ...BOND_COIN, color: new Uint8Array(32).fill(9) })).rejects.toThrow(/not the protocol bond token \(DD-35\)/);
     const { state } = await post();
     await expect(post({ ...BOND_COIN, nonce: new Uint8Array(32).fill(8) }, state)).rejects.toThrow(/bond already posted/);
-    await expect(runLifecycle("postBond", [new Uint8Array(32).fill(0x42)],
-      { coin: BOND_COIN, state: reg.state })).rejects.toThrow(/engagement not open for a bond/);
+    // DD-37: the caller owns the id (its secret derives it), but it was never registered
+    const stranger = new Uint8Array(32).fill(0x42);
+    await expect(runLifecycle("postBond", [rt.persistentHash(new rt.CompactTypeBytes(32), stranger)],
+      { coin: BOND_COIN, state: reg.state, secret: stranger })).rejects.toThrow(/engagement not open for a bond/);
   });
 
   it("the beneficiary is the one registered (the MM cannot redirect a slash)", async () => {

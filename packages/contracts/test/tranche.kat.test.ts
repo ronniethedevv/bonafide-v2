@@ -23,12 +23,12 @@ const sentElsewhere = (r: BondRun) =>
   r.outputs.filter((o) => o.recipient.is_left && !eq(o.recipient.left.bytes, BOND_CALLER_PK))
     .reduce((a, o) => a + o.coinInfo.value, 0n);
 
-/** All E epochs proven and settled at their ends; `at` is after every challenge window. */
+/** All E epochs proven and settled at their ends; `at` is after every day's deadline (DD-37). */
 async function settledEngagement(bond: bigint): Promise<{ g: Engagement; state: BondRun["state"]; at: bigint }> {
   const g = await runningEngagement({ proven: E, coin: { ...BOND_COIN, value: bond } });
   let state = g.state;
   for (let e = 1n; e <= BigInt(E); e++) state = (await settle(g, state, e, epochEndOf(g, e))).state;
-  return { g, state, at: epochEndOf(g, BigInt(E)) + T.CHALLENGE };
+  return { g, state, at: graceDeadlineOf(g, BigInt(E)) };
 }
 
 describe.skipIf(!HAVE_BUILD)("M3b: release tranches follow the proven-epoch schedule", () => {
@@ -90,7 +90,7 @@ describe.skipIf(!HAVE_BUILD)("M3b: release tranches follow the proven-epoch sche
   it("no epoch beyond the contract can settle, release or default", async () => {
     await expect(settle(g, state, 31n, epochEndOf(g, 31n), undefined, { ...g.records[0]!, epoch: 31n }))
       .rejects.toThrow(/epoch outside the contract \(M3b\)/);
-    await expect(release(31n, 333n)).rejects.toThrow(/epoch not settled \(H3b\)/);
+    await expect(release(31n, 333n)).rejects.toThrow(/epoch outside the contract \(M3b\)/);
     await expect(runLifecycle("defaultEngagement", [g.id, 31n], { state, blockTime: graceDeadlineOf(g, 31n) }))
       .rejects.toThrow(/epoch outside the contract \(M3b\)/);
   });

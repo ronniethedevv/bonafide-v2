@@ -53,6 +53,7 @@ import {
   termsToEngagement,
   proveEpochs,
   runClaim,
+  creditEpochs,
   type ClaimArgs,
   runRegister,
   buildScenario,
@@ -591,10 +592,12 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     buildScenario(undefined, 0, {}, { 0: flatDepth(0n) }), // 0
   ];
 
-  /** Register, prove `n` epochs on one ledger, and return what a claim needs. */
+  /** Register, prove `n` epochs on one ledger, credit them (DD-37), and return what a claim needs. */
   async function setup(scenarios = epochScenarios()) {
     const reg = await runRegister(scenarios[0]!.witness, SECRET);
-    const { state, records } = await proveEpochs(scenarios, reg.id, new CompactHasher(), reg.state);
+    const proven = await proveEpochs(scenarios, reg.id, new CompactHasher(), reg.state);
+    const records = proven.records;
+    const state = await creditEpochs(proven.state, reg.id, records);
     const { terms, termsSalt } = scenarios[0]!.witness;
     const present = new Map(records.map((r) => [Number(r.epoch), r]));
     const base: ClaimArgs = {
@@ -638,7 +641,7 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     const present = new Map(base.present);
     present.set(3, { ...records[2]!, uptime: 48n }); // epoch 3 really recorded 0
     await expect(runClaim({ ...base, present, epochsPassed: 3n }, state))
-      .rejects.toThrow(/epoch record not on the ledger \(H4\)/);
+      .rejects.toThrow(/epoch record not credited \(H4, DD-37\)/);
   });
 
   it("rejects a real record presented in the wrong epoch slot", async () => {

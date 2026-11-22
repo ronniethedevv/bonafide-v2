@@ -25,7 +25,7 @@ import {
 const SECRET = new Uint8Array(32).fill(0x99);
 const R1 = new Uint8Array(32).fill(0x11);
 const UNDER = /loan not received by the committed wallets \(DD-27\)/;
-const WRONG_ROOT = /funding root is not epoch-1's attested root \(DD-27\)/;
+const WRONG_ROOT = /funding root is not that day's attested root \(DD-27\)/;
 
 /** register -> postBond -> activate, with `scenario`'s wallets and terms; no root published. */
 async function activated(scenario: Scenario): Promise<{ id: Uint8Array; state: rt.ChargedState }> {
@@ -65,7 +65,7 @@ describe.skipIf(!HAVE_BUILD)("DD-27: proveFunding", () => {
     await expect(runProveFunding(s.witness, r.id, s.rootOfRoots, r.state)).rejects.toThrow(UNDER);
   });
 
-  it("reverts when the root is not epoch 1's published root", async () => {
+  it("reverts when the root is not the funding day's published root", async () => {
     const s = buildScenario(undefined, 0, FUNDED_A);
     const a = await activated(s);
     // nothing published
