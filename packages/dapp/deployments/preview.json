@@ -5,9 +5,9 @@
     "color": "e371ca249a02265ce3ba0aec6e06305094dcd72520f8072ea74eda0f1040b146",
     "txId": "008c244e594233cd11976466877ef0710cc49cef6f859299b421f434b37d865b21"
   },
-  "contractAddress": "2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6",
-  "txId": "005730daadad9179da8db83eb704a37f8f1f0401677c3f62d9faa8b89920e98f1e",
-  "blockHeight": 168424,
+  "contractAddress": "a773ae9733eb2a45c96794e5bc7ca387c2c77034eed8a9722902980fc94103ce",
+  "txId": "0066bf2139748bcadc0e8d3af2975e999fd9969eeff370de0376d8cec3f08057cf",
+  "blockHeight": 227442,
   "committee": [
     "4819915efc97788ad9a09ad994094a4c8c464c894d731ab83f7b35207590f2ec",
     "0d83c08388a0ce561ea399df0ecfdcf7a1884892aa9872e12647e2f274f2db01",
@@ -30,24 +30,24 @@
   "inserts": [
     {
       "circuit": "settleEpoch",
-      "txId": "00be74e14cefba68e25f1f815e8f7c3e18ec225c9bd447cbfe1495d8d8a45793cd"
+      "txId": "00e0999fdea22c1431a2cc43b738f5372a90f7218f63decbf33ea0171fa1b05588"
     },
     {
       "circuit": "releaseEpoch",
-      "txId": "003e86063e5dbc41d2506d06de311f5f1aabdbfb643a16dc70ac44b4bbe5e7cb35"
+      "txId": "003422ca7fe31984b9407d8938e21417e30bb497ce7a05de44ea31a7ec67a92511"
     },
     {
       "circuit": "voidUnfunded",
-      "txId": "007f4d48d086b9736920f21b0a446dd45ac9ad1120d6aa32ce93d3d61717ae379f"
+      "txId": "00543123c318dc86bc3990f787cabd97a74003239cd50a8e78f153f5c548139ba2"
     },
     {
       "circuit": "defaultEngagement",
-      "txId": "002421cb1d084472fac47a22ece49512dfe9857afc1b920453702f7c8c8df38c06"
+      "txId": "00a15bc1402b7a504997bc054e81a013f6d153e5da1bb2a2c96bc20e84c5640533"
     },
     {
       "circuit": "claim",
-      "txId": "009b8857e04d7685382c0165160e809ef9d99f501c1159a6a93c87c80b204078b4"
+      "txId": "00a82ecac5114e4084ca4f6c723c10a2aa0bddcfd97f9c0ee2362c477614c86c54"
     }
   ],
-  "deployedAt": "2026-11-18T18:26:37.970Z"
+  "deployedAt": "2026-11-22T20:53:14.595Z"
 }

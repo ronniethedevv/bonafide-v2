@@ -1,0 +1,53 @@
+{
+  "network": "preview",
+  "bondToken": {
+    "contractAddress": "30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61",
+    "color": "e371ca249a02265ce3ba0aec6e06305094dcd72520f8072ea74eda0f1040b146",
+    "txId": "008c244e594233cd11976466877ef0710cc49cef6f859299b421f434b37d865b21"
+  },
+  "contractAddress": "2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6",
+  "txId": "005730daadad9179da8db83eb704a37f8f1f0401677c3f62d9faa8b89920e98f1e",
+  "blockHeight": 168424,
+  "committee": [
+    "4819915efc97788ad9a09ad994094a4c8c464c894d731ab83f7b35207590f2ec",
+    "0d83c08388a0ce561ea399df0ecfdcf7a1884892aa9872e12647e2f274f2db01",
+    "ef45c99f518dbd18da2c513e652b5e62d05a828e81cdc52552a4ec47589ed9e1"
+  ],
+  "circuits": [
+    "register",
+    "postBond",
+    "activate",
+    "publishRoot",
+    "disputeRoot",
+    "proveFunding",
+    "proveEpoch",
+    "settleEpoch",
+    "releaseEpoch",
+    "voidUnfunded",
+    "defaultEngagement",
+    "claim"
+  ],
+  "inserts": [
+    {
+      "circuit": "settleEpoch",
+      "txId": "00be74e14cefba68e25f1f815e8f7c3e18ec225c9bd447cbfe1495d8d8a45793cd"
+    },
+    {
+      "circuit": "releaseEpoch",
+      "txId": "003e86063e5dbc41d2506d06de311f5f1aabdbfb643a16dc70ac44b4bbe5e7cb35"
+    },
+    {
+      "circuit": "voidUnfunded",
+      "txId": "007f4d48d086b9736920f21b0a446dd45ac9ad1120d6aa32ce93d3d61717ae379f"
+    },
+    {
+      "circuit": "defaultEngagement",
+      "txId": "002421cb1d084472fac47a22ece49512dfe9857afc1b920453702f7c8c8df38c06"
+    },
+    {
+      "circuit": "claim",
+      "txId": "009b8857e04d7685382c0165160e809ef9d99f501c1159a6a93c87c80b204078b4"
+    }
+  ],
+  "deployedAt": "2026-11-18T18:26:37.970Z"
+}
