@@ -7,8 +7,8 @@
 // transactions:
 //
 //   mint bond tokens → register → postBond → activate → publishRoot × 2 (day 1)
-//   → proveFunding → proveEpoch (day 1) → settleEpoch (after day 1 ends)
-//   → releaseEpoch (12 h after settlement)
+//   → proveFunding → then, for every day that has ended: publishRoot × 2, proveEpoch,
+//   settleEpoch (inside the day's window), releaseEpoch (12 h after settlement)
 //
 // Each step first reads the contract's state from the indexer and is skipped if it
 // already landed, so the script can be re-run at any time; steps whose time has not
@@ -28,6 +28,8 @@ import { ledger } from "@mmr/contracts/epoch_proof";
 import {
   FUNDED_A, buildScenario, cidBytes, epochKey, rootKey, type EpochRecordW,
 } from "@mmr/contracts/harness";
+import { CompactHasher } from "@mmr/merkle";
+import { type CarryTotals, ZERO_CARRY, carryStep, genesisCarry } from "@mmr/prover";
 import { nextTranche } from "@mmr/protocol";
 import * as Rx from "rxjs";
 import { deriveAttesterSecrets, deriveSecret } from "./committee.js";
@@ -39,6 +41,7 @@ import { buildHeadlessWallet, toMasterSeed } from "./wallet.js";
 
 const DAY = 86_400n;
 const CHALLENGE = 43_200n; // 12 h, as in releaseEpoch
+const AFTER_END = 237_600n; // a day's settlement deadline, after it ends (attester, challenge, proving, grace)
 const TIER = 1n; // A
 const CHAIN = 8453n; // Base
 const BOND = 10_000n; // tier A's minimum, in the bond token
@@ -61,6 +64,7 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 const bytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
 const now = () => BigInt(Math.floor(Date.now() / 1000));
 const dayLabel = (d: bigint) => new Date(Number(d * DAY) * 1000).toISOString().slice(0, 10);
+const iso = (t: bigint) => new Date(Number(t) * 1000).toISOString();
 
 async function main(): Promise<void> {
   useEnvProxy();
@@ -220,50 +224,95 @@ async function main(): Promise<void> {
       led = await readLedger();
     }
 
-    // 7. Day 1's proof: depth, uptime, custody, selling, outflows, round trips.
-    const ek = epochKey(id, 1n);
-    if (!led.epochUptime.member(ek)) {
-      setInputs({
-        ...tree, bidMin: w.bidMin, askMin: w.askMin, depthPaths: w.depthPaths,
-        flowBuy: w.flowBuy, flowSell: w.flowSell,
-        carryPrev: w.carryPrev, carryPrevSalt: w.carryPrevSalt, carryNewSalt: w.carryNewSalt,
+    // 7-9. Every day that has ended: publish its root, prove it (the outflow totals carry
+    // from day to day as a salted commitment), settle it inside its window, and release its
+    // share of the bond 12 hours after settlement. A day whose settlement window closed
+    // unsettled is reported: it is then defaultable, which sends the bond to the client.
+    const hasher = new CompactHasher();
+    const members = w.slotLeaves.filter((l) => l.present);
+    const sum = (f: (l: (typeof members)[number]) => bigint) => members.reduce((a, l) => a + f(l), 0n);
+    const daySums: CarryTotals = {
+      xferIn: sum((l) => l.xfer_in), xferOut: sum((l) => l.xfer_out), fromTreasury: sum((l) => l.from_treasury),
+    };
+    const saltFor = (e: bigint) => (e === 1n ? w.carryNewSalt : deriveSecret(seed, `carry-salt:sample-1:${e}`));
+    const lastEnded = now() / DAY - startDay; // day e has ended once (startDay + e) days have passed
+    const lastDay = lastEnded < 1n ? 1n : lastEnded > BigInt(EPOCHS) ? BigInt(EPOCHS) : lastEnded;
+    let prevTotals: CarryTotals = ZERO_CARRY;
+    let prevSalt = w.carryPrevSalt;
+    let prevCommitment = genesisCarry(hasher, prevSalt);
+    for (let e = 1n; e <= lastDay; e++) {
+      const day = startDay + e - 1n;
+      const ek = epochKey(id, e);
+      const newSalt = saltFor(e);
+      const step = carryStep(hasher, {
+        prevCommitment, prevTotals, prevSalt, epochSums: daySums, newSalt, disposalD: w.terms.disposal_D,
       });
-      await run("proveEpoch (day 1)", () => contract.callTx.proveEpoch(id, root, 1n));
-      led = await readLedger();
-    }
-    console.log(`  day 1 uptime   ${led.epochUptime.lookup(ek)} of 48 buckets`);
 
-    // 8. Settle day 1 once it has ended.
-    const dayEnd = (startDay + 1n) * DAY;
-    if (!led.settledAt.member(ek)) {
-      if (now() < dayEnd) {
-        console.log(`\nsettleEpoch opens when day 1 ends: ${new Date(Number(dayEnd) * 1000).toISOString()}. Re-run then.`);
-        return;
+      const rk = rootKey(CHAIN, day);
+      for (const [i, secret] of attesters.slice(0, 2).entries()) {
+        if (led.publishedRoot.member(rk)) break;
+        setInputs({ attesterSecret: secret });
+        await run(`publishRoot day ${e} (attester ${i + 1})`, () =>
+          contract.callTx.publishRoot(CHAIN, day, root, cidBytes("sample-day-tree")),
+        );
+        led = await readLedger();
       }
-      const rec: EpochRecordW = {
-        id, epoch: 1n, uptime: led.epochUptime.lookup(ek) as bigint,
-        termsCommit: led.termsCommit.lookup(id) as Uint8Array, tier: led.tier.lookup(id) as bigint,
-      };
-      const path = led.epochRecords.findPathForLeaf(rec);
-      if (!path) throw new Error("day 1's record is not in the contract's record tree");
-      setInputs({ settleRecordPath: path });
-      await run("settleEpoch (day 1)", () => contract.callTx.settleEpoch(id, 1n, now() - 5n));
-      led = await readLedger();
-    }
 
-    // 9. Release day 1's share of the bond after the 12-hour challenge window.
-    if (!led.epochReleased.member(ek)) {
-      const opens = (led.settledAt.lookup(ek) as bigint) + CHALLENGE;
-      if (now() < opens) {
-        console.log(`\nreleaseEpoch opens after the challenge window: ${new Date(Number(opens) * 1000).toISOString()}. Re-run then.`);
-        return;
+      if (!led.epochUptime.member(ek)) {
+        const onChain = led.carryCommitment.member(id) ? hex(led.carryCommitment.lookup(id) as Uint8Array) : undefined;
+        if (e > 1n && onChain !== hex(prevCommitment)) {
+          throw new Error(`day ${e}: the on-chain outflow commitment does not continue from day ${e - 1n}`);
+        }
+        setInputs({
+          ...tree, bidMin: w.bidMin, askMin: w.askMin, depthPaths: w.depthPaths,
+          flowBuy: w.flowBuy, flowSell: w.flowSell,
+          carryPrev: { xfer_in: prevTotals.xferIn, xfer_out: prevTotals.xferOut, from_treasury: prevTotals.fromTreasury },
+          carryPrevSalt: prevSalt, carryNewSalt: newSalt,
+        });
+        await run(`proveEpoch (day ${e})`, () => contract.callTx.proveEpoch(id, root, e));
+        led = await readLedger();
       }
-      setInputs({});
-      await run("releaseEpoch (day 1)", () =>
-        contract.callTx.releaseEpoch(id, 1n, nextTranche(BOND, EPOCHS, 0)),
-      );
+      console.log(`  day ${e} (${dayLabel(day)}) uptime ${led.epochUptime.lookup(ek)} of 48 buckets`);
+
+      const dayEnd = (startDay + e) * DAY;
+      const deadline = dayEnd + AFTER_END;
+      if (!led.settledAt.member(ek)) {
+        if (now() < dayEnd) {
+          console.log(`  settleEpoch for day ${e} opens when it ends: ${iso(dayEnd)}. Re-run then.`);
+        } else if (now() >= deadline) {
+          console.log(`  day ${e}'s settlement window closed at ${iso(deadline)} unsettled: it is defaultable.`);
+        } else {
+          const rec: EpochRecordW = {
+            id, epoch: e, uptime: led.epochUptime.lookup(ek) as bigint,
+            termsCommit: led.termsCommit.lookup(id) as Uint8Array, tier: led.tier.lookup(id) as bigint,
+          };
+          const path = led.epochRecords.findPathForLeaf(rec);
+          if (!path) throw new Error(`day ${e}'s record is not in the contract's record tree`);
+          setInputs({ settleRecordPath: path });
+          await run(`settleEpoch (day ${e})`, () => contract.callTx.settleEpoch(id, e, now() - 5n));
+          led = await readLedger();
+        }
+      }
+
+      if (led.settledAt.member(ek) && !led.epochReleased.member(ek)) {
+        const opens = (led.settledAt.lookup(ek) as bigint) + CHALLENGE;
+        if (now() < opens) {
+          console.log(`  releaseEpoch for day ${e} opens after the challenge window: ${iso(opens)}. Re-run then.`);
+        } else {
+          const released = led.releasedEpochs.member(id) ? Number(led.releasedEpochs.lookup(id)) : 0;
+          setInputs({});
+          await run(`releaseEpoch (day ${e})`, () =>
+            contract.callTx.releaseEpoch(id, e, nextTranche(BOND, EPOCHS, released)),
+          );
+          led = await readLedger();
+        }
+      }
+      prevTotals = step.newTotals;
+      prevSalt = newSalt;
+      prevCommitment = step.newCommitment;
     }
-    console.log(`\nday 1 is proven, settled and released; recorded in ${file}`);
+    console.log(`
+recorded in ${file}`);
   } finally {
     await wallet.stop();
   }
