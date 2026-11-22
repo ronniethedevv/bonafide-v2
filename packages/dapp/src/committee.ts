@@ -39,3 +39,8 @@ export function deriveAttesterSecrets(masterSeed: Uint8Array, n = 3): Uint8Array
 export function buildCommittee(secrets: Uint8Array[]): Uint8Array[] {
   return secrets.map(attesterId);
 }
+
+/** A 32-byte secret for `label`, derived from the deploy seed (never stored). */
+export function deriveSecret(masterSeed: Uint8Array, label: string): Uint8Array {
+  return Uint8Array.from(createHash("sha256").update(`mmr:${label}:v1`).update(masterSeed).digest());
+}

@@ -91,6 +91,28 @@ export function compiledEpochProof(zkConfigPath: string) {
   );
 }
 
+/**
+ * The same binding with witnesses that read from `supply` (a value set by the caller
+ * before each call), for scripts that hold their inputs in memory rather than in the
+ * private-state store.
+ */
+export function compiledEpochProofFrom(zkConfigPath: string, supply: (name: Slot) => unknown) {
+  const fromSupply = Object.fromEntries(
+    WITNESS_NAMES.map((n) => [
+      n,
+      ({ privateState }: { privateState: EpochProofPrivateState }) => {
+        const v = supply(n);
+        if (v === undefined) throw new Error(`witness ${n} was not supplied for this call`);
+        return [privateState, v];
+      },
+    ]),
+  ) as unknown as Witnesses<EpochProofPrivateState>;
+  return CompiledContract.make<Contract<EpochProofPrivateState>>("epoch_proof", Contract<EpochProofPrivateState>).pipe(
+    CompiledContract.withWitnesses(fromSupply),
+    CompiledContract.withCompiledFileAssets(zkConfigPath),
+  );
+}
+
 /** The 12 circuit ids, for typing the ZK config provider. */
 export type EpochProofCircuitId =
   | "register" | "postBond" | "activate" | "publishRoot" | "disputeRoot" | "proveFunding"

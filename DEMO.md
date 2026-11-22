@@ -124,7 +124,12 @@ because Preview's faucet hands out only unshielded tNIGHT.
 pnpm --filter @mmr/contracts compact:build   # circuits + proving keys (~4 min)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
 pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
+pnpm --filter @mmr/dapp lifecycle            # a sample engagement, as far as the clock allows
 ```
+
+A sample engagement runs on the deployment: three days proven and two settled so far (16
+transactions, blocks 169,367 to 226,741); its record is
+[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 ### Why Demo B's lifecycle ran locally
 
