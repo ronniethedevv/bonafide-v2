@@ -110,6 +110,13 @@
       "blockHeight": 226737,
       "seconds": 78.6,
       "at": "2026-11-22T19:42:44.427Z"
+    },
+    {
+      "step": "settleEpoch (day 3)",
+      "txId": "00bcb910afea2dc3152f77a94240a6b2fdb445c205a554fc5a119ba38bd6885c03",
+      "blockHeight": 226741,
+      "seconds": 23.7,
+      "at": "2026-11-22T19:43:08.381Z"
     }
   ],
   "engagementId": "4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18",
