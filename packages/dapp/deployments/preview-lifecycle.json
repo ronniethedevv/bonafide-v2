@@ -103,6 +103,13 @@
       "blockHeight": 226724,
       "seconds": 23.9,
       "at": "2026-11-22T19:41:25.572Z"
+    },
+    {
+      "step": "proveEpoch (day 3)",
+      "txId": "00f31cec8babbd862c6d91c86aba4fe3379764a2e6704e346c875dc185dcb9e82b",
+      "blockHeight": 226737,
+      "seconds": 78.6,
+      "at": "2026-11-22T19:42:44.427Z"
     }
   ],
   "engagementId": "4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18",
