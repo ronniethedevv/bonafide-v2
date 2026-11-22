@@ -92,6 +92,12 @@ jobs:
         if: steps.cfg.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile --filter "@mmr/worker..."
 
+      # Idempotent: applies only the migrations this database has not recorded, in one
+      # transaction under an advisory lock.
+      - name: Apply database migrations
+        if: steps.cfg.outputs.ready == 'true'
+        run: node packages/db/scripts/migrate.mjs --force
+
       - name: Index
         if: steps.cfg.outputs.ready == 'true'
         run: pnpm --filter @mmr/worker index
