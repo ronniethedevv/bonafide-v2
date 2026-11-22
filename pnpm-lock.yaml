@@ -256,6 +256,9 @@ importers:
       '@mmr/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@mmr/engagement-file':
+        specifier: workspace:*
+        version: link:../engagement-file
       '@mmr/indexer':
         specifier: workspace:*
         version: link:../indexer
@@ -268,12 +271,18 @@ importers:
       '@mmr/prover':
         specifier: workspace:*
         version: link:../prover
+      '@mmr/watcher':
+        specifier: workspace:*
+        version: link:../watcher
       bip39:
         specifier: ^3.1.0
         version: 3.1.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
@@ -287,12 +296,18 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.5
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
       tsx:
         specifier: 4.19.2
         version: 4.19.2
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.5)
 
   packages/db:
     dependencies:
