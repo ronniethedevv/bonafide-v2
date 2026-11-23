@@ -8,7 +8,7 @@
 //     withdrawal, fee collection, flash);
 //   - otherwise it is a transfer (xferIn/xferOut, base token only — I5 is in base).
 // So for every address: Δbalance(base) = swap net + pool legs + base xfers, which the
-// live verification checks against balanceOf at both ends of the range.
+// live run checks against balanceOf at both ends of the range (assertBalancesExplained).
 
 import type { EvmRpc, RpcLog } from "./rpc.js";
 import type { EpochRange } from "../provider.js";
@@ -73,6 +73,31 @@ function emptyFlows(): AddressFlows {
 const ZERO = 0n;
 
 /** Hashes of the txs in which the pool emitted a Swap. */
+/**
+ * The base token's balance change of every address over the range must equal what its
+ * classified flows explain: swap net + pool legs + transfers in − transfers out. The
+ * balances come from the archive node's state, the flows from the log scan, possibly a
+ * different endpoint: a Transfer the log endpoint left out stops the day here instead of
+ * producing a root that is wrong yet consistent everywhere. The pool is the swaps'
+ * counterparty and is not accounted this way.
+ */
+export function assertBalancesExplained(
+  pool: bigint,
+  flows: ReadonlyMap<bigint, AddressFlows>,
+  balances: readonly { addr: bigint; start: bigint; end: bigint }[],
+): void {
+  for (const { addr, start, end } of balances) {
+    if (addr === pool) continue;
+    const f = flows.get(addr);
+    const explained = f ? f.swapBaseIn - f.swapBaseOut + f.poolLegBase + f.xferIn - f.xferOut : 0n;
+    if (end - start !== explained) {
+      throw new FlowError(
+        `base balance of 0x${addr.toString(16).padStart(40, "0")} moved ${end - start} over the range; its transfers explain ${explained}`,
+      );
+    }
+  }
+}
+
 export function swapTxHashes(pool: bigint, logs: readonly RpcLog[]): string[] {
   const out = new Set<string>();
   for (const l of logs) {

@@ -10,7 +10,7 @@ import type { BlockHeader, EvmRpc } from "./rpc.js";
 import { TOPIC0, decodeBurn, decodeLiquidityChange, decodeMint, addressToBigInt } from "./abi.js";
 import { keccak256 } from "./keccak.js";
 import { hexToBytes } from "./abi.js";
-import { extractFlows, type AddressFlows, type ExtractOptions } from "./flows.js";
+import { assertBalancesExplained, extractFlows, type AddressFlows, type ExtractOptions } from "./flows.js";
 import { multicall, selector, SELECTOR, type Call } from "./multicall.js";
 import { orientPool } from "./price.js";
 import { windowIndex } from "./range.js";
@@ -213,6 +213,9 @@ export async function extractPoolActivity(
     await multicall(rpc, balanceOf(base), range.endBlock),
     await multicall(rpc, balanceOf(quote), range.endBlock),
   ];
+  // The logs may come from another endpoint than this state: every address's base
+  // balance change must be explained by its classified flows, or the day stops.
+  assertBalancesExplained(pool.poolAddr, flows, list.map((addr, i) => ({ addr, start: word(bStart[i]!), end: word(bEnd[i]!) })));
   const zero: AddressFlows = {
     swapBaseIn: 0n, swapBaseOut: 0n, swapQuoteIn: 0n, swapQuoteOut: 0n,
     xferIn: 0n, xferOut: 0n, fromTreasury: 0n, poolLegBase: 0n, windows: new Map(),
