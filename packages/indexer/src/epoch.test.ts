@@ -139,6 +139,17 @@ describe("buildEpoch", () => {
     }
   });
 
+  it("indexes only the allowlisted pools and records the allowlist", async () => {
+    const res = await buildEpoch(
+      { provider: new FakeProvider(), publisher: new InMemoryPublisher(), hasher },
+      { ...DEFAULT_CONFIG, poolAllowlist: ["0x00000000000000000000000000000000000000B2"] },
+      range,
+    );
+    expect(res.manifest.pools.map((p) => p.poolAddr)).toEqual(["0x00000000000000000000000000000000000000b2"]);
+    expect(res.manifest.poolAllowlist).toEqual(["0x00000000000000000000000000000000000000b2"]);
+    expect(res.manifest.poolCount).toBe(1);
+  });
+
   it("is deterministic across independent runs", async () => {
     const run = async (): Promise<string> => {
       const r = await buildEpoch(

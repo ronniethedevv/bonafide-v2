@@ -15,6 +15,12 @@ describe("daily run plan", () => {
     expect(plan({ MMR_COVERAGE_8453: TOKEN, MMR_COVERAGE_1: TOKEN, MMR_CATCHUP_DAYS: "2" }, NOW)).toEqual({ chains: [8453, 1], days: [D - 1, D] });
   });
 
+  it("never catches up before MMR_INDEX_FROM; a named day is indexed as asked", () => {
+    const env = { MMR_COVERAGE_8453: TOKEN, MMR_INDEX_FROM: "2026-11-16" };
+    expect(plan(env, NOW).days).toEqual([D]);
+    expect(plan({ ...env, MMR_INDEX_DATE: "2026-10-21" }, NOW).days).toEqual([dayFromDate("2026-10-21")]);
+  });
+
   it("runs one day on one chain for a backfill", () => {
     const env = { MMR_COVERAGE_8453: TOKEN, MMR_COVERAGE_1: TOKEN, MMR_INDEX_DATE: "2026-10-21", MMR_INDEX_CHAIN: "8453" };
     expect(plan(env, NOW)).toEqual({ chains: [8453], days: [dayFromDate("2026-10-21")] });

@@ -71,6 +71,17 @@ export function treasury(env: Record<string, string | undefined>, chainId: numbe
   return addressList(env[`MMR_TREASURY_${chainId}`], `MMR_TREASURY_${chainId}`);
 }
 
+/** Pools to limit `chainId` to (MMR_POOLS_<chainId>), optional: every discovered pool when empty. */
+export function poolAllowlist(env: Record<string, string | undefined>, chainId: number): string[] {
+  return addressList(env[`MMR_POOLS_${chainId}`], `MMR_POOLS_${chainId}`);
+}
+
+/** The earliest day the catch-up window indexes (MMR_INDEX_FROM, YYYY-MM-DD), optional. */
+export function indexFromDay(env: Record<string, string | undefined>): number | undefined {
+  const raw = env.MMR_INDEX_FROM;
+  return raw === undefined || raw.trim() === "" ? undefined : dayFromDate(raw.trim());
+}
+
 /** Supported chains that have at least one covered token. */
 export function coveredChains(env: Record<string, string | undefined>): number[] {
   return SUPPORTED_CHAINS.filter((c) => coverage(env, c).length > 0);

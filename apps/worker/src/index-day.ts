@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runLiveEpoch, type LiveEpochOptions, type RunResult, type TreePublisher } from "@mmr/indexer";
-import { coverage, dayLabel, dayWindow, logChunkBlocks, rpcConcurrency, treasury } from "./day.js";
+import { coverage, dayLabel, dayWindow, logChunkBlocks, poolAllowlist, rpcConcurrency, treasury } from "./day.js";
 import { getWorkerState, indexedEpoch, saveIndexedEpoch, setWorkerState, type Queryable } from "./store.js";
 
 export interface IndexDayDeps {
@@ -59,6 +59,7 @@ export async function indexDay(chainId: number, day: number, deps: IndexDayDeps)
       endTs,
       baseTokens,
       treasuryAddresses: treasury(deps.env, chainId),
+      ...(poolAllowlist(deps.env, chainId).length ? { configOverrides: { poolAllowlist: poolAllowlist(deps.env, chainId) } } : {}),
       env: deps.env,
       cacheDir: join(dir, "rpc-cache"),
       retries: 20,
