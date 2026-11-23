@@ -20,6 +20,7 @@ import { unlockInbox } from "@/lib/wallet/inbox";
 import { signMessage, walletErrorText } from "@/lib/wallet/browser";
 import { BUCKETS_PER_EPOCH, formatUnits, pToPrice, toUnits, type ClientTermsPayload, type TokenInfo } from "@/lib/engagement/terms";
 import { checkBeneficiary, type BeneficiaryCheck } from "@/lib/engagement/beneficiary";
+import { fundingCheck, type FundingCheck, type OnChainEngagement } from "@/lib/engagement/funding-check";
 import { Check, Info } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
 
@@ -36,7 +37,10 @@ export function ClientRegistrations({ items, address, inboxKey, midnightKey }: {
           {r.status === "proposed" && r.walletCommit && r.termsCommit ? (
             <Proposal r={r} address={address} inboxKey={inboxKey} midnightKey={midnightKey} />
           ) : r.status === "accepted" || r.status === "active" ? (
-            <DailyFigures r={r} address={address} inboxKey={inboxKey} />
+            <>
+              <BeforeFunding r={r} address={address} inboxKey={inboxKey} midnightKey={midnightKey} />
+              <DailyFigures r={r} address={address} inboxKey={inboxKey} />
+            </>
           ) : undefined}
         </RegistrationCard>
       ))}
@@ -180,6 +184,84 @@ function TermsView({ payload, matches, beneficiary }: { payload: ClientTermsPayl
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+// Before sending the loan: find the engagement on Midnight by the commitments this client
+// accepted, open the accepted terms here (they state the registration's tier, chain, bond
+// and beneficiary, which the commitments don't cover) and compare. Nothing is taken from
+// the market maker's word.
+function BeforeFunding({ r, address, inboxKey, midnightKey }: { r: Registration; address: string; inboxKey: string | null; midnightKey: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ check: FundingCheck; id: string | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!inboxKey) throw new Error("Set up your private inbox first.");
+      const wc = r.walletCommit!;
+      const tc = r.termsCommit!;
+      const key = await unlockInbox(address, inboxKey);
+      const res = await fetch(`/api/engagements/${encodeURIComponent(r.id)}`, { cache: "no-store" });
+      const body = (await res.json()) as { termsEnvelope?: SealedEnvelope | null; error?: string };
+      if (!res.ok || !body.termsEnvelope) throw new Error(body.error ?? "The terms aren't available.");
+      const payload = JSON.parse(await open(body.termsEnvelope, key.privateKey, contexts.terms(wc, tc))) as ClientTermsPayload;
+      const same = (await walletCommit(payload.wallets, hexToBytes(payload.secrets.walletSalt, 32))) === wc
+        && (await termsCommit(termsFromJson(payload.terms), hexToBytes(payload.secrets.termsSalt, 32))) === tc;
+      if (!same) throw new Error("The terms you hold no longer match the commitments on record.");
+      const chainRes = await fetch(`/api/engagements/${encodeURIComponent(r.id)}/onchain`, { cache: "no-store" });
+      const chainBody = (await chainRes.json()) as { engagement?: OnChainEngagement | null; error?: string };
+      if (!chainRes.ok) throw new Error(chainBody.error ?? "Couldn't read the contract.");
+      const onChain = chainBody.engagement ?? null;
+      setResult({ check: fundingCheck(payload.registration, midnightKey, onChain), id: onChain?.id ?? null });
+    } catch (e) {
+      setError(walletErrorText(e));
+    }
+    setBusy(false);
+  }
+
+  if (!r.walletCommit || !r.termsCommit) return null;
+  return (
+    <div className="card" style={{ marginTop: 14, padding: 14 }}>
+      <div style={{ fontWeight: 600, fontSize: 14 }}>Before you send the loan</div>
+      {!result ? (
+        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={run} disabled={busy || !inboxKey}>
+            {busy ? "Checking…" : "Check on Midnight"}
+          </button>
+          <span className="dim" style={{ fontSize: 12.5 }}>
+            Compares the engagement on chain with the terms you accepted: the bond, its beneficiary and the clock.
+          </span>
+        </div>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          <div role="status" style={{ fontSize: 13.5, fontWeight: 600, color: result.check.safe ? "var(--pos)" : "var(--neg)" }}>
+            {result.check.safe
+              ? result.check.fundingProven
+                ? "Safe, and funded: the market maker has proven the loan reached its wallets."
+                : "Safe to fund: the engagement on chain is the one you accepted, and the bond is held."
+              : "Don't send the loan yet."}
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+            {result.check.items.map((i) => (
+              <li key={i.label} style={{ fontSize: 13, marginTop: 6 }}>
+                <span style={{ color: i.ok ? "var(--pos)" : "var(--neg)", fontWeight: 600 }}>{i.ok ? "ok" : "no"}</span>{" "}
+                {i.label}
+                <div className="dim" style={{ fontSize: 12, marginLeft: 22 }}>{i.detail}</div>
+              </li>
+            ))}
+          </ul>
+          {result.id && (
+            <a href={`/engagement/${result.id}`} style={{ display: "inline-block", fontSize: 12.5, marginTop: 10 }}>
+              Follow it on Midnight
+            </a>
+          )}
+        </div>
+      )}
+      {error && <div role="alert" className="field-err">{error}</div>}
     </div>
   );
 }

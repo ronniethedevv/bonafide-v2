@@ -164,7 +164,10 @@ proof binds one to the other. That is why this runs on Midnight.
    that names it. The engagement id is the hash of a secret only the market maker holds.
 2. **Bond and activate.** The market maker posts a bond in the bond token, held by the contract, at
    least the tier's minimum (A 10,000, B 5,000, C 2,500). Only the market maker can start the clock,
-   and only after the bond is in. Day 1 is the next UTC day.
+   and only after the bond is in. Day 1 is the next UTC day. Before sending the loan, the client's
+   portal finds the engagement on Midnight by the two commitments the client accepted and checks
+   the rest against the terms it holds: the bond's beneficiary is the client's key, the tier, chain
+   and bond are as agreed, the bond is held and the clock has started.
 3. **Index and attest.** Each day, a deterministic indexer reads Uniswap v3 activity on Base and
    Ethereum from an archive node and builds a Merkle tree of per-wallet results, published to IPFS.
    A committee of three attesters puts the day's root on chain once two of them vote for it, each
@@ -289,14 +292,14 @@ proves.
 
 ## Tests
 
-533 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+538 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
 | `indexer` | 159 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
-| `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
+| `web` | 46 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, the client's check before funding, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
