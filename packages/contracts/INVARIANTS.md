@@ -13,7 +13,9 @@ claim circuit enforces I10. A proof that breaks any invariant cannot be generate
 - `R_e` — the epoch's **root-of-roots**. `P` — the deal's floor price (option
   strike for loans, agreed floor for retainers). `L_0` — loan amount. `D` —
   allowed disposal (outflow cap). `S` — net-selling cap. `Q_0` — quote already in
-  the set at start. `δ*` — depth target. `ρ` — round-trip share cap.
+  the set at start. `δ*` — depth target. `ρ` — round-trip share cap. `π` — the
+  engagement's pool, committed with the terms: `proveEpoch` and `proveFunding` open
+  only `π`'s tree in `R_e` (DD-38).
 - All amounts are **unsigned**; every inequality is written to avoid a
   subtraction that could underflow.
 

@@ -288,8 +288,8 @@ package and runs every test against the compiled circuits; a missing build fails
   from the same wallet can be linked. Claims are not yet batched, so a claim's timing can hint at
   which engagement just ended.
 - **Spread at a stated size** needs the full liquidity curve and is not proven.
-- **The daily indexer** runs on Trigger.dev in production; for this demo it runs on GitHub Actions'
-  scheduler ([`.github/workflows/daily-index.yml`](.github/workflows/daily-index.yml)).
+- **The daily indexer** is built to run on Trigger.dev in production; for this demo it runs on
+  GitHub Actions' scheduler ([`.github/workflows/daily-index.yml`](.github/workflows/daily-index.yml)).
 - **Fees:** the market maker pays its own DUST; there is no fee sponsor yet.
 
 ## Repository layout
