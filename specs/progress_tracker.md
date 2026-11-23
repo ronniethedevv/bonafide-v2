@@ -5,14 +5,17 @@ of every working unit.
 
 ## Current phase
 
-**Built and deployed; the first real run is pending (first submission).** The contract
-(`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed on Preview with the
-review fixes (DD-35, DD-37, DD-38) and has no engagement yet. The daily indexer (GitHub
+**Built and deployed; the live engagement is registered, its first day pending (first
+submission).** The contract (`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed
+on Preview with the review fixes (DD-35, DD-37, DD-38). Engagement `7e3dc433…b046` (VIRTUAL/USDC
+on Base, three public LP wallets, permissive retainer terms) is registered, bonded and activated;
+day 1 is 24 Nov. The daily indexer (GitHub
 Actions' scheduler; built to run on Trigger.dev in production) has not yet completed a
 real day: the first runs were too slow and ran out of memory, both since fixed. The
 lifecycle job (attest after recomputing, then prove, settle, release) is built and
-tested offline end to end but has not run. Next: one indexed day, the engagement
-registered, the lifecycle job running unattended, then the README's on-chain evidence.
+tested offline end to end but has not run. A free RPC plan (10-block log requests, 0.2 s
+Base blocks) limits indexing to the engagement's pool. Next: the first indexed day, funding
+proven, the lifecycle job running unattended.
 
 ## Status log
 
@@ -105,6 +108,7 @@ registered, the lifecycle job running unattended, then the README's on-chain evi
 | 2026-11-18 | **Deploy package on ledger 9 (DD-36)** — `@mmr/dapp` on Midnight.js 5.0.1 / wallet SDK 2.0.1 (seed-started wallet, byte hand-off, provider `config`); `deploy` publishes `test_bond_token` then `epoch_proof` with the committee and the token's color and records both in `.deploy/<network>.json`; `register-dust` stops with the faucet step when the wallet is empty; committee secrets derived from the seed; ledger-8 diagnostics (call-submission repro, batched deploy, pre-DD-35 `interact`) removed; full keys for both contracts built (`compact:build`); CI typechecks the dapp. **Deployed to Preview (ledger 9):** wallet funded from the faucet, DUST registered (tx `00bb9e00…`); `test_bond_token` `30cba593…31b61` (color `e371ca24…b146`); `epoch_proof` `2f663d74…c2b6` at block 168,424 with 7 circuits (deploy writes 54% of a block; all 12 would be 79%, over the ~65% one transaction may use), then 5 verifier-key inserts (~18 s each): 12/12 on chain. Next: the live lifecycle | **done** |
 | 2026-11-22 | **Second review fixes, redeploy, real-data pipeline (DD-37)** — contract: `proveFunding(id, day, root)` takes any attested, undisputed day from registration through day 1; `postBond` owner-only; disputes close at the day's deadline (end + 66 h) and a disputed day is neutral (released to the MM, never credited, never defaultable); releases open at that deadline; released undisputed days are credited to `creditedRecords`, which `claim` reads, and a claim needs at least one. 145 contract tests (10 new). Redeployed: `epoch_proof` `a773ae97…03ce` (tx `0066bf21…`, block 227,442), 12/12 keys match the local build; first deployment kept as `preview-v1*.json`. Indexer publishes each pool's committed depth and flow series (`seriesCid`). Daily index reads settings from a variable or secret and applies DB migrations. `@mmr/dapp`: published-day reader (recomputes trees and root), real witness builder, sealed engagement file, lifecycle with attesters that recompute before voting or disputing; offline end-to-end test (indexer pipeline → published day → witness → compiled contract). Lifecycle job follows each index run | **done** (engagement registration next) |
 | 2026-11-23 | **Pool bound into the terms (DD-38); indexer throughput** — `Terms.pool` committed and checked by `proveEpoch`/`proveFunding`; 147 contract tests (2 new). Daily index: the first real run (VIRTUAL, 2 pools) spent ~1.5 h per pool at 4 requests in flight and ran out of memory on the second; now 8 in flight (`MMR_RPC_CONCURRENCY`), a 6 GB heap, and the position registry is saved when a day fails. Redeployed: `epoch_proof` `4ff2c93d…a634` (tx `009fa9c6…`, block 231,968), 12/12 keys match the local build; the DD-37 deployment `a773ae97…03ce` had no engagement and is superseded | **done** |
+| 2026-11-23 | **Live engagement registered** — VIRTUAL/USDC (Uniswap v3, Base, `0x529d…017c`), three public LP wallets with 48/48 two-sided depth every October day, retainer terms that cannot fail on their behaviour (loan 0; D, S at 2^127−1; round-trip 100%; depth 250 USDC a side within 200 bps in 36 of 48 buckets). Engagement `7e3dc433…b046`: mint (block 232,532), register (232,537), postBond (232,542), activate (232,546); day 1 = 24 Nov. Found: Base blocks are now 0.2 s (432,000 a day) and the free Alchemy key returns logs 10 blocks at a time; daily index limited to the engagement's pool (`MMR_POOLS_8453`) and to days from 23 Nov (`MMR_INDEX_FROM`). Client-side beneficiary check (client's own Midnight key; acceptance compares) | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to

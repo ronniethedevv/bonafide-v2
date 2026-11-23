@@ -127,8 +127,10 @@ pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MM
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 ```
 
-No engagement is registered on this deployment yet; the first one runs on the VIRTUAL pools on
-Base once the daily indexer has completed its first day. A sample engagement ran on the first
+The live engagement on this deployment (`7e3dc433…b046`) runs on the VIRTUAL/USDC pool on Base
+from 24 November, on three public liquidity-provider wallets we do not control (a demonstration;
+see the README). Its record:
+[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json). A sample engagement ran on the first
 deployment of an earlier version (16 transactions on the contract tests' sample day, blocks 169,367
 to 226,741): [`packages/dapp/deployments/preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 

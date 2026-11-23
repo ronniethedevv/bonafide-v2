@@ -79,8 +79,29 @@ different source would produce different keys. Preview explorers:
 [Subscan](https://midnight-preview.subscan.io/),
 [1AM](https://explorer.1am.xyz/?network=preview).
 
-No engagement is registered on this deployment yet. The first one runs on real data: the VIRTUAL
-pools on Base, indexed daily. It registers once the daily indexer has completed its first day.
+### The live engagement, on real Base data
+
+Engagement `7e3dc433…b046` runs for 30 days on the VIRTUAL/USDC pool (Uniswap v3
+on Base, `0x529d2863a1521d0b57db028168fde2e97120017c`). Day 1 is 24 November 2026.
+
+**A demonstration on public wallets.** The committed wallets are three liquidity providers on that
+pool, chosen from public data because they kept two-sided depth through October. We do not
+control them and they do nothing for us. The terms are a retainer set so that no proof can fail on
+these wallets' behaviour: no loan, and the outflow, net-selling and round-trip caps are wide open.
+What is measured is depth of 250 USDC a side within 2% of the price, in 36 of 48 half-hours; each
+day's uptime is recorded on chain. Every figure comes from Base, indexed daily.
+
+| Step | Circuit | Block | Transaction | Proof and inclusion |
+|---|---|---|---|---|
+| Market maker receives 10,000 test bond tokens | `test_bond_token.mint` | 232,532 | `00e4245d…9da354bd` | 24.6 s |
+| Register: wallet and terms commitments; tier A, Base, 10,000 bond | `register` | 232,537 | `00acfee7…4e2d3ee1` | 30.6 s |
+| Bond held by the contract | `postBond` | 232,542 | `007dc77d…58b6dec8` | 29.2 s |
+| Market maker starts the clock; day 1 is 24 Nov 2026 | `activate` | 232,546 | `00ca2e3e…dede1473` | 23.9 s |
+
+Funding is proven against 23 or 24 November once the daily indexer has published one of those days.
+From then on the scheduled job attests each indexed day, proves it, settles it and releases its
+share of the bond. Every transaction id:
+[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 ### Every circuit, proven on an earlier deployment
 
@@ -277,12 +298,17 @@ package and runs every test against the compiled circuits; a missing build fails
 
 ## Scope and limits
 
-- **The live run has not started yet.** The current contract is deployed with all 12 circuits and
-  has no engagement on it. The daily indexer has not yet completed a real day on GitHub Actions:
-  its first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
+- **The live run has just started.** The engagement is registered, bonded and activated; its first
+  day is 24 November. The daily indexer has not yet completed a real day on GitHub Actions: its
+  first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
   (attest, prove, settle, release) is tested end to end offline and has not run live. A claim
   needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
   included, runs in the tests.
+- **RPC plan.** The indexer reads Base through a free Alchemy key, which returns logs 10 blocks at
+  a time; Base makes a block every 0.2 s, so one pool-day is about 43,200 requests. The demo
+  indexes only the engagement's pool, and a month's free allowance covers about ten pool-days: the
+  30-day run continues past that only if the allowance resets in time. A paid plan reads a day in a
+  few hundred requests.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
