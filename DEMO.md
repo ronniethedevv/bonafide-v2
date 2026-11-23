@@ -77,7 +77,8 @@ chosen.
 - **Every transaction:** [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 - **The jobs that carry it:**
   - [`daily-index.yml`](.github/workflows/daily-index.yml) indexes the previous UTC day at 01:10 UTC
-    and publishes the trees and series to IPFS.
+    (again at 05:10 and 11:10, in case a scheduled start is late) and publishes the trees and
+    series to IPFS. Days are indexed in order; a day that fails holds back the later ones.
   - [`preview-lifecycle.yml`](.github/workflows/preview-lifecycle.yml) runs after each index and at
     02:40 and 18:20 UTC. It recomputes each published day before the attesters vote (or dispute),
     then proves funding once, and proves, settles and releases each day as its window opens. Each

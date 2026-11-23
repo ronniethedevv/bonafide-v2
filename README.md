@@ -284,19 +284,19 @@ proves.
 
 ## Tests
 
-527 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+532 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
-| `indexer` | 154 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `indexer` | 158 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
 | `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
 | `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
-| Eight more | 59 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
+| Eight more | 60 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -305,17 +305,20 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Scope and limits
 
 - **The live run has just started.** The engagement is registered, bonded and activated; its first
-  day is 24 November. The daily indexer has not yet completed a real day on GitHub Actions: its
-  first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
+  day is 24 November. The daily indexer completed its first real day on GitHub Actions on
+  23 November: 22 November, the day before registration, as a test (root `0xbe1c4e6b…c908`); the
+  engagement's own days start with 23 November. The scheduled lifecycle job
   (attest, prove, settle, release) is tested end to end offline and first ran on 23 November,
   with no day due yet. A claim
   needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
   included, runs in the tests.
-- **RPC plan.** The indexer reads Base through a free Alchemy key, which returns logs 10 blocks at
-  a time; Base makes a block every 0.2 s, so one pool-day is about 43,200 requests. The demo
-  indexes only the engagement's pool, and a month's free allowance covers about ten pool-days: the
-  30-day run continues past that only if the allowance resets in time. A paid plan reads a day in a
-  few hundred requests.
+- **RPC plan.** Logs come from a free public endpoint (publicnode) in 10,000-block requests, about
+  44 for a Base day; blocks, state and receipts come from a free Alchemy key, whose log requests
+  span only 10 blocks (43,200 for a day). Before switching we compared 22 November: 65,511 logs,
+  identical to an independent provider's full-day scan and to 200 sampled windows from Alchemy.
+  Indexing that day on GitHub Actions took 62 minutes, 47 of them a one-time scan of every Uniswap
+  v3 position on Base; logs and receipts took 72 seconds. The public endpoint keeps about two weeks of
+  logs, so an older backfill needs a paid plan. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
