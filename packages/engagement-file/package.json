@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Engagement secrets the MM must keep (passphrase-encrypted file), protocol-exact registration commitments, and the sealed MM-to-client channel. Runs in browsers and Node (WebCrypto).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./verify": "./src/verify.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -20,6 +21,7 @@
     "@mmr/prover": "workspace:*",
     "tsx": "4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "viem": "2.57.13"
   }
 }

@@ -9,6 +9,7 @@
 
 import { ab, bytesToHex, fromB64, hexToBytes, randomBytes, subtle, toB64, utf8 } from "./bytes.js";
 import { termsCommit, termsFromJson, termsToJson, walletCommit, type Terms, type TermsJson } from "./commitments.js";
+import type { WalletOwnership } from "./ownership.js";
 
 export const FILE_FORMAT = "mmr-engagement-file";
 export const PBKDF2_ITERATIONS = 600_000;
@@ -46,6 +47,8 @@ export interface EngagementOpening {
    * public key (32-byte hex), which receives the bond if the engagement defaults.
    */
   registration?: { tier: number; chainId: number; bond: string; beneficiary: string };
+  /** One signature per committed wallet over ownershipMessage (see ownership.ts). */
+  ownership?: WalletOwnership[];
   createdAt: string;
 }
 
@@ -153,3 +156,18 @@ export async function openFile(file: EngagementFile, passphrase: string): Promis
   await verifyOpening(o);
   return o;
 }
+
+/**
+ * What the client receives, sealed to their inbox: everything needed to check the
+ * commitments and the wallets' ownership, minus what only the market maker holds: the
+ * engagement secret (it controls the on-chain engagement id) and its private label.
+ */
+export type ClientTermsPayload = Omit<EngagementOpening, "label" | "secrets"> & {
+  secrets: Pick<EngagementOpening["secrets"], "walletSalt" | "termsSalt">;
+};
+
+export function clientPayload(o: EngagementOpening): ClientTermsPayload {
+  const { label: _label, secrets, ...rest } = o;
+  return { ...rest, secrets: { walletSalt: secrets.walletSalt, termsSalt: secrets.termsSalt } };
+}
+

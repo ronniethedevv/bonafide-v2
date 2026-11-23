@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { contexts, newOpening, seal, sealFile, MIN_PASSPHRASE, type EngagementOpening } from "@mmr/engagement-file";
+import { contexts, newOpening, ownershipMessage, registrationFingerprint, seal, sealFile, MIN_PASSPHRASE, type EngagementOpening, type WalletOwnership } from "@mmr/engagement-file";
+import { verifyWalletOwnership, type OwnershipStatus } from "@/lib/engagement/ownership";
+import { signMessage, walletErrorText } from "@/lib/wallet/browser";
 import { BackLink, Check, Info, Lock, Plus } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
 import { buildTerms, clientPayload, floorPriceToP, toUnits, type TokenInfo } from "@/lib/engagement/terms";
@@ -236,7 +238,7 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
         )}
 
         {step === 2 && (
-          <Section title="Your wallets" hint="The addresses you'll quote from (up to 16). These are committed privately — the chain never sees them.">
+          <Section title="Your wallets" hint="The addresses you'll quote from (up to 16). They are committed privately: the chain never sees them, and this page sends them only to your client, sealed.">
             {f.wallets.map((w, i) => {
               const bad = w.trim() !== "" && !ADDR_RE.test(w.trim());
               return (
@@ -258,6 +260,16 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
               <button className="btn btn-ghost link-arrow" style={{ height: 38, marginTop: 4 }} onClick={() => set("wallets", [...f.wallets, ""])}><Plus size={15} /><span>Add wallet</span></button>
             )}
             {errors.wallets && <div style={{ color: "var(--neg)", fontSize: 12, marginTop: 8 }}>{errors.wallets}</div>}
+            <div className="demo-note" style={{ marginTop: 14, alignItems: "flex-start" }}>
+              <Info size={14} style={{ marginTop: 2 }} />
+              <span style={{ lineHeight: 1.5 }}>
+                Recommended: keep your wallet addresses off any web page. Your agent creates the engagement file on your own
+                machine, collects each wallet&apos;s ownership signature and proposes it; this site then only ever sees the
+                commitments and the terms sealed to your client:{" "}
+                <code className="mono" style={{ fontSize: 12 }}>mmr-agent create</code> then{" "}
+                <code className="mono" style={{ fontSize: 12 }}>mmr-agent propose</code>.
+              </span>
+            </div>
           </Section>
         )}
 
@@ -383,6 +395,14 @@ function Review({
   const [busy, setBusy] = useState<"" | "saving" | "registering">("");
   const [error, setError] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [owned, setOwned] = useState<Record<string, WalletOwnership & { status: OwnershipStatus }>>({});
+  const proven = wallets.every((w) => owned[w.toLowerCase()]?.status.ok);
+  // Real accounts must prove every wallet; demo accounts quote sample wallets nobody controls.
+  const ownershipOk = proven || !persist;
+  const sealed = (o: EngagementOpening): EngagementOpening => {
+    const ownership = Object.values(owned).filter((x) => x.status.ok).map(({ wallet, signature }) => ({ wallet, signature }));
+    return ownership.length ? { ...o, ownership } : o;
+  };
 
   // Fresh secrets + the protocol's real commitments, once per visit to this step.
   useEffect(() => {
@@ -420,14 +440,14 @@ function Review({
   }, []);
 
   const passErr = pass.length > 0 && pass.length < MIN_PASSPHRASE ? `At least ${MIN_PASSPHRASE} characters.` : pass2.length > 0 && pass !== pass2 ? "Passphrases don't match." : null;
-  const canSave = !!opening && pass.length >= MIN_PASSPHRASE && pass === pass2 && !busy;
+  const canSave = !!opening && pass.length >= MIN_PASSPHRASE && pass === pass2 && !busy && ownershipOk;
 
   async function saveFile() {
     if (!opening) return;
     setBusy("saving");
     setError(null);
     try {
-      const file = await sealFile(opening, pass);
+      const file = await sealFile(sealed(opening), pass);
       const name = `engagement-${opening.commitments.termsCommit.slice(2, 10)}.mmr.json`;
       download(name, JSON.stringify(file, null, 2));
       setFileName(name);
@@ -448,7 +468,7 @@ function Review({
       }
       if (!clientKey) throw new Error(clientError ?? "Your client's inbox isn't available.");
       const { walletCommit, termsCommit } = opening.commitments;
-      const termsEnvelope = await seal(JSON.stringify(clientPayload(opening)), clientKey, contexts.terms(walletCommit, termsCommit));
+      const termsEnvelope = await seal(JSON.stringify(clientPayload(sealed(opening))), clientKey, contexts.terms(walletCommit, termsCommit));
       const res = await fetch("/api/engagements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -500,6 +520,18 @@ function Review({
         </p>
       </div>
 
+      {opening && (
+        <OwnershipBox
+          wallets={wallets}
+          chainId={CHAIN_ID[pool.chain] ?? 8453}
+          commitments={opening.commitments}
+          owned={owned}
+          required={persist}
+          locked={!!fileName}
+          onProven={(o) => setOwned((m) => ({ ...m, [o.wallet]: o }))}
+        />
+      )}
+
       <div className={`save-box${fileName ? " is-done" : ""}`}>
         <div className="row" style={{ gap: 10, alignItems: "center" }}>
           <span className="view-icon" aria-hidden="true">{fileName ? <Check size={17} /> : <Lock size={17} />}</span>
@@ -521,6 +553,7 @@ function Review({
               <input className="inp" type="password" autoComplete="new-password" placeholder="Repeat passphrase" value={pass2} onChange={(e) => setPass2(e.target.value)} aria-label="Repeat passphrase" />
             </div>
             {passErr && <div className="field-err" style={{ marginTop: 0 }}>{passErr}</div>}
+            {!ownershipOk && <div className="field-err" style={{ marginTop: 0 }}>Prove each wallet above first: its signature goes into the file and to your client.</div>}
             <button type="button" className="btn btn-ghost" disabled={!canSave} style={{ opacity: canSave ? 1 : 0.5 }} onClick={saveFile}>
               {busy === "saving" ? "Encrypting…" : "Download encrypted file"}
             </button>
@@ -552,6 +585,93 @@ function Review({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// Each committed trading wallet signs a message naming itself, its chain and this
+// registration's fingerprint: proof the market maker controls it, checked again by the
+// client before Accept unlocks. Sign here with the connected wallet, or paste a signature
+// made elsewhere (a custody platform's signing policy, a hardware wallet, the agent).
+function OwnershipBox({ wallets, chainId, commitments, owned, required, locked, onProven }: {
+  wallets: string[];
+  chainId: number;
+  commitments: { walletCommit: string; termsCommit: string };
+  owned: Record<string, WalletOwnership & { status: OwnershipStatus }>;
+  required: boolean;
+  locked: boolean;
+  onProven: (o: WalletOwnership & { status: OwnershipStatus }) => void;
+}) {
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
+  const [pasted, setPasted] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  useEffect(() => {
+    registrationFingerprint(commitments.walletCommit, commitments.termsCommit).then(setFingerprint).catch(() => setFingerprint(null));
+  }, [commitments.walletCommit, commitments.termsCommit]);
+
+  async function prove(wallet: string, signature: string) {
+    if (!fingerprint) return;
+    const status = await verifyWalletOwnership({ wallet, signature, chainId, fingerprint });
+    if (status.ok) onProven({ wallet, signature: signature.trim(), status });
+    setErrors((e) => ({ ...e, [wallet]: status.ok ? "" : status.detail }));
+  }
+
+  async function signHere(wallet: string) {
+    if (!fingerprint) return;
+    setBusy(wallet);
+    try {
+      await prove(wallet, await signMessage(wallet, ownershipMessage({ wallet, chainId, fingerprint })));
+    } catch (e) {
+      setErrors((x) => ({ ...x, [wallet]: walletErrorText(e) }));
+    }
+    setBusy(null);
+  }
+
+  return (
+    <div className="commit-box">
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Prove you control each wallet</div>
+      <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.6, margin: "0 0 10px" }}>
+        Each wallet signs a message naming itself and this engagement. It is a signature, not a transaction: no funds move.
+        Your client checks every signature before they can accept.{" "}
+        {required ? "Required to register." : "Demo accounts quote sample wallets, so this is optional here."}
+      </p>
+      {wallets.map((raw) => {
+        const wallet = raw.toLowerCase();
+        const done = owned[wallet]?.status;
+        return (
+          <div key={wallet} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
+            <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="mono" style={{ fontSize: 12.5 }}>{shortAddress(wallet)}</span>
+              {done?.ok ? (
+                <span className="pill" style={{ fontSize: 11, color: "var(--pos)" }}><Check size={12} /> {done.detail}</span>
+              ) : !locked && (
+                <>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={!fingerprint || busy === wallet} onClick={() => signHere(wallet)}>
+                    {busy === wallet ? "Check your wallet…" : "Sign with this wallet"}
+                  </button>
+                  <input
+                    className="inp mono"
+                    style={{ fontSize: 12, flex: "1 1 220px" }}
+                    placeholder="or paste its signature (0x…)"
+                    value={pasted[wallet] ?? ""}
+                    onChange={(e) => setPasted((p) => ({ ...p, [wallet]: e.target.value }))}
+                    onBlur={() => pasted[wallet]?.trim() && prove(wallet, pasted[wallet]!)}
+                    aria-label={`Signature for ${wallet}`}
+                  />
+                </>
+              )}
+            </div>
+            {!done?.ok && fingerprint && (
+              <details style={{ marginTop: 6 }}>
+                <summary className="dim" style={{ fontSize: 12, cursor: "pointer" }}>Message to sign</summary>
+                <pre className="mono" style={{ fontSize: 11.5, whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{ownershipMessage({ wallet, chainId, fingerprint })}</pre>
+              </details>
+            )}
+            {errors[wallet] && <div className="field-err">{errors[wallet]}</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }

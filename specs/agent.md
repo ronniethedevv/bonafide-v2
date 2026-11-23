@@ -17,6 +17,24 @@ chain data — which is why it runs on the MM's side and never on ours.
 
 It never needs the private keys of any trading wallet: it only reads public activity.
 
+## Creating and proposing an engagement (recommended path)
+
+The web wizard can create an engagement, but then the trading wallets are typed into a web
+page. The agent keeps them on the market maker's machine:
+
+1. `create` fetches the client's public keys (inbox key; the Midnight key the bond names),
+   draws fresh secrets, computes the commitments and the registration, seals the engagement
+   file locally, and writes the ownership message each wallet must sign.
+2. Each trading wallet signs its message: a signature (EIP-191), not a transaction, naming
+   the wallet, its chain and the registration fingerprint, so it cannot be reused for another
+   engagement. Custody platforms approve it under a signing policy; smart wallets work too.
+3. `propose` verifies every signature, keeps them in the sealed file, seals the client's copy
+   (terms, wallets, salts, signatures; never the engagement secret) to the client's inbox key
+   and posts only the two commitments and that ciphertext (`POST /api/agent/v1/engagements`).
+
+The client's portal opens the copy, recomputes both commitments, verifies every ownership
+signature and only then lets the client accept.
+
 ## Daily loop (per engagement, per 24h epoch)
 
 1. **Fetch the epoch's public activity** for the engagement's pool — every address's
