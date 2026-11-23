@@ -5,13 +5,14 @@ of every working unit.
 
 ## Current phase
 
-**Live on Midnight Preview, on real Base data (first submission).** The contract
-(`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed with the review fixes
-(DD-35, DD-37, DD-38). The daily indexer runs on GitHub Actions' scheduler (built to run on
-Trigger.dev in production) and publishes each day's trees and series to IPFS; the
-lifecycle job attests each indexed day after recomputing it and carries a real
-engagement forward (prove, settle, release). Next: the engagement's first real days,
-the README's on-chain evidence for them, and the demo film.
+**Built and deployed; the first real run is pending (first submission).** The contract
+(`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed on Preview with the
+review fixes (DD-35, DD-37, DD-38) and has no engagement yet. The daily indexer (GitHub
+Actions' scheduler; built to run on Trigger.dev in production) has not yet completed a
+real day: the first runs were too slow and ran out of memory, both since fixed. The
+lifecycle job (attest after recomputing, then prove, settle, release) is built and
+tested offline end to end but has not run. Next: one indexed day, the engagement
+registered, the lifecycle job running unattended, then the README's on-chain evidence.
 
 ## Status log
 
@@ -129,8 +130,8 @@ attester signing.
 
 ## Build-order progress (from product spec)
 
-- [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (Pinata), plus each
-      pool's committed depth and flow series; runs daily on real Base data
+- [~] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (Pinata), plus each
+      pool's committed depth and flow series: built; first successful daily run pending
 - [x] 2. Proving: every circuit proves on the Preview proof server (9.0.0); times per
       transaction are recorded in the lifecycle record
 - [x] 3. Compact contract — registration, bond escrow, tranches, void, default (`epoch_proof.compact`, Compact 0.36.1)
@@ -138,7 +139,8 @@ attester signing.
 - [x] 5. Attester committee (2 of 3, on chain), recompute-before-vote, disputes with a
       deadline, neutral disputed days, void rules
 - [~] 6. Market maker prover: witnesses from published data and the scheduled lifecycle
-      job are done; a fee sponsor is not (the market maker pays its own DUST)
+      job are built and tested offline; first live run pending; no fee sponsor yet (the
+      market maker pays its own DUST)
 - [ ] 7. Pilot with a real market maker
 - [x] CI/CD — GitHub Actions: typecheck, every package's tests including the compiled
       contract's, web build; scheduled indexer and lifecycle jobs
