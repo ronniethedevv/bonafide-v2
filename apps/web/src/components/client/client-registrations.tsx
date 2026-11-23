@@ -19,19 +19,22 @@ import { RegistrationCard } from "@/components/registrations";
 import { unlockInbox } from "@/lib/wallet/inbox";
 import { signMessage, walletErrorText } from "@/lib/wallet/browser";
 import { BUCKETS_PER_EPOCH, formatUnits, pToPrice, toUnits, type ClientTermsPayload, type TokenInfo } from "@/lib/engagement/terms";
+import { checkBeneficiary, type BeneficiaryCheck } from "@/lib/engagement/beneficiary";
 import { Check, Info } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
 
 // The client's registered engagements. A proposal must be opened (decrypted in this
 // browser with the client's inbox key), checked against the two commitments on record,
 // and only then accepted (signed by the client's wallet) or declined.
-export function ClientRegistrations({ items, address, inboxKey }: { items: Registration[]; address: string; inboxKey: string | null }) {
+export function ClientRegistrations({ items, address, inboxKey, midnightKey }: {
+  items: Registration[]; address: string; inboxKey: string | null; midnightKey: string | null;
+}) {
   return (
     <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 12 }}>
       {items.map((r) => (
         <RegistrationCard key={r.id} r={r} viewer="client">
           {r.status === "proposed" && r.walletCommit && r.termsCommit ? (
-            <Proposal r={r} address={address} inboxKey={inboxKey} />
+            <Proposal r={r} address={address} inboxKey={inboxKey} midnightKey={midnightKey} />
           ) : r.status === "accepted" || r.status === "active" ? (
             <DailyFigures r={r} address={address} inboxKey={inboxKey} />
           ) : undefined}
@@ -43,7 +46,7 @@ export function ClientRegistrations({ items, address, inboxKey }: { items: Regis
 
 type Checked = { payload: ClientTermsPayload; matches: boolean };
 
-function Proposal({ r, address, inboxKey }: { r: Registration; address: string; inboxKey: string | null }) {
+function Proposal({ r, address, inboxKey, midnightKey }: { r: Registration; address: string; inboxKey: string | null; midnightKey: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"" | "opening" | "accepting" | "declining">("");
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -103,12 +106,12 @@ function Proposal({ r, address, inboxKey }: { r: Registration; address: string; 
           </span>
         </div>
       ) : (
-        <TermsView payload={checked.payload} matches={checked.matches} />
+        <TermsView payload={checked.payload} matches={checked.matches} beneficiary={checkBeneficiary(checked.payload, midnightKey)} />
       )}
 
       {checked && (
         <div className="row" style={{ gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <button type="button" className="btn btn-primary btn-sm" disabled={!checked.matches || !!busy} onClick={() => respond("accept")}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!checked.matches || !checkBeneficiary(checked.payload, midnightKey).ok || !!busy} onClick={() => respond("accept")}>
             {busy === "accepting" ? "Sign in your wallet…" : "Accept and sign"}
           </button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => respond("decline")}>
@@ -129,7 +132,10 @@ function bondText(raw: string | undefined): string {
 // Files from before token units were recorded fall back to 6-decimal "units".
 const UNKNOWN: TokenInfo = { symbol: "units", decimals: 6 };
 
-function TermsView({ payload, matches }: { payload: ClientTermsPayload; matches: boolean }) {
+const TIER_NAME: Record<number, string> = { 1: "A", 2: "B", 3: "C" };
+
+function TermsView({ payload, matches, beneficiary }: { payload: ClientTermsPayload; matches: boolean; beneficiary: BeneficiaryCheck }) {
+  const reg = payload.registration;
   const t = payload.terms;
   const base = payload.pool.base ?? UNKNOWN;
   const quote = payload.pool.quote ?? UNKNOWN;
@@ -144,7 +150,12 @@ function TermsView({ payload, matches }: { payload: ClientTermsPayload; matches:
     ["Outflow cap", `${formatUnits(t.disposalD, base.decimals)} ${base.symbol}`],
     ["Net-selling cap", `${formatUnits(t.netSellS, base.decimals)} ${base.symbol}`],
     ["Floor price", p === 0n ? "not set (sold tokens don't count as held)" : `≈ ${pToPrice(p, base, quote)} ${quote.symbol} per ${base.symbol}`],
-    ["Bond", `${bondText(payload.human.bond)} USDM`],
+    ...(reg
+      ? ([
+          ["Tier · bond (public)", `${TIER_NAME[reg.tier] ?? reg.tier} · ${Number(reg.bond).toLocaleString("en-US")}`],
+          ["Bond goes to, on default (public)", reg.beneficiary],
+        ] as Array<[string, string]>)
+      : ([["Bond", `${bondText(payload.human.bond)} USDM`]] as Array<[string, string]>)),
     ["Quoting wallets", payload.wallets.map(shortAddress).join(", ")],
   ];
   return (
@@ -156,6 +167,10 @@ function TermsView({ payload, matches }: { payload: ClientTermsPayload; matches:
             ? "These terms match the commitments on record. This is exactly what the market maker committed to."
             : "These terms do NOT match the commitments on record. Don't accept; contact the market maker."}
         </span>
+      </div>
+      <div className={`verify-line${beneficiary.ok ? " is-ok" : " is-bad"}`} role="status" style={{ marginTop: 6 }}>
+        {beneficiary.ok ? <Check size={14} /> : <Info size={14} />}
+        <span>{beneficiary.ok ? "The bond names your Midnight key: on a default it is paid to you." : beneficiary.reason}</span>
       </div>
       <dl className="rev" style={{ marginTop: 10 }}>
         {rows.map(([k, v]) => (

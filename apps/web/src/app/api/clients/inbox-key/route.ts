@@ -3,8 +3,9 @@ import { getSession } from "@/lib/session";
 import { db } from "@/lib/db/pool";
 import { clientInboxKeyByAddress } from "@/lib/db/store";
 
-// A market maker about to register an engagement fetches the client's inbox key, to seal
-// the terms to it. Returns only the public key (no name), for signed-in market makers.
+// A market maker about to register an engagement fetches the client's public keys: the
+// inbox key to seal the terms to, and the Midnight coin key the client saved (the bond's
+// beneficiary). Returns only public keys (no name), for signed-in market makers.
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (session?.kind !== "mm" || !session.accountId) return NextResponse.json({ error: "Sign in as a market maker first." }, { status: 401 });
@@ -20,7 +21,12 @@ export async function GET(req: NextRequest) {
     if (!k.encryptionKey) {
       return NextResponse.json({ error: "Your client hasn't set up their private inbox yet. Ask them to open their client portal once, then try again." }, { status: 409 });
     }
-    return NextResponse.json({ encryptionKey: k.encryptionKey }, { headers: { "Cache-Control": "no-store" } });
+    // The client's own Midnight coin key, if saved: the wizard names it as the bond's
+    // beneficiary, and the client's acceptance checks the registration against it.
+    return NextResponse.json(
+      { encryptionKey: k.encryptionKey, midnightCoinKey: k.midnightCoinKey },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch {
     return NextResponse.json({ error: "Lookup failed. Please try again." }, { status: 503 });
   }

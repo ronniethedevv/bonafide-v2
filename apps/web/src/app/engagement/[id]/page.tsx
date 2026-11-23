@@ -62,6 +62,13 @@ export default async function LiveEngagementPage({ params }: { params: Promise<{
             <Stat label="Funding" value={e.fundingProven ? "proven" : "not yet"} sub="against an attested day" />
             <Stat label="Released" value={`${e.releasedEpochs} of ${EPOCHS} days`} sub={`${e.releasedTotal} of the bond`} />
           </div>
+          <div className="card" style={{ marginTop: 12, padding: 18 }}>
+            <div className="eyebrow">Bond goes to, on default</div>
+            <div className="mono" style={{ fontSize: 13, marginTop: 6, wordBreak: "break-all" }}>{e.beneficiary}</div>
+            <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
+              The client&apos;s Midnight coin key, fixed at registration. The client&apos;s portal checks it is their own key before they accept.
+            </div>
+          </div>
 
           {e.days.length > 0 && (
             <section className="card" style={{ marginTop: 16, padding: 0 }}>

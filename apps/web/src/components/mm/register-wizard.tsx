@@ -98,6 +98,32 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
 
   const set = (k: keyof Form, v: string | number | string[]) => setF((p) => ({ ...p, [k]: v }));
   const pool = POOLS.find((p) => p.id === f.poolId)!;
+
+  // A stored engagement names the client's own Midnight key (saved on their account) as the
+  // bond's beneficiary; the market maker cannot type another. The client's acceptance
+  // checks it again before they sign.
+  const [beneficiaryNote, setBeneficiaryNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!persist) return;
+    const address = f.clientAddress.trim();
+    if (!ADDR_RE.test(address)) {
+      setBeneficiaryNote(null);
+      return;
+    }
+    let live = true;
+    fetch(`/api/clients/inbox-key?address=${encodeURIComponent(address)}`, { cache: "no-store" })
+      .then(async (r) => {
+        const b = (await r.json()) as { midnightCoinKey?: string | null; error?: string };
+        if (!live) return;
+        set("beneficiary", r.ok && b.midnightCoinKey ? b.midnightCoinKey : "");
+        setBeneficiaryNote(r.ok ? (b.midnightCoinKey ? null : "Your client hasn't saved their Midnight key yet. Ask them to add it in their client portal.") : (b.error ?? "Couldn't look up your client."));
+      })
+      .catch(() => live && setBeneficiaryNote("Couldn't look up your client. Check your connection."));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persist, f.clientAddress]);
   const client = clients.find((c) => c.id === f.clientId);
   const cleanWallets = f.wallets.map((w) => w.trim()).filter(Boolean);
   const clientLabel = persist ? (ADDR_RE.test(f.clientAddress.trim()) ? shortAddress(f.clientAddress.trim()) : "—") : (client?.name ?? "—");
@@ -249,8 +275,19 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
               <input className="inp" inputMode="numeric" placeholder={String(TIER_MIN_BOND[f.tier])} value={f.bond} onChange={(e) => set("bond", e.target.value)} />
             </Field>
             <div style={{ height: 14 }} />
-            <Field label="Client's Midnight coin public key" err={f.beneficiary.trim() ? errors.beneficiary : undefined} suffix="receives the bond on default">
-              <input className="inp mono" style={{ fontSize: 13 }} placeholder="64 hex characters" value={f.beneficiary} onChange={(e) => set("beneficiary", e.target.value)} />
+            <Field
+              label="Client's Midnight coin public key"
+              err={persist ? (beneficiaryNote ?? undefined) : f.beneficiary.trim() ? errors.beneficiary : undefined}
+              suffix={persist ? "from your client's account" : "receives the bond on default"}
+            >
+              <input
+                className="inp mono"
+                style={{ fontSize: 13 }}
+                placeholder={persist ? "filled from your client's account" : "64 hex characters"}
+                value={f.beneficiary}
+                readOnly={persist}
+                onChange={(e) => set("beneficiary", e.target.value)}
+              />
             </Field>
           </Section>
         )}

@@ -67,6 +67,8 @@ export interface EngagementState {
   chain: number;
   bondRequired: string;
   bondPosted?: string;
+  /** The client's Midnight coin public key, fixed at registration: paid the bond on default. */
+  beneficiary: string;
   registeredAt: string;
   activatedAt?: string;
   startDate?: string;
@@ -136,6 +138,7 @@ export async function readEngagement(idHex: string): Promise<EngagementState | n
     tier: Number(led.tier.lookup(id)),
     chain: Number(chain),
     bondRequired: String(led.bondRequired.lookup(id)),
+    beneficiary: hex((led.bondBeneficiary.lookup(id) as { bytes: Uint8Array }).bytes),
     ...(led.bondValue.member(id) ? { bondPosted: String(led.bondValue.lookup(id)) } : {}),
     registeredAt: iso(led.registeredAt.lookup(id) as bigint),
     ...(led.activatedAt.member(id) ? { activatedAt: iso(led.activatedAt.lookup(id) as bigint) } : {}),

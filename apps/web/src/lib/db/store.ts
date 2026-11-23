@@ -134,14 +134,40 @@ export async function setInboxKey(pool: pg.Pool, accountId: string, publicKey: s
   return (await getInboxKey(pool, accountId)) === publicKey ? "unchanged" : "conflict";
 }
 
-/** A client's inbox key, looked up by the wallet they sign in with. */
-export async function clientInboxKeyByAddress(pool: pg.Pool, address: string): Promise<{ found: boolean; encryptionKey: string | null }> {
+/**
+ * A client's public keys, looked up by the wallet they sign in with: the inbox key (to
+ * seal terms to) and the Midnight coin key they saved (the bond's beneficiary).
+ */
+export async function clientInboxKeyByAddress(
+  pool: pg.Pool,
+  address: string,
+): Promise<{ found: boolean; encryptionKey: string | null; midnightCoinKey: string | null }> {
   const { rows } = await pool.query(
-    `SELECT a."encryptionKey" FROM account_wallet w JOIN account a ON a.id = w."accountId"
+    `SELECT a."encryptionKey", a."midnightCoinKey" FROM account_wallet w JOIN account a ON a.id = w."accountId"
       WHERE w.address = $1 AND a.kind = 'client'`,
     [address.toLowerCase()],
   );
-  return rows[0] ? { found: true, encryptionKey: rows[0].encryptionKey ?? null } : { found: false, encryptionKey: null };
+  return rows[0]
+    ? { found: true, encryptionKey: rows[0].encryptionKey ?? null, midnightCoinKey: rows[0].midnightCoinKey ?? null }
+    : { found: false, encryptionKey: null, midnightCoinKey: null };
+}
+
+// --- the client's Midnight coin key ----------------------------------------------------
+
+export { normalizeMidnightKey } from "@/lib/engagement/beneficiary";
+
+export async function getMidnightKey(pool: pg.Pool, accountId: string): Promise<string | null> {
+  const { rows } = await pool.query(`SELECT "midnightCoinKey" FROM account WHERE id = $1`, [accountId]);
+  return rows[0]?.midnightCoinKey ?? null;
+}
+
+/**
+ * Save the client's Midnight coin key. It can be changed: engagements already registered
+ * keep the beneficiary they were registered with (on chain), and each new acceptance is
+ * checked against the key saved at that time.
+ */
+export async function setMidnightKey(pool: pg.Pool, accountId: string, key: string): Promise<void> {
+  await pool.query(`UPDATE account SET "midnightCoinKey" = $2 WHERE id = $1 AND kind = 'client'`, [accountId, key]);
 }
 
 // --- registration ---------------------------------------------------------------------

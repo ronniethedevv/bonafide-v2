@@ -7,8 +7,9 @@ import { SampleDataBanner } from "@/components/sample-banner";
 import { ChevronRight } from "@/components/icons";
 import { ClientRegistrations } from "@/components/client/client-registrations";
 import { InboxSetup } from "@/components/client/inbox-setup";
+import { MidnightKeyCard } from "@/components/client/midnight-key";
 import { db } from "@/lib/db/pool";
-import { getInboxKey, registrationsForClient, type Registration } from "@/lib/db/store";
+import { getInboxKey, getMidnightKey, registrationsForClient, type Registration } from "@/lib/db/store";
 
 export const metadata = { title: "My engagements · MM Reputation" };
 
@@ -26,11 +27,14 @@ export default async function ClientPage() {
   const pool = db();
   let registrations: Registration[] = [];
   let inboxKey: string | null = null;
+  let midnightKey: string | null = null;
   let registryError = false;
   const walletAccount = Boolean(pool && session.accountId && session.via === "wallet" && session.address);
   if (pool && session.accountId) {
     try {
-      [registrations, inboxKey] = await Promise.all([registrationsForClient(pool, session.accountId), getInboxKey(pool, session.accountId)]);
+      [registrations, inboxKey, midnightKey] = await Promise.all([
+        registrationsForClient(pool, session.accountId), getInboxKey(pool, session.accountId), getMidnightKey(pool, session.accountId),
+      ]);
     } catch {
       registryError = true;
     }
@@ -47,6 +51,7 @@ export default async function ClientPage() {
       </div>
 
       {walletAccount && !registryError && !inboxKey && <InboxSetup address={session.address!} />}
+      {walletAccount && !registryError && <MidnightKeyCard current={midnightKey} />}
 
       {registrations.length > 0 && (
         <section style={{ marginTop: 28 }}>
@@ -54,7 +59,7 @@ export default async function ClientPage() {
           <p className="dim" style={{ fontSize: 13, margin: "0 0 14px" }}>
             Review each proposal&apos;s terms before accepting. Per-epoch figures appear here once capture starts.
           </p>
-          <ClientRegistrations items={registrations} address={session.address ?? ""} inboxKey={inboxKey} />
+          <ClientRegistrations items={registrations} address={session.address ?? ""} inboxKey={inboxKey} midnightKey={midnightKey} />
         </section>
       )}
       {registryError && (
