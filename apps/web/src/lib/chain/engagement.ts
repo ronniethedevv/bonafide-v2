@@ -99,8 +99,29 @@ async function contractState(): Promise<ReturnType<typeof ledger>> {
 /** The engagement's public state, or null when the id is not registered on the contract. */
 export async function readEngagement(idHex: string): Promise<EngagementState | null> {
   if (!/^[0-9a-f]{64}$/i.test(idHex)) return null;
-  const id = Uint8Array.from(Buffer.from(idHex, "hex"));
+  return engagementIn(await contractState(), Uint8Array.from(Buffer.from(idHex, "hex")));
+}
+
+/**
+ * The engagement registered with exactly these wallet and terms commitments, or null. A
+ * client knows the commitments it accepted but not the engagement id (the hash of a secret
+ * only the market maker holds); the salted commitments identify the engagement on their own.
+ */
+export async function findEngagementByCommitments(walletCommitHex: string, termsCommitHex: string): Promise<EngagementState | null> {
+  const norm = (h: string) => h.trim().toLowerCase().replace(/^0x/, "");
+  const [wc, tc] = [norm(walletCommitHex), norm(termsCommitHex)];
+  if (!/^[0-9a-f]{64}$/.test(wc) || !/^[0-9a-f]{64}$/.test(tc)) return null;
   const led = await contractState();
+  for (const [id, committed] of led.walletCommit) {
+    if (hex(committed) === wc && led.termsCommit.member(id) && hex(led.termsCommit.lookup(id) as Uint8Array) === tc) {
+      return engagementIn(led, id);
+    }
+  }
+  return null;
+}
+
+function engagementIn(led: ReturnType<typeof ledger>, id: Uint8Array): EngagementState | null {
+  const idHex = hex(id);
   if (!led.status.member(id)) return null;
 
   const chain = led.chainOf.lookup(id) as bigint;
