@@ -99,6 +99,11 @@ day's uptime is recorded on chain. Every figure comes from Base, indexed daily.
 | Bond held by the contract | `postBond` | 232,542 | `007dc77d…58b6dec8` | 29.2 s |
 | Market maker starts the clock; day 1 is 24 Nov 2026 | `activate` | 232,546 | `00ca2e3e…dede1473` | 23.9 s |
 
+Before day 1 we checked the terms against real data, with no transaction: the engagement's own
+wallets, terms and salts, and 22 November as published by the daily indexer, run through the
+compiled contract. The published day recomputed, all three wallets were in the pool, `proveEpoch`
+accepted with uptime 48 of 48 (the terms need 36) and `proveFunding` accepted.
+
 Funding is proven against 23 or 24 November once the daily indexer has published one of those days.
 From then on the scheduled job attests each indexed day, proves it, settles it and releases its
 share of the bond. Every transaction id:
@@ -284,13 +289,13 @@ proves.
 
 ## Tests
 
-532 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+533 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
-| `indexer` | 158 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `indexer` | 159 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
 | `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
@@ -318,7 +323,10 @@ package and runs every test against the compiled circuits; a missing build fails
   identical to an independent provider's full-day scan and to 200 sampled windows from Alchemy.
   Indexing that day on GitHub Actions took 62 minutes, 47 of them a one-time scan of every Uniswap
   v3 position on Base; logs and receipts took 72 seconds. The public endpoint keeps about two weeks of
-  logs, so an older backfill needs a paid plan. The demo indexes only the engagement's pool.
+  logs, so an older backfill needs a paid plan. Because logs and state come from different
+  providers, every run checks that each address's balance change, read from Alchemy, is exactly
+  explained by the transfers in the logs; a missing log stops the day. On 22 November all 1,849
+  addresses that moved VIRTUAL passed. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are

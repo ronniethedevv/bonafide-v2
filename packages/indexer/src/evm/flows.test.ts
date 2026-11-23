@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyFlows, swapTxHashes, FlowError, type FlowInputs } from "./flows.js";
+import { assertBalancesExplained, classifyFlows, swapTxHashes, FlowError, type FlowInputs } from "./flows.js";
 import { TOPIC0 } from "./abi.js";
 import type { RpcLog } from "./rpc.js";
 
@@ -104,6 +104,22 @@ describe("classifyFlows (DD-22 net token flow)", () => {
       const explained = f.swapBaseIn - f.swapBaseOut + f.poolLegBase + f.xferIn - f.xferOut;
       expect(explained).toBe(delta.get(a) ?? 0n);
     }
+  });
+
+  it("checks every address's balance change against its flows, and stops on a missing transfer", () => {
+    const inp = scenario();
+    const flows = classifyFlows(inp);
+    // Balances that move exactly as the logs say (start 1 000 each; the pool is skipped).
+    const balances = [...flows].map(([addr, f]) => ({
+      addr, start: 1_000n, end: 1_000n + f.swapBaseIn - f.swapBaseOut + f.poolLegBase + f.xferIn - f.xferOut,
+    }));
+    balances.push({ addr: POOL, start: 5n, end: 99n }, { addr: 0x777n, start: 3n, end: 3n });
+    expect(() => assertBalancesExplained(POOL, flows, balances)).not.toThrow();
+    // An address that received tokens the logs never showed (an endpoint left a log out).
+    expect(() => assertBalancesExplained(POOL, flows, [...balances, { addr: 0x778n, start: 0n, end: 4n }])).toThrow(FlowError);
+    // A transfer to the market maker that the scan missed: its flows no longer explain it.
+    const cut = { ...inp, logs: inp.logs.filter((l) => !(l.topics[0] === TOPIC0.transfer && BigInt(l.topics[2] ?? "0x0") === CEX)) };
+    expect(() => assertBalancesExplained(POOL, classifyFlows(cut), balances)).toThrow(/moved .* its transfers explain/);
   });
 
   it("fails loudly on a missing receipt or a scan/receipt mismatch", () => {
