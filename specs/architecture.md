@@ -12,9 +12,9 @@ Midnight**, and **Base is read-only** (indexed, never written).
         | HTTP / WS (read models, job status)
         v
 +--------------------------------+   +---------------------------+
-|  BACKEND (apps/api)            |   |  PROTOCOL (packages/      |
-|  Node · Fastify/Express        |   |  contracts) — Compact     |
-|  Attester service              |   |  0.31.x on Midnight       |
+|  BACKEND (Next route handlers,|   |  PROTOCOL (packages/      |
+|  apps/worker, packages/dapp)   |   |  contracts) — Compact     |
+|  Attester service              |   |  0.36.1 on Midnight       |
 |  Prover orchestration          |   |  Registration · bond      |
 |  Fee-sponsor (DUST + relay)    |   |  escrow · epoch proof     |
 |  Trigger.dev durable workers   |   |  (I1-I8) · claim/nullifier|
@@ -143,7 +143,7 @@ The backend is a coordinator that never sees an MM's books:
 | Long-running work | Trigger.dev workers (invariant #1); for the demo the daily indexer runs on GitHub Actions' scheduler (DD-33) | Indexing, witness capture service, attester runs, proof orchestration, read-model projection. |
 | Heavy payloads | IPFS via Pinata (invariant #3) | Published Merkle trees, attestation bundles. Content-addressed, so a second mirror can be added without changing CIDs. |
 | Client-visible figures | Encrypted MM → client | The MM's tool encrypts opened per-epoch figures to the client's key; the server stores ciphertext it cannot read. |
-| Public read API | `apps/api` (Fastify) or folded into Next | Serves the public projection only. |
+| Public read API | Folded into Next (route handlers and server components) | Serves the public projection only; live engagements are read from the contract. |
 
 **0G Labs** — evaluated, not adopted for v1. 0G Storage is a credible decentralised
 storage layer (an alternative or mirror for published trees), but it adds a second
