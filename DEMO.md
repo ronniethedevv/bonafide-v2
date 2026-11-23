@@ -106,11 +106,19 @@ pnpm --filter web dev                    # http://localhost:3000
 - **Public record.** Browse market makers, open a profile, export its tear sheet. These profiles are
   sample data and say so on the page; real records appear as engagements are claimed.
 - **Market maker.** Sign in with an Ethereum wallet, register an engagement: tier, bond, the pool,
-  the terms and the client's Midnight key, which the wizard takes from the client's account. The
-  wizard seals the engagement file (secrets and salts) for the market maker to keep.
-- **Client.** Save your Midnight key once; the bond goes to it on a default. Open a registration,
-  check its terms against the commitment, and accept it only if it names your key.
-- **The live engagement page** (step D) is the only page that reads the chain.
+  the terms and the client's Midnight key, which the wizard takes from the client's account. Each
+  trading wallet signs an ownership message (a signature, not a transaction), and the wizard seals
+  the engagement file (secrets, salts and signatures) for the market maker to keep. The recommended
+  path keeps the wallets off the website entirely: `mmr-agent create` and `propose` on the market
+  maker's own machine (see the README's "Try it").
+- **Client.** Save your Midnight key once; the bond goes to it on a default. Open a registration:
+  the portal checks the terms against the commitments, that the bond names your key and that every
+  committed wallet signed for this engagement, and only then lets you accept. Before sending the
+  loan, "Check on Midnight" finds the engagement on chain by the commitments you accepted and
+  checks the bond, its beneficiary, the tier and the clock.
+- **Read from the chain:** the live engagement page (step D), a market maker's track record
+  (`/record/<profile id>`) and the client's check before funding. Both live pages are linked from
+  the landing page.
 
 ## Earlier runs
 
