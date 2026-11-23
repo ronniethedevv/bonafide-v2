@@ -48,6 +48,16 @@ export class AgentApi {
     return json;
   }
 
+  /** The client's public keys: the inbox key to seal the terms to, the Midnight key the bond names. */
+  clientKeys(address: string): Promise<{ encryptionKey: string; midnightCoinKey: string | null }> {
+    return this.call("GET", `/clients/${encodeURIComponent(address)}`);
+  }
+
+  /** Propose an engagement: the commitments and the terms sealed to the client. */
+  propose(body: { clientAddress: string; walletCommit: string; termsCommit: string; termsEnvelope: SealedEnvelope }): Promise<{ id: string; fingerprint: string; clientName?: string }> {
+    return this.call("POST", "/engagements", body);
+  }
+
   me(): Promise<{ handle: string; name: string }> {
     return this.call("GET", "/me");
   }

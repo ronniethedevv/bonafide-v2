@@ -930,6 +930,19 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     // a presented record not on the ledger gets a forged path (leaf swapped into a real one)
     paths.push(rec === undefined ? genesis : (led.creditedRecords.findPathForLeaf(rec) ?? { ...genesis, leaf: rec }));
   }
+  return runClaimWithPaths({ ...a, presentFlags, paths }, state);
+}
+
+/**
+ * Execute epoch_proof.claim with presence flags and paths built elsewhere (as a market
+ * maker's tool builds them from the ledger it reads).
+ */
+export async function runClaimWithPaths(
+  a: Omit<ClaimArgs, "present"> & { presentFlags: boolean[]; paths: unknown[] },
+  state: rt.ChargedState,
+): Promise<ClaimResult> {
+  const mod = await import(BUILD_DIR);
+  const { presentFlags, paths } = a;
   const contract = new mod.Contract({
     ...stubWitnesses(),
     terms: wit(a.terms), termsSalt: wit(a.termsSalt),

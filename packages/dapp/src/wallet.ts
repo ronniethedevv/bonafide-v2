@@ -33,6 +33,7 @@ import {
 } from "@midnightntwrk/wallet-sdk";
 import * as WalletLedger from "@midnightntwrk/wallet-sdk/ledger/v9";
 import { mnemonicToSeedSync, validateMnemonic } from "bip39";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,13 +42,15 @@ import type { DappConfig } from "./config.js";
 
 /**
  * Where the synced wallet state is cached so a run doesn't re-sync from genesis.
- * Keyed by network; gitignored (`.wallet-state/`). The snapshot lists the
+ * Keyed by network and wallet; gitignored (`.wallet-state/`). The snapshot lists the
  * wallet's coins but holds no signing key, so it must stay private but is not a
  * secret key. Restore only against the same network the state was saved on.
  */
 function walletStatePath(cfg: DappConfig): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, "..", ".wallet-state", `${cfg.networkId}.v9.json`);
+  // One cache per wallet: a market maker's own seed (MM_SEED) never restores another wallet's coins.
+  const wallet = createHash("sha256").update(cfg.deploySeed).digest("hex").slice(0, 12);
+  return resolve(here, "..", ".wallet-state", `${cfg.networkId}.${wallet}.v9.json`);
 }
 
 interface WalletSnapshot { shielded: string; unshielded: string; dust: string }

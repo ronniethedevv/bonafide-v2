@@ -17,7 +17,7 @@
 // A percentage of buckets becomes a bucket count out of the 48 half-hours in a 24h epoch,
 // rounded up so "90%" never means less than 90%. The bond is posted in USDM.
 
-import type { EngagementOpening, Terms, TokenInfo } from "@mmr/engagement-file";
+import type { Terms, TokenInfo } from "@mmr/engagement-file";
 
 export type { TokenInfo };
 export const BUCKETS_PER_EPOCH = 48;
@@ -135,16 +135,4 @@ export function buildTerms(i: TermsInput): { terms: Terms; human: Record<string,
   return { terms, human };
 }
 
-/**
- * What the client receives, sealed to their inbox: everything needed to check the
- * commitments, minus what only the MM should hold — the engagement secret (it controls
- * the on-chain engagement id) and the MM's private label.
- */
-export type ClientTermsPayload = Omit<EngagementOpening, "label" | "secrets"> & {
-  secrets: Pick<EngagementOpening["secrets"], "walletSalt" | "termsSalt">;
-};
-
-export function clientPayload(o: EngagementOpening): ClientTermsPayload {
-  const { label: _label, secrets, ...rest } = o;
-  return { ...rest, secrets: { walletSalt: secrets.walletSalt, termsSalt: secrets.termsSalt } };
-}
+export { clientPayload, type ClientTermsPayload } from "@mmr/engagement-file";

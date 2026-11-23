@@ -21,6 +21,7 @@ import { signMessage, walletErrorText } from "@/lib/wallet/browser";
 import { BUCKETS_PER_EPOCH, formatUnits, pToPrice, toUnits, type ClientTermsPayload, type TokenInfo } from "@/lib/engagement/terms";
 import { checkBeneficiary, type BeneficiaryCheck } from "@/lib/engagement/beneficiary";
 import { fundingCheck, type FundingCheck, type OnChainEngagement } from "@/lib/engagement/funding-check";
+import { checkOwnership, type OwnershipCheck } from "@/lib/engagement/ownership";
 import { Check, Info } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
 
@@ -48,7 +49,7 @@ export function ClientRegistrations({ items, address, inboxKey, midnightKey }: {
   );
 }
 
-type Checked = { payload: ClientTermsPayload; matches: boolean };
+type Checked = { payload: ClientTermsPayload; matches: boolean; ownership: OwnershipCheck };
 
 function Proposal({ r, address, inboxKey, midnightKey }: { r: Registration; address: string; inboxKey: string | null; midnightKey: string | null }) {
   const router = useRouter();
@@ -72,7 +73,9 @@ function Proposal({ r, address, inboxKey, midnightKey }: { r: Registration; addr
       // of terms and commit to another.
       const wc2 = await walletCommit(payload.wallets, hexToBytes(payload.secrets.walletSalt, 32));
       const tc2 = await termsCommit(termsFromJson(payload.terms), hexToBytes(payload.secrets.termsSalt, 32));
-      setChecked({ payload, matches: wc2 === wc && tc2 === tc });
+      // Every committed wallet must have signed for this engagement: the market maker controls them.
+      const ownership = await checkOwnership(payload);
+      setChecked({ payload, matches: wc2 === wc && tc2 === tc, ownership });
     } catch (e) {
       setError(walletErrorText(e));
     }
@@ -110,12 +113,12 @@ function Proposal({ r, address, inboxKey, midnightKey }: { r: Registration; addr
           </span>
         </div>
       ) : (
-        <TermsView payload={checked.payload} matches={checked.matches} beneficiary={checkBeneficiary(checked.payload, midnightKey)} />
+        <TermsView payload={checked.payload} matches={checked.matches} beneficiary={checkBeneficiary(checked.payload, midnightKey)} ownership={checked.ownership} />
       )}
 
       {checked && (
         <div className="row" style={{ gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <button type="button" className="btn btn-primary btn-sm" disabled={!checked.matches || !checkBeneficiary(checked.payload, midnightKey).ok || !!busy} onClick={() => respond("accept")}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!checked.matches || !checkBeneficiary(checked.payload, midnightKey).ok || !checked.ownership.all || !!busy} onClick={() => respond("accept")}>
             {busy === "accepting" ? "Sign in your wallet…" : "Accept and sign"}
           </button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => respond("decline")}>
@@ -138,7 +141,7 @@ const UNKNOWN: TokenInfo = { symbol: "units", decimals: 6 };
 
 const TIER_NAME: Record<number, string> = { 1: "A", 2: "B", 3: "C" };
 
-function TermsView({ payload, matches, beneficiary }: { payload: ClientTermsPayload; matches: boolean; beneficiary: BeneficiaryCheck }) {
+function TermsView({ payload, matches, beneficiary, ownership }: { payload: ClientTermsPayload; matches: boolean; beneficiary: BeneficiaryCheck; ownership: OwnershipCheck }) {
   const reg = payload.registration;
   const t = payload.terms;
   const base = payload.pool.base ?? UNKNOWN;
@@ -160,7 +163,7 @@ function TermsView({ payload, matches, beneficiary }: { payload: ClientTermsPayl
           ["Bond goes to, on default (public)", reg.beneficiary],
         ] as Array<[string, string]>)
       : ([["Bond", `${bondText(payload.human.bond)} USDM`]] as Array<[string, string]>)),
-    ["Quoting wallets", payload.wallets.map(shortAddress).join(", ")],
+    ["Quoting wallets", ownership.wallets.map((w) => `${shortAddress(w.wallet)}: ${w.ok ? "controlled by the market maker" : w.detail}`).join("; ")],
   ];
   return (
     <div className="terms-view">
@@ -175,6 +178,14 @@ function TermsView({ payload, matches, beneficiary }: { payload: ClientTermsPayl
       <div className={`verify-line${beneficiary.ok ? " is-ok" : " is-bad"}`} role="status" style={{ marginTop: 6 }}>
         {beneficiary.ok ? <Check size={14} /> : <Info size={14} />}
         <span>{beneficiary.ok ? "The bond names your Midnight key: on a default it is paid to you." : beneficiary.reason}</span>
+      </div>
+      <div className={`verify-line${ownership.all ? " is-ok" : " is-bad"}`} role="status" style={{ marginTop: 6 }}>
+        {ownership.all ? <Check size={14} /> : <Info size={14} />}
+        <span>
+          {ownership.all
+            ? `Every committed wallet (${ownership.wallets.length}) signed for this engagement: the market maker controls them.`
+            : "Not every committed wallet signed for this engagement, so the market maker may be claiming liquidity it does not control. Don't accept; ask for the signatures."}
+        </span>
       </div>
       <dl className="rev" style={{ marginTop: 10 }}>
         {rows.map(([k, v]) => (

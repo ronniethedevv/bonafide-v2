@@ -178,7 +178,13 @@ proof binds one to the other. That is why this runs on Midnight.
    commitment to the market maker's wallet set and a commitment to the terms, plus the public tier,
    chain, required bond and the client's Midnight key, which receives the bond on a default. The
    client saves that key on its own account, and its portal lets it accept only a registration
-   that names it. The engagement id is the hash of a secret only the market maker holds.
+   that names it. Each committed trading wallet signs a message naming itself and this
+   engagement (a signature, not a transaction), and the portal lets the client accept only when
+   every wallet has signed: a market maker cannot take credit for liquidity it does not control.
+   The market maker's agent creates the engagement file and proposes it from the market maker's
+   own machine, so the trading wallets never reach a web page; the server receives only the two
+   commitments and the terms sealed to the client. The engagement id is the hash of a secret only
+   the market maker holds.
 2. **Bond and activate.** The market maker posts a bond in the bond token, held by the contract, at
    least the tier's minimum (A 10,000, B 5,000, C 2,500). Only the market maker can start the clock,
    and only after the bond is in. Day 1 is the next UTC day. Before sending the loan, the client's
@@ -246,6 +252,19 @@ Every check runs inside a circuit. Nothing is trusted off chain.
 The full statement of each invariant, and which circuit enforces it:
 [`packages/contracts/INVARIANTS.md`](packages/contracts/INVARIANTS.md).
 
+Before the engagement starts, the client checks the rest in its own browser, with nothing taken on
+the market maker's word:
+
+| Check | What it means | When |
+|---|---|---|
+| Terms | The terms and wallets the client received recompute both commitments | Before accepting |
+| Wallet ownership | Every committed wallet signed a message naming itself, its chain and this engagement; a smart wallet's signature is checked on its chain | Before accepting |
+| Beneficiary | The bond names the client's own Midnight key | Before accepting |
+| The engagement on chain | Registered with the accepted commitments; tier, chain and bond as agreed; the bond held; the clock started | Before sending the loan |
+
+Wallet ownership is checked off chain today. Ledger 9's secp256k1 support could move it into the
+circuit.
+
 ## What stays private, what is public, and why
 
 | What | On the ledger | Why |
@@ -296,6 +315,28 @@ pnpm -r test
 The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts kat:build` (Compact
 0.36.1, a few seconds). Database tests need `TEST_DATABASE_URL`. Node.js 22 or later and pnpm 10.
 
+**As a market maker, from your own machine:** connect the agent with a token from your dashboard,
+create the engagement file locally, have each trading wallet sign its ownership message, then
+propose. The trading wallets stay on your machine.
+
+```bash
+pnpm --filter @mmr/agent agent connect --server https://mm-reputation-web.vercel.app --token <agent token>
+pnpm --filter @mmr/agent agent create --client 0x… --pool 0x… --pair VIRTUAL/USDC --wallets 0x…,0x… \
+  --terms terms.json --tier 1 --bond 10000 --out engagement.mmr.json
+pnpm --filter @mmr/agent agent propose engagement.mmr.json --signatures engagement.mmr.json.ownership.json
+```
+
+Once the client accepts, the Midnight steps run on the same machine, with your own wallet's seed and
+a local proof server, so no key or proof leaves it:
+
+```bash
+pnpm --filter @mmr/dapp proof-server                      # a local proof server (Docker)
+export MM_SEED=… MMR_ENGAGEMENT_PASSPHRASE=…              # your Midnight wallet's seed; the file's passphrase
+pnpm --filter @mmr/dapp mm register engagement.mmr.json   # then bond and activate
+pnpm --filter @mmr/dapp mm run engagement.mmr.json        # daily: funding, then prove, settle, release
+pnpm --filter @mmr/dapp mm claim engagement.mmr.json      # once, after the last release
+```
+
 **Deploy your own:**
 
 ```bash
@@ -305,7 +346,7 @@ pnpm --filter @mmr/dapp run deploy           # bond token, then epoch_proof in b
 pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 pnpm --filter @mmr/dapp mm status [file]     # the market maker's own commands for an engagement file:
-                                             # status, register, bond, activate, void, profile
+                                             # status, register, bond, activate, run, claim, void, profile
 ```
 
 It needs a proof server 9.0.0 on port 6300 (`pnpm --filter @mmr/dapp proof-server`) and a
@@ -314,7 +355,7 @@ proves.
 
 ## Tests
 
-538 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+545 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
@@ -325,8 +366,8 @@ provides).
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
-| `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
-| Eight more | 60 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
+| `dapp` | 4 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused; the market maker's claim inputs, read from the ledger, are accepted by the compiled claim |
+| Eight more | 66 | Read model, engagement files and wallet ownership, witness capture, attestations, the daily job, the database, the agent (creating and proposing an engagement), the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -354,12 +395,18 @@ package and runs every test against the compiled circuits; a missing build fails
   addresses that moved VIRTUAL passed. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
-- **The market maker's own commands** (`mm`, also a manual workflow) cover registration, the bond,
-  activation, the void and its profile id. For the live engagement, proving, settling and
-  releasing run in the scheduled job, which holds the same seed; the claim runs in the tests and,
-  as a command, is next. One wallet pays every fee in this demo.
+- **The market maker's own commands** (`mm`, also a manual workflow) run every market-maker step
+  on the market maker's machine, with its own seed (`MM_SEED`) and a local proof server:
+  registration, bond, activation, the daily funding, proof, settlement and release, the claim and
+  the void. In this demo one seed holds every key (market maker, client and the three attesters),
+  and the scheduled job carries the live engagement. The claim is tested against the compiled
+  circuit; on chain it is possible once days are credited, and the live engagement's full claim
+  from 26 December.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
   out of scope: proving off-chain fills needs zkTLS.
+- **The live engagement has no ownership signatures:** it was registered by script on three public
+  wallets we do not control, as a demonstration. Through the app, a client cannot accept an
+  engagement unless every committed wallet has signed for it.
 - **Linkability:** the bond records the coin key of the wallet that posted it, so engagements bonded
   from the same wallet can be linked. Claims are not yet batched, so a claim's timing can hint at
   which engagement just ended.
