@@ -5,8 +5,13 @@ of every working unit.
 
 ## Current phase
 
-**Phase 0 → Phase 1:** foundations + build-order item #1 (deterministic indexer,
-leaf schema, root-of-roots).
+**Live on Midnight Preview, on real Base data (first submission).** The contract
+(`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed with the review fixes
+(DD-35, DD-37, DD-38). The daily indexer runs on GitHub Actions' scheduler (built to run on
+Trigger.dev in production) and publishes each day's trees and series to IPFS; the
+lifecycle job attests each indexed day after recomputing it and carries a real
+engagement forward (prove, settle, release). Next: the engagement's first real days,
+the README's on-chain evidence for them, and the demo film.
 
 ## Status log
 
@@ -124,25 +129,19 @@ attester signing.
 
 ## Build-order progress (from product spec)
 
-- [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (TS; injectable `TreePublisher`, in-mem fake + **real Pinata v3 adapter**, [verify] on live Pinata)
-- [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
-      benchmark itself needs the Midnight toolchain (not available here)
-- [x] 3. Compact contract — registration + bond (now in `epoch_proof.compact`, DD-17) compile under `compact compile --skip-zk` (0.31.1)
-- [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` (incl. `claim`, DD-15) compile under `compact compile --skip-zk` (0.31.1)
-- [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
-      state machine, engagement reducer, mock committee, challenge watchdog);
-      Jubjub signing + on-chain flow need Midnight integration
-- [~] 6. MM prover — **CLI + reference oracle + client watcher done**; fee-sponsor pending
-- [ ] 7. Pilot
-- [x] CI/CD (blueprint §5.2) — GitHub Actions: typecheck + test + web build
-
-**What remains needs a Midnight-provisioned environment** (not this container):
-compile the `.compact` circuits (`compactc`), run the proving benchmark to fix
-bucket sizes, implement Jubjub attester signing behind the existing
-`AttesterCommittee` interface, and wire a real Base archive-RPC `ChainProvider`
-behind the existing interface. The live IPFS `TreePublisher` is **done** (Pinata
-v3, [verify] on live Pinata); a fee-sponsor (DUST + self-relay) is the remaining
-TS adapter, behind an interface that already exists and is tested against fakes.
+- [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (Pinata), plus each
+      pool's committed depth and flow series; runs daily on real Base data
+- [x] 2. Proving: every circuit proves on the Preview proof server (9.0.0); times per
+      transaction are recorded in the lifecycle record
+- [x] 3. Compact contract — registration, bond escrow, tranches, void, default (`epoch_proof.compact`, Compact 0.36.1)
+- [x] 4. Epoch proof and claim circuits, with credited days only (DD-37) and the pool bound into the terms (DD-38)
+- [x] 5. Attester committee (2 of 3, on chain), recompute-before-vote, disputes with a
+      deadline, neutral disputed days, void rules
+- [~] 6. Market maker prover: witnesses from published data and the scheduled lifecycle
+      job are done; a fee sponsor is not (the market maker pays its own DUST)
+- [ ] 7. Pilot with a real market maker
+- [x] CI/CD — GitHub Actions: typecheck, every package's tests including the compiled
+      contract's, web build; scheduled indexer and lifecycle jobs
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
