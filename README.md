@@ -127,8 +127,9 @@ proof binds one to the other. That is why this runs on Midnight.
 
 1. **Register.** The market maker and the client agree the terms off chain. The contract stores a
    commitment to the market maker's wallet set and a commitment to the terms, plus the public tier,
-   chain, required bond and the client's address for a forfeited bond. The engagement id is the hash
-   of a secret only the market maker holds.
+   chain, required bond and the client's Midnight key, which receives the bond on a default. The
+   client saves that key on its own account, and its portal lets it accept only a registration
+   that names it. The engagement id is the hash of a secret only the market maker holds.
 2. **Bond and activate.** The market maker posts a bond in the bond token, held by the contract, at
    least the tier's minimum (A 10,000, B 5,000, C 2,500). Only the market maker can start the clock,
    and only after the bond is in. Day 1 is the next UTC day.
@@ -256,17 +257,19 @@ proves.
 
 ## Tests
 
-509 tests across 16 packages, all run in CI on every change.
+524 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
-| `contracts` | 135 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows |
-| `indexer` | 152 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the IPFS publisher |
-| `web` | 38 | Wallet sign-in and sessions, the engagement registry, engagement terms, agent tokens |
-| `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine |
+| `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
+| `indexer` | 153 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
+| `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
-| Nine more | 61 | Read model, engagement files, witness capture, attestations, the daily job, the database, the API, the agent, the tear sheet |
+| `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
+| Eight more | 57 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
