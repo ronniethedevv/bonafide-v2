@@ -10,7 +10,8 @@ name: Daily index
 #              IPFS_PINNING_JWT; ETH_ARCHIVE_RPC_URL only if Ethereum is covered
 #   Variables: MMR_COVERAGE_8453 (base tokens to index on Base; MMR_COVERAGE_1 for
 #              Ethereum), MMR_LOG_CHUNK_BLOCKS (10 on a free RPC key, e.g. 2000 on a paid
-#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_TREASURY_8453
+#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_RPC_CONCURRENCY (default 8),
+#              MMR_TREASURY_8453
 #              (each is read from a variable, or from a secret of the same name)
 
 on:
@@ -49,6 +50,9 @@ jobs:
       MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 || secrets.MMR_TREASURY_1 }}
       MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS || secrets.MMR_LOG_CHUNK_BLOCKS }}
       MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS || secrets.MMR_CATCHUP_DAYS }}
+      MMR_RPC_CONCURRENCY: ${{ vars.MMR_RPC_CONCURRENCY || secrets.MMR_RPC_CONCURRENCY }}
+      # A busy pool's day of logs, receipts and positions exceeds Node's default ~2 GB heap.
+      NODE_OPTIONS: --max-old-space-size=6144
       MMR_INDEX_DATE: ${{ inputs.date }}
       MMR_INDEX_CHAIN: ${{ inputs.chain }}
     steps:

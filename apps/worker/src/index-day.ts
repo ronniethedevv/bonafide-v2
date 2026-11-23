@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runLiveEpoch, type LiveEpochOptions, type RunResult, type TreePublisher } from "@mmr/indexer";
-import { coverage, dayLabel, dayWindow, logChunkBlocks, treasury } from "./day.js";
+import { coverage, dayLabel, dayWindow, logChunkBlocks, rpcConcurrency, treasury } from "./day.js";
 import { getWorkerState, indexedEpoch, saveIndexedEpoch, setWorkerState, type Queryable } from "./store.js";
 
 export interface IndexDayDeps {
@@ -40,6 +40,12 @@ export async function indexDay(chainId: number, day: number, deps: IndexDayDeps)
   mkdirSync(dir, { recursive: true });
   const registryKey = `registry:${chainId}`;
   const registryPath = join(dir, "registry.json");
+  let registrySaved = false;
+  const saveRegistryFile = async (): Promise<void> => {
+    if (registrySaved || !existsSync(registryPath)) return;
+    await setWorkerState(deps.db, registryKey, readFileSync(registryPath, "utf8"));
+    registrySaved = true;
+  };
   try {
     const saved = await getWorkerState(deps.db, registryKey);
     if (saved) writeFileSync(registryPath, saved);
@@ -60,12 +66,14 @@ export async function indexDay(chainId: number, day: number, deps: IndexDayDeps)
       activity: {
         registryPath,
         chunkBlocks: logChunkBlocks(deps.env),
+        concurrency: rpcConcurrency(deps.env),
+        receiptConcurrency: rpcConcurrency(deps.env),
         onStage: (stage) => log("stage", { chainId, day: label, stage }),
       },
     });
 
     // Save the registry first: it is valid on its own even if storing the root fails.
-    if (existsSync(registryPath)) await setWorkerState(deps.db, registryKey, readFileSync(registryPath, "utf8"));
+    await saveRegistryFile();
     const m = result.manifest;
     await saveIndexedEpoch(deps.db, {
       chainId,
@@ -82,6 +90,10 @@ export async function indexDay(chainId: number, day: number, deps: IndexDayDeps)
     });
     log("indexed", { chainId, day: label, root: result.rootHex, cid: result.manifestCid, pools: m.poolCount });
     return { status: "indexed", chainId, day: label, rootHex: result.rootHex, manifestCid: result.manifestCid, poolCount: m.poolCount };
+  } catch (e) {
+    // A day that fails after the registry scan keeps the scan: the next run resumes from it.
+    await saveRegistryFile().catch(() => {});
+    throw e;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

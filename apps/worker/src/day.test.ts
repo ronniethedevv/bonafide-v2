@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressList, catchUpDays, catchUpWindow, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, previousDay } from "./day.js";
+import { addressList, catchUpDays, catchUpWindow, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, previousDay, rpcConcurrency } from "./day.js";
 
 describe("day helpers", () => {
   it("numbers epochs by UTC day and indexes the last closed day", () => {
@@ -37,5 +37,12 @@ describe("day helpers", () => {
     expect(logChunkBlocks({})).toBe(10);
     expect(logChunkBlocks({ MMR_LOG_CHUNK_BLOCKS: "2000" })).toBe(2000);
     expect(() => logChunkBlocks({ MMR_LOG_CHUNK_BLOCKS: "0" })).toThrow();
+  });
+
+  it("defaults RPC concurrency to 8 and bounds it", () => {
+    expect(rpcConcurrency({})).toBe(8);
+    expect(rpcConcurrency({ MMR_RPC_CONCURRENCY: "4" })).toBe(4);
+    expect(() => rpcConcurrency({ MMR_RPC_CONCURRENCY: "0" })).toThrow();
+    expect(() => rpcConcurrency({ MMR_RPC_CONCURRENCY: "64" })).toThrow();
   });
 });
