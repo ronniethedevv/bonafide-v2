@@ -19,7 +19,9 @@ const INDEXER = process.env.MIDNIGHT_INDEXER_URL ?? "https://indexer.preview.mid
 export const CONTRACT_ADDRESS: string = (deployment as { contractAddress: string }).contractAddress;
 export const NETWORK = "Midnight Preview";
 
-const STATUS = ["Registered", "Funded", "Active", "Settled", "Voided", "Defaulted"] as const;
+// The contract's Status enum, as shown: "Funded" is the contract's name for an activated
+// engagement (bond posted, clock started), not a proven loan, so it reads "Running".
+const STATUS = ["Registered", "Running", "Running", "Completed", "Voided", "Defaulted"] as const;
 export type EngagementStatus = (typeof STATUS)[number];
 
 /** A struct descriptor from (field, descriptor) pairs, as the compiler emits them. */

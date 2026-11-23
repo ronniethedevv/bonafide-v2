@@ -1,0 +1,33 @@
+{
+  "network": "preview",
+  "contractAddress": "4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634",
+  "label": "preview-virtual-1",
+  "chain": 8453,
+  "tier": 1,
+  "bond": 10000,
+  "pool": {
+    "address": "0x529d2863a1521d0b57db028168fde2e97120017c",
+    "pair": "VIRTUAL/USDC"
+  },
+  "createdAt": "2026-11-23T05:22:54.381Z",
+  "file": {
+    "format": "mmr-engagement-file",
+    "v": 1,
+    "kdf": {
+      "name": "PBKDF2",
+      "hash": "SHA-256",
+      "iterations": 600000,
+      "salt": "L79Ckx9mhtQBaNNdM0vDtA=="
+    },
+    "cipher": {
+      "name": "AES-GCM",
+      "iv": "H4go8Iu+pQikvQsk"
+    },
+    "hint": {
+      "walletCommit": "0xdcbc090d9664c85df699076515780a59e2fcd7bbab0a45d92d15ee00117f9944",
+      "termsCommit": "0x3e331d07a5479b1be44acf779dc6713190aa0cc94456d0215b4966428c0b19b9",
+      "createdAt": "2026-11-23T05:22:54.381Z"
+    },
+    "ciphertext": "O/amhVEP26LSLJQ/1Ua15kgpFMZ4EfisxirANPH4GkzoS6lNTtWxA2OcyS+tTgamB371Zjm2K7LwzKGkw/f4Ft3PPwFP+U8d/0qqZTMM4JN4Tg2jcgCCj/wCbLZbuLEVocaPTX3GdO0UNOoL2WK7i2EZr9vFWGn+Cbiu/mlTrf9Y3yBFMu+dtnRyAr8/qYVB1CM46dYpnSHx5d5MJp6FBbRTSQow6EWhBNB/8JTQ4ojrtOZb0QeZq10gfnX6EA+/w7w/iZ4ppSlj2/NXwkdIR5YRV+PldX1u2Arb0RUhlropjQ7aGvvdpZaz7RBnOHbv38yLAh1G1qGBRInUftwLPOZ+sMTAR1zsvF+KMmhAz3Hd+9yrRcQG5bAcf3PS4vvC93d/jIsk16irZxh5bQFl+uomOGIA2L94228/b195Pdie3VAhq1giiShT4TqF4N17dN+gy+q2Pwr+iCQCHE3HNPsSko82x7PidNbTcuO5r9cROb4B6a8naPwxR/ZHfatk4dtF7FMWW+LMOQn61iFt7jGOWKSZfwFMfSN4WVSVv5ElVCordGZahIemUjYSZcCGmnHZiRJ63ZL+uOja1bGqm3d3X1xIA1KvNaEpWq1VtYIRssSm6+E2L0aiefnb531ObdFglM6uP+QmJVvkEXz1GYSE9/pY9CmOe0sGl7d1+XhWK9Ho161pJfcR4r0tadlx/1wx+OPw7KItCXSOtCw50sZTukSeSkkZBvcasNi7i8LVrHpBRdI1NwPyx2t9t4MMbxFIqx0wXbB6bwzSvSS0IFYvnIdx5eweNjtl71mUAO92rV/uRdY7jR79n2xwScmRF7kORTkc/oogk4ChKrUtfp+XnfoOP6WcN7or9tZTByjWHiwn040N5RlopW1GJnPUGBPciwaCIRkPQdFD7aFFUOwbnN3MdsFTiX+Z44Lo8/7V2+NTKUhWYArqebre7SUPbnM5Hf53qgNg/p2GqG5C9obO0+njFyxX+Wbq+G+/r5ha+X76dyZtnlGm1YZ3REO7lUh4hUIATP8rrm/gDMm7YrkCz7dTawa8wbfdFnJmJ2UyRsAwzilomJLeS3g13LZcN+ISfErIaQYa3KHGyuBdh7NKucaR+QBkeW32fHj6ldxUOSTm/4JvOENtwTCEzeVGiPjhGUhAxpvFOSRuIjWTr7p9MLwjyejrpNucxmNn0RnPBKxHgFcV8WQAssvYuEXiI5pwOlxyFGp1UZLWjN2jThLludQuBrWJL21wL4APjas++N0bConpqWfFayx/WO5lpxk93S95p/wue5do8DC+vj93yuTBTYVyUI8drpItjHbKYemq2GTkL7pmhs3YLUxYVnrlMgzMxKCtfLmVZIt86/uVXQ3ca5fEW+7EwfJtUkmCyVnq0mQ0CZfq6QCiluWI1xNchJ9K0MMvFse1uKtJOV0fddOYZFyl2xEXAyPy37mmtnIru3sgG4C1noqKadASsO30Z1QUCd0rC7xFrcfZiAqGh5tXr04QLSLiVi9yBtyi+XP4YzKdAMHfFRwlGdqvhhl4+bkuN+Gd21acBIIrSLY="
+  }
+}
