@@ -322,7 +322,7 @@ function Review({
 
   // Fresh secrets + the protocol's real commitments, once per visit to this step.
   useEffect(() => {
-    const { terms, human } = buildTerms({ ...f, base: pool.base, quote: pool.quote });
+    const { terms, human } = buildTerms({ ...f, pool: pool.addr, base: pool.base, quote: pool.quote });
     newOpening({
       pool: { chain: pool.chain, address: pool.addr, pair: pool.pair, base: pool.base, quote: pool.quote },
       client: persist ? { address: f.clientAddress.trim().toLowerCase() } : demoClientName ? { name: demoClientName } : {},

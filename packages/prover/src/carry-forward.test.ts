@@ -98,6 +98,7 @@ describe("I5 carry-forward commitment", () => {
       bandBps: 100,
       minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
       epochsTotal: 30,
+      pool: 0xabcdn,
     };
     const activity = (addr: bigint, xferOut: bigint): AddressActivity => ({
       addr,

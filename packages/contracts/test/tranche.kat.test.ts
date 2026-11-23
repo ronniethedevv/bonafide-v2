@@ -8,7 +8,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { cumulativeRelease, nextTranche } from "@mmr/protocol";
 import {
-  BOND_CALLER_PK, BOND_COIN, HAVE_BUILD, Status, T, buildScenario, cloneWitness, epochEndOf,
+  BOND_CALLER_PK, BOND_COIN, HAVE_BUILD, Status, buildScenario, cloneWitness, epochEndOf,
   graceDeadlineOf, runLifecycle, runRegister, runningEngagement, settle,
   type BondRun, type Engagement,
 } from "./harness.js";

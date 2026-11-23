@@ -188,11 +188,11 @@ describe.skipIf(!HAVE_BUILD)("proveEpoch KAT (compiled circuit)", () => {
     await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
   });
 
-  it("rejects a tampered pool address", async () => {
+  it("rejects a tampered pool address (DD-38: it is no longer the committed pool)", async () => {
     const { rootOfRoots, witness } = buildScenario();
     const w = cloneWitness(witness);
     w.poolEntry.poolAddr += 1n;
-    await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
+    await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(/the proof's pool is not the engagement's \(DD-38\)/);
   });
 
   it("rejects a different rootOfRoots", async () => {
@@ -391,7 +391,7 @@ describe.skipIf(!HAVE_BUILD)("H1: depth witness bound to depth_root (I6)", () =>
     const engagement = createEngagement({
       id: "h1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
+               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3, pool: POOL },
     });
     const hasher = new PoseidonHasher();
     const openings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, KAT_RANGE);
@@ -444,7 +444,7 @@ describe.skipIf(!HAVE_BUILD)("M1: flow witness bound to flow_root; round-trip ca
     const engagement = createEngagement({
       id: "m1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
+               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3, pool: POOL },
     });
     const openings = assembleFlowOpenings(engagement, activities);
     const hasher = new PoseidonHasher();

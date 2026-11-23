@@ -8,14 +8,15 @@
 //    final: settled (released, credited to claim), disputed (neutral: released to the MM,
 //    not credited, not defaultable) or neither (defaultable).
 //  - claim reads only credited days, and must present at least one.
+//  - DD-38: the pool is committed with the terms; proveEpoch and proveFunding open only it.
 
 import { beforeAll, describe, expect, it } from "vitest";
 import * as rt from "@midnight-ntwrk/compact-runtime";
 import { nextTranche } from "@mmr/protocol";
 import {
-  ATTESTERS, BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, FUNDED_A, HAVE_BUILD, buildScenario,
+  ATTESTERS, BLOCK_TIME, BOND_CALLER_PK, BOND_COIN, FUNDED_A, HAVE_BUILD, buildScenario, cloneWitness,
   creditEpochs, dayOfEpoch, graceDeadlineOf, publishRoot, runClaim, runDisputeRoot,
-  runLifecycle, runProveFunding, runRegister, runningEngagement, startDayFor,
+  runLifecycle, runProveEpoch, runProveFunding, runRegister, runningEngagement, startDayFor, toField, toPath,
   type BondRun, type ClaimArgs, type Engagement, type Scenario,
 } from "./harness.js";
 
@@ -131,7 +132,7 @@ describe.skipIf(!HAVE_BUILD)("DD-37: claim counts credited days only, and needs 
   });
 
   it("a disputed day is never credited, even after its neutral release", async () => {
-    const [r1, r2, r3] = g.records as [typeof g.records[0], typeof g.records[0], typeof g.records[0]];
+    const [r1, , r3] = g.records as [typeof g.records[0], typeof g.records[0], typeof g.records[0]];
     let state = await dispute(2n, g.state);
     state = await creditEpochs(state, g.id, [r1, r3]);
     state = (await release(2n, 2, state, graceDeadlineOf(g, 2n))).state;
@@ -144,4 +145,32 @@ describe.skipIf(!HAVE_BUILD)("DD-37: claim counts credited days only, and needs 
   function release(e: bigint, k: number, state: rt.ChargedState, blockTime: bigint) {
     return runLifecycle("releaseEpoch", [g.id, e, nextTranche(BOND_COIN.value, 30, k)], { state, blockTime });
   }
+});
+
+describe.skipIf(!HAVE_BUILD)("DD-38: proofs open only the committed pool", () => {
+  // The scenario's root holds three pools; the engagement committed to POOL (0xb2).
+  const s = buildScenario(undefined, 0, FUNDED_A);
+  const OTHER = 0xa1n;
+  /** The same witness, pointed at another pool in the same root (a valid inclusion path). */
+  const otherPool = () => {
+    const w = cloneWitness(s.witness);
+    const proof = s.ror.poolProof(OTHER);
+    w.poolEntry = { poolAddr: proof.poolAddr, poolRoot: toField(proof.poolRoot) };
+    w.poolPath = toPath(proof.path);
+    return w;
+  };
+
+  it("proveEpoch refuses another pool in the day's root", async () => {
+    const reg = await runRegister(s.witness, new Uint8Array(32).fill(0x38));
+    await expect(runProveEpoch(otherPool(), reg.id, s.rootOfRoots, 1n, reg.state))
+      .rejects.toThrow(/the proof's pool is not the engagement's \(DD-38\)/);
+    await expect(runProveEpoch(s.witness, reg.id, s.rootOfRoots, 1n, reg.state)).resolves.toBeDefined();
+  });
+
+  it("proveFunding refuses another pool in the day's root", async () => {
+    const a = await activated(s);
+    const state = await publishRoot(a.state, 1n, s.rootOfRoots);
+    await expect(runProveFunding(otherPool(), a.id, s.rootOfRoots, state))
+      .rejects.toThrow(/the proof's pool is not the engagement's \(DD-38\)/);
+  });
 });

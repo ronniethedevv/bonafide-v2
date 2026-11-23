@@ -66,6 +66,7 @@ const range: EpochRange = {
 const TERMS: TermsW = {
   floor_price_P: 0n, loan_L0: 0n, quote_start_Q0: 0n, disposal_D: 0n, net_sell_S: 0n,
   depth_target: 500n, roundtrip_share_ppm: 1_000_000n, band_bps: 50n, min_uptime_buckets: 36n, epochs_total: 30n,
+  pool: POOL,
 };
 const ENG: EngagementPrivate = {
   poolAddr: POOL, wallets: [B, A], walletSalt: new Uint8Array(32).fill(0x5a), terms: TERMS, termsSalt: new Uint8Array(32).fill(0x7e),

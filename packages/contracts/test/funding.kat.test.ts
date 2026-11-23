@@ -104,7 +104,10 @@ describe.skipIf(!HAVE_BUILD)("DD-27: proveFunding", () => {
     await expect(runProveFunding(inflated, r.id, s.rootOfRoots, r.state)).rejects.toThrow(/slot Merkle path mismatch \(C1\)/);
     const pool = cloneWitness(s.witness);
     pool.poolEntry = { ...pool.poolEntry, poolAddr: pool.poolEntry.poolAddr + 1n };
-    await expect(runProveFunding(pool, r.id, s.rootOfRoots, r.state)).rejects.toThrow(/pool inclusion path mismatch \(C1\)/);
+    await expect(runProveFunding(pool, r.id, s.rootOfRoots, r.state)).rejects.toThrow(/the proof's pool is not the engagement's \(DD-38\)/);
+    const root = cloneWitness(s.witness);
+    root.poolEntry = { ...root.poolEntry, poolRoot: root.poolEntry.poolRoot + 1n };
+    await expect(runProveFunding(root, r.id, s.rootOfRoots, r.state)).rejects.toThrow(/pool inclusion path mismatch \(C1\)/);
   });
 
   it("reverts before activation", async () => {

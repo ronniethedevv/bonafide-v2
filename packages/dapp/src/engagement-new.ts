@@ -35,7 +35,10 @@ async function main(): Promise<void> {
   const pool = required("MMR_POOL").toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(pool)) throw new Error("MMR_POOL is not an address");
   const wallets = required("MMR_WALLETS").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
-  const terms = termsFromJson({ epochsTotal: "30", ...(JSON.parse(required("MMR_TERMS")) as Partial<TermsJson>) } as TermsJson);
+  // The pool is committed with the terms (DD-38): always the engagement's pool.
+  const terms = termsFromJson({
+    epochsTotal: "30", ...(JSON.parse(required("MMR_TERMS")) as Partial<TermsJson>), pool: BigInt(pool).toString(),
+  } as TermsJson);
 
   const record = await createEngagement(toMasterSeed(cfg.deploySeed), {
     network: cfg.networkId,

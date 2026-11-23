@@ -41,6 +41,8 @@ export interface EngagementTerms {
   minUptimeBuckets: number;
   /** Committed contract length in epochs, 1..MAX_EPOCHS: the claim's denominator (DD-12 B1). Uint64. */
   epochsTotal: number;
+  /** DD-38: the engagement's pool (Uint<160>); proofs open only this pool's tree. */
+  pool: bigint;
 }
 
 export interface WalletVector {
@@ -101,9 +103,11 @@ export function createEngagement(args: {
 
 export function assertTerms(t: EngagementTerms): void {
   for (const [k, v] of Object.entries(t)) {
-    if (k === "bandBps" || k === "minUptimeBuckets" || k === "epochsTotal") continue;
+    if (k === "bandBps" || k === "minUptimeBuckets" || k === "epochsTotal" || k === "pool") continue;
     assertUint(v as bigint, BITS.U128);
   }
+  assertUint(t.pool, BITS.ADDR);
+  if (t.pool === 0n) throw new Error("pool must be set");
   if (!Number.isInteger(t.bandBps) || t.bandBps <= 0) {
     throw new Error("bandBps must be a positive integer");
   }
@@ -151,7 +155,7 @@ export function commitWallets(
  * Commitment over the deal terms: registration's termsCommit,
  * persistentCommit<Terms>(terms, termsSalt). Field order and widths are the
  * circuit `Terms` struct: P, ppm, band, minUptimeBuckets and epochsTotal are
- * Uint<64>; the rest Uint<128>.
+ * Uint<64>; pool is Uint<160> (DD-38); the rest Uint<128>.
  */
 export function commitTerms(
   hasher: Hasher,
@@ -169,6 +173,7 @@ export function commitTerms(
     encodeUintLE(BigInt(t.bandBps), 64),
     encodeUintLE(BigInt(t.minUptimeBuckets), 64),
     encodeUintLE(BigInt(t.epochsTotal), 64),
+    encodeUintLE(t.pool, BITS.ADDR),
   ]);
   return commit(hasher, image, termsSalt);
 }

@@ -69,6 +69,8 @@ export interface TermsW {
   disposal_D: bigint; net_sell_S: bigint; depth_target: bigint;
   roundtrip_share_ppm: bigint; band_bps: bigint;
   min_uptime_buckets: bigint; epochs_total: bigint;
+  /** DD-38: the engagement's pool. */
+  pool: bigint;
 }
 
 /** The harness terms as @mmr/prover EngagementTerms (for commitTerms / the oracle). */
@@ -78,6 +80,7 @@ export function termsToEngagement(t: TermsW): EngagementTerms {
     disposalD: t.disposal_D, netSellS: t.net_sell_S, depthTarget: t.depth_target,
     roundtripSharePpm: t.roundtrip_share_ppm, bandBps: Number(t.band_bps),
     minUptimeBuckets: Number(t.min_uptime_buckets), epochsTotal: Number(t.epochs_total),
+    pool: t.pool,
   };
 }
 
@@ -286,7 +289,7 @@ export function buildScenario(
         floor_price_P: 2n, loan_L0: 1_000n, quote_start_Q0: 5n,
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
-        min_uptime_buckets: 40n, epochs_total: 30n,
+        min_uptime_buckets: 40n, epochs_total: 30n, pool: POOL,
       },
       termsSalt: fill32(0x7e),
       carryPrev: { ...ZERO_CARRY_W }, carryPrevSalt: fill32(0), carryNewSalt: fill32(0xc1), // genesis

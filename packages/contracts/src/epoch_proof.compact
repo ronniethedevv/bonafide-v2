@@ -48,7 +48,10 @@ struct Terms {
   disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
   roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>,
   // H4 (DD-12): I6 pass threshold (bucket count) and committed contract length in epochs.
-  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
+  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>,
+  // DD-38: the engagement's pool. Committed with the terms (so it stays private) and
+  // checked by proveEpoch and proveFunding: a proof opens only this pool's tree.
+  pool: Uint<160>
 }
 
 // C2: proveEpoch's public output. Both commitments are now checked on-chain: the
@@ -580,7 +583,9 @@ export circuit proveEpoch(
   const fb = flowBuy();
   const fs = flowSell();
 
-  // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
+  // Pool inclusion: the engagement's pool tree root is in rootOfRoots. DD-38: and the pool
+  // is the one committed in the terms, not another pool in the same day's root.
+  assert(pe.poolAddr == t.pool, "the proof's pool is not the engagement's (DD-38)");
   verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
 
   // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
@@ -1264,9 +1269,11 @@ export circuit proveFunding(id: Bytes<32>, day: Uint<64>, rootOfRoots: Bytes<32>
   assert(disclose(persistentCommit<Terms>(t, termsSalt())) == termsCommit.lookup(key),
          "terms commitment does not match registration (C2)");
 
-  // C1: the pool is in epoch 1's root, and every slot's leaf is in the pool.
+  // C1: the pool is in the day's root, and every slot's leaf is in the pool. DD-38: the
+  // pool is the one committed in the terms.
   const leaves = slotLeaves();
   const pe = poolEntry();
+  assert(pe.poolAddr == t.pool, "the proof's pool is not the engagement's (DD-38)");
   verifyPoolPath(transientHash<PoolEntry>(pe), poolPath(), rootOfRoots);
   openSlotLeaves(w, act, leaves, slotPaths(), pe.poolRoot);
 

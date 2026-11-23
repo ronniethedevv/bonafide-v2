@@ -25,6 +25,7 @@ export interface Terms {
   bandBps: number; // Uint<64>
   minUptimeBuckets: number; // Uint<64>
   epochsTotal: number; // Uint<64>, always CONTRACT_EPOCHS (30)
+  pool: bigint; // Uint<160>: the engagement's pool, committed so proofs open only its tree (DD-38)
 }
 
 /** Active wallets → the committed 16-slot vector: sorted ascending, zero-padded. */
@@ -60,6 +61,7 @@ export function assertTerms(t: Terms): void {
   }
   if (t.bandBps <= 0) throw new Error("bandBps must be positive");
   if (t.epochsTotal !== CONTRACT_EPOCHS) throw new Error(`engagements run ${CONTRACT_EPOCHS} epochs`);
+  if (t.pool <= 0n || t.pool >= 1n << 160n) throw new Error("pool must be a non-zero 160-bit address");
 }
 
 export function termsImage(t: Terms): Uint8Array {
@@ -75,6 +77,7 @@ export function termsImage(t: Terms): Uint8Array {
     uintLE(BigInt(t.bandBps), 64),
     uintLE(BigInt(t.minUptimeBuckets), 64),
     uintLE(BigInt(t.epochsTotal), 64),
+    uintLE(t.pool, 160),
   );
 }
 
@@ -110,6 +113,7 @@ export function termsFromJson(j: TermsJson): Terms {
     bandBps: int("bandBps"),
     minUptimeBuckets: int("minUptimeBuckets"),
     epochsTotal: int("epochsTotal"),
+    pool: big("pool"),
   };
   assertTerms(t);
   return t;

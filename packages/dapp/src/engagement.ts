@@ -44,6 +44,7 @@ export function toTermsW(t: Terms): TermsW {
     disposal_D: t.disposalD, net_sell_S: t.netSellS, depth_target: t.depthTarget,
     roundtrip_share_ppm: t.roundtripSharePpm, band_bps: BigInt(t.bandBps),
     min_uptime_buckets: BigInt(t.minUptimeBuckets), epochs_total: BigInt(t.epochsTotal),
+    pool: t.pool,
   };
 }
 
