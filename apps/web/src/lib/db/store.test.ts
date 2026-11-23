@@ -4,6 +4,8 @@ import { migrate } from "@mmr/db/migrate";
 import {
   addEpochMessage,
   clientInboxKeyByAddress,
+  getMidnightKey,
+  setMidnightKey,
   createAccount,
   epochMessages,
   findAccountByAddress,
@@ -86,12 +88,16 @@ describe.skipIf(!ADMIN)("postgres store (real Postgres)", () => {
     expect(await registerEngagement(pool, { ...reg, clientAddress: MM_WALLET })).toEqual({ ok: false, error: "client-not-found" }); // an MM is not a client
     expect(await registerEngagement(pool, { ...reg, clientAddress: CLIENT_WALLET })).toEqual({ ok: false, error: "client-no-inbox" });
 
-    expect(await clientInboxKeyByAddress(pool, CLIENT_WALLET)).toEqual({ found: true, encryptionKey: null });
+    expect(await clientInboxKeyByAddress(pool, CLIENT_WALLET)).toEqual({ found: true, encryptionKey: null, midnightCoinKey: null });
     expect(await setInboxKey(pool, client.id!, KEY)).toBe("set");
     expect(await setInboxKey(pool, client.id!, KEY)).toBe("unchanged");
     expect(await setInboxKey(pool, client.id!, `0x${"99".repeat(32)}`)).toBe("conflict");
-    expect(await clientInboxKeyByAddress(pool, CLIENT_WALLET)).toEqual({ found: true, encryptionKey: KEY });
-    expect(await clientInboxKeyByAddress(pool, MM_WALLET)).toEqual({ found: false, encryptionKey: null });
+    expect(await clientInboxKeyByAddress(pool, CLIENT_WALLET)).toEqual({ found: true, encryptionKey: KEY, midnightCoinKey: null });
+    expect(await clientInboxKeyByAddress(pool, MM_WALLET)).toEqual({ found: false, encryptionKey: null, midnightCoinKey: null });
+    // The client's own Midnight key (the bond's beneficiary) comes back with it once saved.
+    await setMidnightKey(pool, client.id!, "ab".repeat(32));
+    expect(await getMidnightKey(pool, client.id!)).toBe("ab".repeat(32));
+    expect((await clientInboxKeyByAddress(pool, CLIENT_WALLET)).midnightCoinKey).toBe("ab".repeat(32));
   });
 
   it("registers a proposal with sealed terms, visible only to the two parties", async () => {
