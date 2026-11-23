@@ -17,7 +17,8 @@
     "check-deployment": "tsx src/check-deployment.ts",
     "lifecycle": "tsx src/lifecycle.ts",
     "test": "vitest run",
-    "engagement:new": "tsx src/engagement-new.ts"
+    "engagement:new": "tsx src/engagement-new.ts",
+    "mm": "tsx src/mm.ts"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-js": "3.0.2",

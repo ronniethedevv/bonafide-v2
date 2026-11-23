@@ -87,6 +87,14 @@ chosen.
 Running the lifecycle yourself needs the deploy wallet's seed and is not needed to check anything:
 every result it produces is public chain state that the page and step C read.
 
+A second engagement, `c0d1c6ef…6e1a`, was registered and bonded with the market maker's own
+commands (`pnpm --filter @mmr/dapp mm`) and is never activated: from 26 November, 14:18 UTC,
+`voidUnfunded` returns its bond
+([`preview-void-demo-lifecycle.json`](packages/dapp/deployments/preview-void-demo-lifecycle.json)).
+The market maker's record, read from the contract's counters:
+[/record/609d764b…](https://mm-reputation-web.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c),
+empty until its first claim.
+
 ## E. Use the web app
 
 **Live:** [mm-reputation-web.vercel.app](https://mm-reputation-web.vercel.app). **Locally:**

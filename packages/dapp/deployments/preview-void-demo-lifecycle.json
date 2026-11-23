@@ -1,0 +1,31 @@
+{
+  "network": "preview",
+  "contractAddress": "4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634",
+  "engagementId": "c0d1c6efe160700c2d2027cc80439dbf86d287f4e29e4b8484bf250db8d26e1a",
+  "tier": 3,
+  "chain": 8453,
+  "bond": 2500,
+  "steps": [
+    {
+      "step": "mint bond tokens",
+      "txId": "004fe95b32c777fcfdde53d2a3df4c9a5639ee89afe54d4e1c08ffa936a22db8ca",
+      "blockHeight": 237863,
+      "seconds": 26.5,
+      "at": "2026-11-23T14:18:08.926Z"
+    },
+    {
+      "step": "register",
+      "txId": "00920428f524a736e36c4540fc834396979ba77652d6934a3fbf43ffd7aa79a468",
+      "blockHeight": 237868,
+      "seconds": 29.8,
+      "at": "2026-11-23T14:18:38.751Z"
+    },
+    {
+      "step": "postBond",
+      "txId": "0002b4e90e12802d4cd34af2e311da989538792af42040eb1218df95074053d767",
+      "blockHeight": 237876,
+      "seconds": 30.4,
+      "at": "2026-11-23T14:19:26.132Z"
+    }
+  ]
+}

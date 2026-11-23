@@ -3,6 +3,8 @@
 //   MMR_POOL=0x… MMR_PAIR="TOKEN/QUOTE" MMR_WALLETS=0x…,0x… \
 //   MMR_TERMS='{"bandBps":"200","depthTarget":"…",…}' pnpm --filter @mmr/dapp engagement:new
 //
+// MMR_ENGAGEMENT_FILE writes another file in deployments/ (default <network>-engagement.json).
+//
 // Fresh random secrets and salts, real commitments, sealed with a passphrase derived from
 // DEPLOY_SEED into deployments/<network>-engagement.json; only the ciphertext and the
 // commitments (which registration puts on chain anyway) are readable in the file. The
@@ -29,7 +31,8 @@ async function main(): Promise<void> {
     contractAddress?: string;
   };
   if (!deployment.contractAddress) throw new Error("deploy the contract first");
-  const file = resolve(here, "..", "deployments", `${cfg.networkId}-engagement.json`);
+  // MMR_ENGAGEMENT_FILE names another file in deployments/ (a second engagement).
+  const file = resolve(here, "..", "deployments", process.env.MMR_ENGAGEMENT_FILE ?? `${cfg.networkId}-engagement.json`);
   if (existsSync(file)) throw new Error(`${file} exists; an engagement file is never replaced`);
 
   const pool = required("MMR_POOL").toLowerCase();
