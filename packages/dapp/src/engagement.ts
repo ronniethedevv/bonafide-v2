@@ -80,9 +80,12 @@ export function writeEngagementRecord(path: string, r: EngagementRecord): void {
 /** Open the sealed file with the seed; checks the commitments it carries. */
 export async function openEngagement(seed: Uint8Array, record: EngagementRecord): Promise<OpenedEngagement> {
   const opening = await openFile(record.file, passphrase(seed, record.label));
+  return { record, opening, ...privateInputs(opening) };
+}
+
+/** The engagement secret and the circuits' private inputs, from an opened engagement file. */
+export function privateInputs(opening: EngagementOpening): { engagementSecret: Uint8Array; priv: EngagementPrivate } {
   return {
-    record,
-    opening,
     engagementSecret: hexToBytes(opening.secrets.engagementSecret, 32),
     priv: {
       poolAddr: parseAddr(opening.pool.address),

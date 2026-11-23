@@ -326,6 +326,17 @@ pnpm --filter @mmr/agent agent create --client 0x… --pool 0x… --pair VIRTUAL
 pnpm --filter @mmr/agent agent propose engagement.mmr.json --signatures engagement.mmr.json.ownership.json
 ```
 
+Once the client accepts, the Midnight steps run on the same machine, with your own wallet's seed and
+a local proof server, so no key or proof leaves it:
+
+```bash
+pnpm --filter @mmr/dapp proof-server                      # a local proof server (Docker)
+export MM_SEED=… MMR_ENGAGEMENT_PASSPHRASE=…              # your Midnight wallet's seed; the file's passphrase
+pnpm --filter @mmr/dapp mm register engagement.mmr.json   # then bond and activate
+pnpm --filter @mmr/dapp mm run engagement.mmr.json        # daily: funding, then prove, settle, release
+pnpm --filter @mmr/dapp mm claim engagement.mmr.json      # once, after the last release
+```
+
 **Deploy your own:**
 
 ```bash
@@ -335,7 +346,7 @@ pnpm --filter @mmr/dapp run deploy           # bond token, then epoch_proof in b
 pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 pnpm --filter @mmr/dapp mm status [file]     # the market maker's own commands for an engagement file:
-                                             # status, register, bond, activate, void, profile
+                                             # status, register, bond, activate, run, claim, void, profile
 ```
 
 It needs a proof server 9.0.0 on port 6300 (`pnpm --filter @mmr/dapp proof-server`) and a
@@ -344,7 +355,7 @@ proves.
 
 ## Tests
 
-544 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+545 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
@@ -355,7 +366,7 @@ provides).
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
-| `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
+| `dapp` | 4 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused; the market maker's claim inputs, read from the ledger, are accepted by the compiled claim |
 | Eight more | 66 | Read model, engagement files and wallet ownership, witness capture, attestations, the daily job, the database, the agent (creating and proposing an engagement), the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
@@ -384,10 +395,13 @@ package and runs every test against the compiled circuits; a missing build fails
   addresses that moved VIRTUAL passed. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
-- **The market maker's own commands** (`mm`, also a manual workflow) cover registration, the bond,
-  activation, the void and its profile id. For the live engagement, proving, settling and
-  releasing run in the scheduled job, which holds the same seed; the claim runs in the tests and,
-  as a command, is next. One wallet pays every fee in this demo.
+- **The market maker's own commands** (`mm`, also a manual workflow) run every market-maker step
+  on the market maker's machine, with its own seed (`MM_SEED`) and a local proof server:
+  registration, bond, activation, the daily funding, proof, settlement and release, the claim and
+  the void. In this demo one seed holds every key (market maker, client and the three attesters),
+  and the scheduled job carries the live engagement. The claim is tested against the compiled
+  circuit; on chain it is possible once days are credited, and the live engagement's full claim
+  from 26 December.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
   out of scope: proving off-chain fills needs zkTLS.
 - **The live engagement has no ownership signatures:** it was registered by script on three public

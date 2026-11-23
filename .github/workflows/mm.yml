@@ -1,12 +1,13 @@
 name: Market maker command
 
 # One of the market maker's own commands (`pnpm --filter @mmr/dapp mm`) for an engagement
-# file in packages/dapp/deployments, run by hand: status, register, bond, activate, void
+# file in packages/dapp/deployments, run by hand: status, register, bond, activate, run
+# (whatever is due: funding, then prove, settle and release each ended day), claim, void
 # (return the bond of an engagement never activated, once its 72-hour funding window has
-# passed) or profile. Shares the lifecycle job's concurrency group: both spend from the
+# passed) or profile. A market maker runs the same commands on its own machine. Shares the lifecycle job's concurrency group: both spend from the
 # same wallet, so they never run at the same time.
 #
-# Settings → Secrets and variables → Actions → Secrets: DEPLOY_SEED.
+# Settings → Secrets and variables → Actions → Secrets: DEPLOY_SEED (optional MM_SEED).
 
 on:
   workflow_dispatch:
@@ -15,7 +16,7 @@ on:
         description: "Command"
         required: true
         type: choice
-        options: [status, register, bond, activate, void, profile]
+        options: [status, register, bond, activate, run, claim, void, profile]
       file:
         description: "Engagement file in packages/dapp/deployments"
         required: true
@@ -34,6 +35,8 @@ jobs:
     timeout-minutes: 90
     env:
       DEPLOY_SEED: ${{ secrets.DEPLOY_SEED }}
+      # The market maker's own seed, if set; otherwise the demo's deploy seed.
+      MM_SEED: ${{ secrets.MM_SEED }}
       NETWORK_ID: preview
       MM_COMMAND: ${{ inputs.command }}
       MM_FILE: ${{ inputs.file }}

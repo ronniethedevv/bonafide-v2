@@ -8,16 +8,27 @@
 //              Midnight key (MMR_BENEFICIARY; the demo derives one from the seed)
 //   bond       post the bond: a shielded coin the contract holds (owner only)
 //   activate   start the clock; day 1 is the next UTC day (owner only)
+//   run        everything due for an active engagement: proveFunding, then for each ended
+//              day proveEpoch, settleEpoch and releaseEpoch as their windows open
+//   claim      add the engagement's credited days to the market maker's public record, once:
+//              waits until every day has been released (MM_CLAIM_EARLY=1 claims what is
+//              credited so far, and the engagement can never be claimed again)
 //   void       an engagement never activated: once its 72-hour funding window has passed,
 //              voidUnfunded returns the bond to its owner (anyone may call it)
 //   profile    the market maker's profile id: what it shares so others can read its
 //              claimed record (the web app's /record/<id>); a claim adds to it
 //
-// The engagement file defaults to deployments/<network>-engagement.json. The scheduled
-// lifecycle job runs the attesters and carries the live engagement day by day; these
-// commands are the steps a market maker takes for its own engagement. Each command reads
-// the contract's state first and says when it has nothing to do. Every transaction is
-// recorded next to the file (<name>-lifecycle.json; public data only).
+// It runs on the market maker's own machine, with its own Midnight wallet and a local proof
+// server: MM_SEED is the market maker's seed (its wallet pays the fees; carry salts and the
+// profile id derive from it). Without MM_SEED the demo's deploy seed is used, and says so.
+//
+// The engagement file is either one the wizard or `mmr-agent create` made (opened with
+// MMR_ENGAGEMENT_PASSPHRASE; its registration names tier, chain, bond and the client's key)
+// or an operator record in deployments/ (sealed with a passphrase derived from the seed;
+// the default is deployments/<network>-engagement.json). The scheduled lifecycle job runs
+// the attesters and carries the live demonstration engagement. Each command reads the
+// contract's state first and says when it has nothing to do. Every transaction is recorded
+// next to the file (<name>-lifecycle.json; public data only).
 
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,16 +43,18 @@ import * as Rx from "rxjs";
 import { deriveSecret } from "./committee.js";
 import { loadConfig } from "./config.js";
 import { PRIVATE_STATE_ID, compiledEpochProofFrom, compiledTestBondToken } from "./contract.js";
-import { openEngagement, readEngagementRecord } from "./engagement.js";
+import { FILE_FORMAT, openFile, type EngagementFile } from "@mmr/engagement-file";
+import { openEngagement, privateInputs, readEngagementRecord } from "./engagement.js";
+import { claimInputs, runDueSteps } from "./mm-steps.js";
 import { useEnvProxy } from "./net.js";
 import { buildProviders } from "./providers.js";
-import { walletVector } from "./real-witness.js";
+import { type EngagementPrivate, walletVector } from "./real-witness.js";
 import { buildHeadlessWallet, toMasterSeed } from "./wallet.js";
 
 const DAY = 86_400n;
 const FUNDING_WINDOW = 259_200n; // 72 h, as in the contract
 const STATUS = ["Registered", "Running", "Running", "Completed", "Voided", "Defaulted"];
-const COMMANDS = ["status", "register", "bond", "activate", "void", "profile"] as const;
+const COMMANDS = ["status", "register", "bond", "activate", "run", "claim", "void", "profile"] as const;
 type Command = (typeof COMMANDS)[number];
 
 interface Step { step: string; txId: string; blockHeight: number | undefined; seconds: number; at: string }
@@ -54,32 +67,70 @@ const dayLabel = (d: bigint) => iso(d * DAY).slice(0, 10);
 /** The market maker's profile secret (the claim's profileSecret witness), derived from its seed. */
 export const profileSecret = (seed: Uint8Array): Uint8Array => deriveSecret(seed, "profile");
 
+interface LoadedEngagement {
+  label: string;
+  chain: number;
+  tier: number;
+  bond: number;
+  /** The client's Midnight coin key named by the registration, when the file states one. */
+  beneficiary?: string;
+  engagementSecret: Uint8Array;
+  priv: EngagementPrivate;
+  commitments: { walletCommit: string; termsCommit: string };
+}
+
+/** Open either kind of engagement file: the wizard's or agent's, or an operator record. */
+async function loadEngagement(path: string, seed: Uint8Array, contractAddress: string): Promise<LoadedEngagement> {
+  if (!existsSync(path)) throw new Error(`no engagement file at ${path}`);
+  const json = JSON.parse(readFileSync(path, "utf8")) as { format?: string };
+  if (json.format === FILE_FORMAT) {
+    const pass = process.env.MMR_ENGAGEMENT_PASSPHRASE;
+    if (!pass) throw new Error("set MMR_ENGAGEMENT_PASSPHRASE to open this engagement file");
+    const opening = await openFile(json as EngagementFile, pass);
+    const reg = opening.registration;
+    if (!reg) throw new Error("this engagement file states no registration (tier, chain, bond, client key)");
+    return {
+      label: opening.label ?? opening.commitments.termsCommit.slice(2, 10),
+      chain: reg.chainId, tier: reg.tier, bond: Number(reg.bond), beneficiary: reg.beneficiary,
+      commitments: opening.commitments, ...privateInputs(opening),
+    };
+  }
+  const record = readEngagementRecord(path)!;
+  if (record.contractAddress !== contractAddress) {
+    throw new Error(`the engagement file is for contract ${record.contractAddress}, not ${contractAddress}`);
+  }
+  const opened = await openEngagement(seed, record);
+  return {
+    label: record.label, chain: record.chain, tier: record.tier, bond: record.bond,
+    commitments: opened.opening.commitments, engagementSecret: opened.engagementSecret, priv: opened.priv,
+  };
+}
+
 async function main(): Promise<void> {
   useEnvProxy();
   const command = process.argv[2] as Command;
   if (!COMMANDS.includes(command)) throw new Error(`usage: mm <${COMMANDS.join("|")}> [engagement file]`);
-  const cfg = loadConfig();
+  const base = loadConfig();
+  // The market maker's own seed; the demo falls back to the deploy seed.
+  const cfg = { ...base, deploySeed: process.env.MM_SEED || base.deploySeed };
+  if (!process.env.MM_SEED) console.log("(no MM_SEED: using the demo's deploy seed, which also holds the attester keys)");
   const here = dirname(fileURLToPath(import.meta.url));
   const deployments = resolve(here, "..", "deployments");
   const deployment = JSON.parse(readFileSync(resolve(deployments, `${cfg.networkId}.json`), "utf8")) as {
     contractAddress: string;
     bondToken: { contractAddress: string; color: string };
   };
-  const path = resolve(process.cwd(), process.argv[3] ?? resolve(deployments, `${cfg.networkId}-engagement.json`));
-  const engRecord = readEngagementRecord(path);
-  if (!engRecord) throw new Error(`no engagement file at ${path}`);
-  if (engRecord.contractAddress !== deployment.contractAddress) {
-    throw new Error(`the engagement file is for contract ${engRecord.contractAddress}, not ${deployment.contractAddress}`);
-  }
   const seed = toMasterSeed(cfg.deploySeed);
   if (command === "profile") {
     // The contract's profileId(secret) = persistentHash(secret); claims add to its counters.
     const profileId = rt.persistentHash(new rt.CompactTypeBytes(32), profileSecret(seed));
     return console.log(`profile id ${hex(profileId)}`);
   }
-  const eng = await openEngagement(seed, engRecord);
+  const path = resolve(process.env.INIT_CWD ?? process.cwd(), process.argv[3] ?? resolve(deployments, `${cfg.networkId}-engagement.json`));
+  const eng = await loadEngagement(path, seed, deployment.contractAddress);
   const id = rt.persistentHash(new rt.CompactTypeBytes(32), eng.engagementSecret);
-  const [CHAIN, TIER, BOND] = [BigInt(engRecord.chain), BigInt(engRecord.tier), BigInt(engRecord.bond)];
+  const [CHAIN, TIER, BOND] = [BigInt(eng.chain), BigInt(eng.tier), BigInt(eng.bond)];
+  const engRecord = { label: eng.label, tier: eng.tier, chain: eng.chain, bond: eng.bond };
 
   const recordFile = path.replace(/(-engagement)?\.json$/, "-lifecycle.json");
   const record: { network: string; contractAddress: string; engagementId: string; tier: number; chain: number; bond: number; steps: Step[] } =
@@ -116,12 +167,22 @@ async function main(): Promise<void> {
   if (command !== "register" && !registered) throw new Error("not registered: run `mm register` first");
   if (command === "bond" && led.escrowed.member(id)) return console.log("  bond already posted");
   if (command === "activate" && led.startDay.member(id)) return console.log(`  already active; day 1 is ${dayLabel(led.startDay.lookup(id) as bigint)}`);
+  if (command === "run" && !led.startDay.member(id)) return console.log("  not active yet: run `mm activate` first");
+  const claim = command === "claim" ? claimInputs(led, id, eng.priv.terms.min_uptime_buckets) : undefined;
+  if (claim) {
+    if (claim.credited === 0) return console.log("  no credited day yet: a day is credited when it is released, 66 hours after it ends");
+    if (claim.released < 30 && process.env.MM_CLAIM_EARLY !== "1") {
+      return console.log(`  ${claim.released} of 30 days released; a claim counts once, so it waits for the last release (MM_CLAIM_EARLY=1 claims the ${claim.credited} credited so far)`);
+    }
+    console.log(`  claiming ${claim.credited} credited day(s), ${claim.epochsPassed} met the terms`);
+  }
   if (command === "void") {
     if (status !== "Registered") return console.log(`  nothing to void: the engagement is ${status}`);
     const opens = (led.registeredAt.lookup(id) as bigint) + FUNDING_WINDOW;
     if (now() < opens) return console.log(`  the funding window is open until ${iso(opens)}; void after that`);
   }
 
+  const stepsBefore = record.steps.length;
   console.log("\nbuilding + syncing wallet…");
   const wallet = await buildHeadlessWallet(cfg);
   const inputs = new Map<string, unknown>();
@@ -166,9 +227,13 @@ async function main(): Promise<void> {
         console.log("  waiting for the wallet to see the minted coin…");
         await Rx.firstValueFrom(wallet.facade.state().pipe(Rx.filter((s) => s.isSynced && balance(s) >= BOND)));
       }
-      const beneficiary = process.env.MMR_BENEFICIARY
-        ? bytes(process.env.MMR_BENEFICIARY)
-        : bytes(String(ZswapSecretKeys.fromSeed(WalletSeeds.fromMasterSeed(deriveSecret(seed, `client:${engRecord.label}`)).shielded).coinPublicKey));
+      // The client's key: from the engagement's registration (wizard, agent), MMR_BENEFICIARY,
+      // or, for the demo's operator records, a demo client key derived from the seed.
+      const beneficiary = eng.beneficiary
+        ? bytes(eng.beneficiary)
+        : process.env.MMR_BENEFICIARY
+          ? bytes(process.env.MMR_BENEFICIARY)
+          : bytes(String(ZswapSecretKeys.fromSeed(WalletSeeds.fromMasterSeed(deriveSecret(seed, `client:${engRecord.label}`)).shielded).coinPublicKey));
       if (beneficiary.length !== 32) throw new Error("MMR_BENEFICIARY must be a 32-byte hex Midnight coin public key");
       setInputs({
         engagementSecret: eng.engagementSecret, committedWallets: walletVector(eng.priv.wallets),
@@ -176,8 +241,8 @@ async function main(): Promise<void> {
       });
       await run("register", () => contract.callTx.register(TIER, CHAIN, BOND, { bytes: beneficiary }, now() - 5n));
       led = await readLedger();
-      if (`0x${hex(led.walletCommit.lookup(id) as Uint8Array)}` !== eng.opening.commitments.walletCommit
-          || `0x${hex(led.termsCommit.lookup(id) as Uint8Array)}` !== eng.opening.commitments.termsCommit) {
+      if (`0x${hex(led.walletCommit.lookup(id) as Uint8Array)}` !== eng.commitments.walletCommit
+          || `0x${hex(led.termsCommit.lookup(id) as Uint8Array)}` !== eng.commitments.termsCommit) {
         throw new Error("the registered commitments differ from the engagement file's");
       }
       console.log(`  void opens ${iso((led.registeredAt.lookup(id) as bigint) + FUNDING_WINDOW)} if it is never activated`);
@@ -191,11 +256,24 @@ async function main(): Promise<void> {
       const ts = now() - 5n;
       setInputs({ engagementSecret: eng.engagementSecret });
       await run("activate", () => contract.callTx.activate(id, ts / DAY + 1n, ts));
+    } else if (command === "run") {
+      await runDueSteps({
+        id, chain: CHAIN, bond: BOND, engagementSecret: eng.engagementSecret, priv: eng.priv,
+        carrySalt: (e) => deriveSecret(seed, `carry-salt:${engRecord.label}:${e}`),
+        readLedger, setInputs, run, contract,
+      });
+    } else if (command === "claim" && claim) {
+      setInputs({
+        engagementSecret: eng.engagementSecret, profileSecret: profileSecret(seed),
+        terms: eng.priv.terms, termsSalt: eng.priv.termsSalt,
+        claimRecordPresent: claim.present, claimRecordPaths: claim.paths,
+      });
+      await run("claim", () => contract.callTx.claim(id, claim.tier, claim.epochsPassed, 30n));
     } else if (command === "void") {
       setInputs({});
       await run("voidUnfunded", () => contract.callTx.voidUnfunded(id));
     }
-    console.log(`\nrecorded in ${recordFile}`);
+    console.log(record.steps.length > stepsBefore ? `\nrecorded in ${recordFile}` : "\nno transaction was due");
   } finally {
     await wallet.stop();
   }
