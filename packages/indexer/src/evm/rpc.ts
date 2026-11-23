@@ -69,9 +69,38 @@ const MAX_BACKOFF_MS = 8_000;
  */
 function isTransient(err: EvmRpcError): boolean {
   if (err.transient) return true;
+  // Some providers answer an oversized log query with a rate-limit code (-32005); that
+  // is not retried as is, the caller splits the range instead.
+  if (isRangeRejection(err)) return false;
   if (err.code === 429 || err.code === -32005) return true;
   if (err.code !== undefined && err.code >= 500 && err.code < 600) return true;
   return /rate limit|compute units|too many requests|capacity|throughput/i.test(`${err.message} ${err.detail ?? ""}`);
+}
+
+/**
+ * A provider refusing an eth_getLogs request for its block span or result size, not a rate
+ * limit: the request succeeds over a smaller range (getLogsChunked splits it).
+ */
+export function isRangeRejection(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const text = `${err.message} ${(err as { detail?: unknown }).detail ?? ""}`;
+  return /block range|range (is )?too (large|wide|big)|ranges over \d+|up to a \d+ block|more than \d+ (results|logs)|too many (results|logs)|response size|exceeds? (the )?(max|limit)/i.test(text);
+}
+
+/**
+ * eth_getLogs from `logs`, everything else from `main`: a wide-range log provider next to
+ * an archive node for state, blocks and receipts. Both must serve the same chain.
+ */
+export function routeLogs(main: EvmRpc, logs: EvmRpc): EvmRpc {
+  return {
+    chainId: () => main.chainId(),
+    blockNumber: () => main.blockNumber(),
+    finalizedBlockNumber: () => main.finalizedBlockNumber(),
+    blockHeader: (n) => main.blockHeader(n),
+    getLogs: (filter) => logs.getLogs(filter),
+    call: (to, data, block) => main.call(to, data, block),
+    transactionReceipt: (hash) => main.transactionReceipt(hash),
+  };
 }
 
 export class EvmRpcError extends Error {

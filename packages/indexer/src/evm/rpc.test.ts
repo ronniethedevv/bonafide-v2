@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { JsonRpcClient, EvmRpcError, hexToNumber, numberToHex } from "./rpc.js";
+import { JsonRpcClient, EvmRpcError, hexToNumber, isRangeRejection, numberToHex, routeLogs, type EvmRpc } from "./rpc.js";
 import type { FetchLike } from "../http.js";
 
 function rpcResult(result: unknown): Response {
@@ -121,6 +121,15 @@ describe("JsonRpcClient request framing", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("does not retry an oversized log query reported with a rate-limit code", async () => {
+    const { fetch, calls } = recording(
+      () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32005, message: "query returned more than 10000 results" } })),
+    );
+    const client = new JsonRpcClient({ url: URL, fetchImpl: fetch, sleep: async () => {} });
+    await expect(client.getLogs({ fromBlock: 0, toBlock: 100 })).rejects.toMatchObject({ code: -32005 });
+    expect(calls).toHaveLength(1);
+  });
+
   it("rejects a malformed log", async () => {
     const { fetch } = recording(() => rpcResult([{ address: "0x1" }]));
     const client = new JsonRpcClient({ url: URL, fetchImpl: fetch });
@@ -140,5 +149,39 @@ describe("hex helpers", () => {
     expect(() => hexToNumber("123")).toThrow();
     expect(() => hexToNumber("0xfffffffffffffffffff")).toThrow(/safe integer/);
     expect(() => numberToHex(-1)).toThrow();
+  });
+});
+
+describe("range rejections and log routing", () => {
+  it("recognises providers' range and size refusals, not rate limits", () => {
+    for (const m of [
+      "Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range. Upgrade to PAYG for expanded block range.",
+      "ranges over 100 blocks are not supported on free plan",
+      "query returned more than 10000 results",
+      "block range is too wide",
+    ]) expect(isRangeRejection(new EvmRpcError(`eth_getLogs: ${m}`))).toBe(true);
+    for (const m of ["HTTP 429 Too Many Requests", "rate limit exceeded", "execution reverted"]) {
+      expect(isRangeRejection(new EvmRpcError(m))).toBe(false);
+    }
+  });
+
+  it("sends eth_getLogs to the log provider and everything else to the main one", async () => {
+    const seen: string[] = [];
+    const fake = (name: string): EvmRpc => ({
+      chainId: async () => { seen.push(`${name}:chainId`); return 8453; },
+      blockNumber: async () => { seen.push(`${name}:blockNumber`); return 1; },
+      finalizedBlockNumber: async () => { seen.push(`${name}:finalized`); return 1; },
+      blockHeader: async (n) => { seen.push(`${name}:header`); return { number: n, timestamp: 0, hash: "0x" }; },
+      getLogs: async () => { seen.push(`${name}:logs`); return []; },
+      call: async () => { seen.push(`${name}:call`); return "0x"; },
+      transactionReceipt: async () => { seen.push(`${name}:receipt`); throw new Error("none"); },
+    });
+    const rpc = routeLogs(fake("archive"), fake("logs"));
+    await rpc.chainId();
+    await rpc.blockHeader(1);
+    await rpc.getLogs({ fromBlock: 0, toBlock: 1 });
+    await rpc.call("0x1", "0x", 1);
+    await expect(rpc.transactionReceipt("0x2")).rejects.toThrow();
+    expect(seen).toEqual(["archive:chainId", "archive:header", "logs:logs", "archive:call", "archive:receipt"]);
   });
 });

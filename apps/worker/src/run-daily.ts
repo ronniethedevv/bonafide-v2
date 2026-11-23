@@ -43,6 +43,38 @@ export function plan(env: Record<string, string | undefined>, now: Date): { chai
   return { chains, days };
 }
 
+/**
+ * Index each chain's days oldest first and stop that chain at its first failed day, so a
+ * later day never gets a published root before an earlier one. An engagement can prove
+ * funding only against a day from its registration through day 1, and a day cannot settle
+ * before funding is proven: a later day attested while an earlier one is missing could pass
+ * its deadline unsettled. The next run's catch-up window retries from the failed day.
+ * Returns the number of chains that stopped on a failure.
+ */
+export async function indexInOrder(
+  chains: readonly number[],
+  days: readonly number[],
+  indexOne: (chainId: number, day: number) => Promise<unknown>,
+  log: (message: string, data?: Record<string, unknown>) => void,
+): Promise<number> {
+  let failed = 0;
+  for (const chainId of chains) {
+    const ordered = [...days].sort((a, b) => a - b);
+    for (const [i, day] of ordered.entries()) {
+      try {
+        log("result", (await indexOne(chainId, day)) as Record<string, unknown>);
+      } catch (e) {
+        failed++;
+        log("failed", { chainId, day: dayLabel(day), error: e instanceof Error ? e.message : String(e) });
+        const skipped = ordered.slice(i + 1).map(dayLabel);
+        if (skipped.length > 0) log("stopped: later days wait for this one", { chainId, skipped });
+        break;
+      }
+    }
+  }
+  return failed;
+}
+
 async function main(): Promise<void> {
   const env = process.env;
   const { chains, days } = plan(env, new Date());
@@ -56,17 +88,7 @@ async function main(): Promise<void> {
   const publisher = new PinataTreePublisher({ jwt: required(env, "IPFS_PINNING_JWT") });
   let failed = 0;
   try {
-    for (const chainId of chains) {
-      for (const day of days) {
-        try {
-          const outcome = await indexDay(chainId, day, { db, publisher, env, workDir: tmpdir(), log });
-          log("result", outcome);
-        } catch (e) {
-          failed++;
-          log("failed", { chainId, day: dayLabel(day), error: e instanceof Error ? e.message : String(e) });
-        }
-      }
-    }
+    failed = await indexInOrder(chains, days, (chainId, day) => indexDay(chainId, day, { db, publisher, env, workDir: tmpdir(), log }), log);
   } finally {
     await db.end();
   }
