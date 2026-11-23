@@ -42,24 +42,26 @@ circuits on chain.
 
 | Contract | Address | Role |
 |---|---|---|
-| `epoch_proof` | `2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
+| `epoch_proof` | `a773ae9733eb2a45c96794e5bc7ca387c2c77034eed8a9722902980fc94103ce` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
 | `test_bond_token` | `30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61` | A shielded test token for bonds. Preview's faucet issues only unshielded tNIGHT, and a bond is a shielded coin |
 
 | Step | Transaction |
 |---|---|
 | Deploy wallet funded from the faucet; its tNIGHT registered to generate DUST for fees | `00bb9e0086039175d676bd93fdd5eb29af03d725e003181a36bcc126187ec8bcdd` |
 | `test_bond_token` deployed | `008c244e594233cd11976466877ef0710cc49cef6f859299b421f434b37d865b21` |
-| `epoch_proof` deployed with 7 circuits' keys (block 168,424) | `005730daadad9179da8db83eb704a37f8f1f0401677c3f62d9faa8b89920e98f1e` |
+| `epoch_proof` deployed with 7 circuits' keys (block 227,442) | `0066bf2139748bcadc0e8d3af2975e999fd9969eeff370de0376d8cec3f08057cf` |
 | Keys added for `settleEpoch`, `releaseEpoch`, `voidUnfunded`, `defaultEngagement` and `claim`, one maintenance transaction each | 5 transactions, listed in the record |
 
 Every address and transaction id: [`packages/dapp/deployments/preview.json`](packages/dapp/deployments/preview.json).
 
 **Why the deploy takes six transactions.** A deploy writes the whole contract state, verifier keys
 included, and a Midnight block accepts 50,000 written bytes, of which one transaction may use about
-65%. With all 12 keys, `epoch_proof`'s deploy writes 39,464 bytes (79% of a block), so the node
-would refuse it. It is deployed with 7 keys (27,058 bytes, 54%), and the other 5 are added by
-maintenance transactions signed with the contract's maintenance key, following Midnight's
-batched-deploy runbook.
+65%. With all 12 keys, `epoch_proof`'s deploy writes more than that, so the node would refuse it. It
+is deployed with 7 keys, and the other 5 are added by maintenance transactions signed with the
+contract's maintenance key, following Midnight's batched-deploy runbook. The first deployment of
+an earlier version (`2f663d74…c2b6`) and its sample engagement are kept in
+[`preview-v1.json`](packages/dapp/deployments/preview-v1.json) and
+[`preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 
 **Check it yourself, without a wallet:**
 
@@ -77,9 +79,9 @@ different source would produce different keys. Preview explorers:
 [Subscan](https://midnight-preview.subscan.io/),
 [1AM](https://explorer.1am.xyz/?network=preview).
 
-### A sample engagement, live on Preview
+### A sample engagement, on the first deployment
 
-One engagement runs through the deployed contract as real, proven transactions. It uses the
+One engagement ran through the first deployment as real, proven transactions. It uses the
 contract tests' sample day (two committed wallets, one pool), not real trading data, because an
 engagement's day 1 is always the day after activation.
 
@@ -110,7 +112,7 @@ to the client. Since then a scheduled job carries the engagement forward every d
 ([`.github/workflows/preview-lifecycle.yml`](.github/workflows/preview-lifecycle.yml)): at 02:40 UTC
 the committee votes for the ended day's root and the day is proven and settled; at 15:10 UTC, after
 the challenge window, its share of the bond is released.
-Every transaction id: [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+Every transaction id: [`packages/dapp/deployments/preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 Run it again, or carry it forward, with `pnpm --filter @mmr/dapp lifecycle`: each step reads the
 contract's state first and is skipped if it already landed.
 
