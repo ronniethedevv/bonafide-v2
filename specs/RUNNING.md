@@ -87,10 +87,10 @@ pnpm --filter @mmr/worker index                    # catch-up window on every co
 MMR_INDEX_DATE=2026-11-16 MMR_INDEX_CHAIN=8453 pnpm --filter @mmr/worker index   # one day
 ```
 
-## What needs a Midnight environment (not runnable here)
+## What needs the Compact toolchain
 
 `packages/contracts` holds the Compact contract (toolchain 0.36.1, ledger 9). CI
-compiles it (`compactc --skip-zk`) and runs all 135 KATs against the compiled circuits;
+compiles it (`compactc --skip-zk`) and runs all 147 tests against the compiled circuits;
 locally, `pnpm --filter @mmr/contracts kat:build && pnpm --filter @mmr/contracts test`
 with the toolchain installed. Proving keys and live calls need the full Midnight setup. See
 [`packages/contracts/README.md`](../packages/contracts/README.md) for the overview
@@ -106,5 +106,5 @@ walkthrough (toolchain, proof server, keys, `.env`).
 | `@mmr/prover` | engagement model, witness assembly, I1–I8 reference oracle, demo CLI |
 | `@mmr/protocol` | settlement state machine + mock attester committee |
 | `@mmr/watcher` | challenge watchdog (root recomputation) + client verdict log |
-| `@mmr/contracts` | Compact contract (0.36.1, ledger 9) + 135 KATs on the compiled circuits |
+| `@mmr/contracts` | Compact contract (0.36.1, ledger 9) + 147 tests on the compiled circuits |
 | `web` | public profile + tear sheet (Next.js) |

@@ -35,7 +35,7 @@ The design, decisions and runbooks behind mm-reputation, grouped by what you wan
 | Document | What it covers |
 |---|---|
 | [MIDNIGHT_SETUP.md](./MIDNIGHT_SETUP.md) | Toolchain and node setup (Compact 0.36.1, ledger 9) |
-| [TESTNET_DEPLOY.md](./TESTNET_DEPLOY.md) | Testnet deploy and wallet runbook |
+| [TESTNET_DEPLOY.md](./TESTNET_DEPLOY.md) | The ledger 8 deploy runbook, kept as history |
 | [LIVE_LOCAL_LIFECYCLE.md](./LIVE_LOCAL_LIFECYCLE.md) | The lifecycle run live on a local Midnight node (ledger 8) |
 | [CALL_SUBMISSION_BLOCKER.md](./CALL_SUBMISSION_BLOCKER.md) | Call-inclusion issue on the pre-relaunch Preview chain |
 | [SERVICEDESK_REPORT.md](./SERVICEDESK_REPORT.md) · [SERVICEDESK_DISCORD.md](./SERVICEDESK_DISCORD.md) | The report filed with Midnight about that issue |
@@ -53,4 +53,4 @@ The design, decisions and runbooks behind mm-reputation, grouped by what you wan
 
 [progress_tracker.md](./progress_tracker.md) is the dated build log. Its "Immutable design
 decisions" section (DD-1 onward) records every decision with its reasoning, including the
-latest: ledger 9 (DD-34) and the contract review fixes (DD-35).
+latest: the second review fixes (DD-37) and the pool bound into the terms (DD-38).

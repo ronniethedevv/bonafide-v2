@@ -1,79 +1,62 @@
 # Built on Midnight
 
-> A one-page map of exactly which Midnight primitives and tooling this project uses
-> **in action**. Every row points at real code; nothing here is a mock or a diagram
-> of intent.
+Which Midnight features the `epoch_proof` contract uses, and where. Every row names the code it
+refers to in [`packages/contracts/src/epoch_proof.compact`](../packages/contracts/src/epoch_proof.compact).
 
-## The one-line case
+## Why it needs Midnight
 
-This is a thing you **cannot build on a transparent chain**: a market maker proves,
-in zero knowledge, that it met per-epoch delivery terms (depth, uptime, custody, no
-round-trips) **without revealing its wallets, balances, or order flow**, and earns a
-public reputation record that **cannot be linked back to any specific engagement**.
-That requires smart contracts with *private state* + ZK + *shielded assets* — i.e.
-Midnight. The whole protocol tier is **Compact on Midnight**; Base is only read
-(indexed), never written.
+A market maker proves, in zero knowledge, that its liquidity met an engagement's terms each day
+(depth, uptime, custody of the client's tokens, capped selling, no self-dealing volume) without
+revealing its wallets, balances or order flow. It then earns a public record that cannot be traced
+back to any one engagement. That needs private inputs bound to public evidence by a proof, a
+shielded bond, and private membership in a public set: contracts with private state, zero-knowledge
+circuits and shielded tokens. The whole protocol is one Compact contract on Midnight. Base and
+Ethereum are only read, by the indexer; nothing is deployed to them.
 
-## Midnight tech used, and where
+## Midnight features used, and where
 
-| Midnight primitive / tool | How this project uses it | Evidence |
+| Feature | How the contract uses it | Where |
 |---|---|---|
-| **Compact 0.36.1** (contract language, ledger 9) | The entire protocol lifecycle — `register → postBond → activate → proveEpoch → settleEpoch → releaseEpoch / voidUnfunded / defaultEngagement → claim`, plus the committee's `publishRoot` / `disputeRoot` — is one Compact contract | `packages/contracts/src/epoch_proof.compact` |
-| **`witness` + `disclose`** (private state) | Wallet addresses, balances, depth, and flow are private `witness`es that never touch the ledger; only the uptime count, commitments, and nullifier are `disclose()`d | `proveEpoch`, `claim` |
-| **`transientHash`** (Poseidon, in-circuit) | Every in-circuit Merkle hash: the depth-16 pool tree, depth-10 root-of-roots, depth-2 depth-band tree, and the depth-20 `HistoricMerkleTree` | `verifyPath16`, `verifyPoolPath`, `verifyBandPath` |
-| **`persistentHash` / `persistentCommit`** (SHA-256 ledger hash) | Salted wallet / terms / carry-forward commitments and epoch keys on the ledger | `commitWallets`, `commitTerms`, `CarryTotals` |
-| **`HistoricMerkleTree<20, EpochRecord>`** | The private-membership backbone of the claim: `proveEpoch` appends each proven epoch; `claim` proves credit by private Merkle path, so the public profile is **unlinkable** to engagements (I10) | `epochRecords`, `claim` |
-| **Zswap shielded tokens** (`ShieldedCoinInfo`, `receiveShielded`, `sendShielded`, `Map.insertCoin`) | The MM's performance bond is a **real shielded USDM coin** escrowed in the contract; release pays the owner in tranches, slash redirects to the client | `postBond`, `payOut`, `releaseEpoch` |
-| **Block-time gates** (`blockTimeGte` / `blockTimeLt`) | All funding / settlement / grace windows are enforced against on-chain block time; anchors are ledger-stored and bounded when written (no forgeable caller timestamps) | `activate`, `settleEpoch`, `releaseEpoch` |
-| **Identity-point check (I9)** | Authorization is "prove knowledge of a secret," and the Jubjub identity point is explicitly rejected as a key | `assertNotIdentity` |
-| **`Counter`, `Map`, `Set` ledger types** | Monotonic public profile counters, commitment maps, and the nullifier set (once-only claims, I10) | `profileNullifiers`, `completedCount`, `kpiHits/kpiTotal` |
-| **`@midnight-ntwrk/compact-runtime` 0.16.0** | The known-answer tests **execute the compiled circuit** through Midnight's own runtime — every `transientHash`, `checkRoot`, and `assert` runs for real | `packages/contracts/test/*.kat.test.ts` |
-| **`compact` compiler + `zkir` keygen** | Every circuit compiles with `"proof": true` and generates real proving/verifying keys | `contract-info.json`, `build/epoch_proof/keys` |
+| **Compact 0.36.1** (language 0.28.0, ledger 9) | One contract with 12 circuits: `register`, `postBond`, `activate`, `proveFunding`, `proveEpoch`, `settleEpoch`, `releaseEpoch`, `voidUnfunded`, `defaultEngagement`, `claim`, and the attester committee's `publishRoot` and `disputeRoot` | `epoch_proof.compact` |
+| **`witness` and `disclose`** | Wallet addresses, per-wallet depth and flow, the terms and their salts, the carried totals and the engagement secret are witnesses. Only commitments, the day's uptime count, keys and the claim's nullifier are disclosed | `committedWallets`, `terms`, `bidMin`/`askMin`, `flowBuy`/`flowSell`, `engagementSecret` |
+| **`transientHash`** (in-circuit hash) | Every in-circuit Merkle step: a wallet's path in the pool tree (depth 16), the pool's path to the day's root of roots (depth 10), and the depth-band tree (depth 2) | `verifyPath16`, `verifyPoolPath`, `verifyBandPath` |
+| **`persistentCommit` and `persistentHash`** | Salted commitments to the wallet set, the terms (the pool included) and the totals carried from day to day; ledger keys for engagements, days and attested roots; the engagement id and the claim's nullifier | `proveEpoch`, `register`, `deriveEngagementId`, `rootKey`, `nullifier` |
+| **`HistoricMerkleTree<20, EpochRecord>`** | `proveEpoch` adds each proven day to `epochRecords`; `settleEpoch` checks membership there. `releaseEpoch` adds each settled, undisputed day to `creditedRecords`, and `claim` proves its days by private Merkle paths, so the public profile entry does not say which engagement it came from | `epochRecords`, `creditedRecords`, `claim` |
+| **Shielded tokens** (`receiveShielded`, `sendShielded`, `insertCoin`) | The bond is a shielded coin held by the contract. Each released day pays its share to the market maker; a default pays the rest to the client's Midnight key. On Preview the bond is a shielded test token, deployed with the contract | `postBond`, `payOut`, `releaseEpoch`, `defaultEngagement` |
+| **`ownPublicKey` and `ZswapCoinPublicKey`** | The bond's owner is recorded when it is posted; the client's key is fixed at registration as the beneficiary | `bondOwner`, `bondBeneficiary` |
+| **Block-time checks** (`blockTimeGte`, `blockTimeLt`) | The funding window, settlement after a day ends, the deadline 66 hours later (disputes close, releases open), defaults and voids are all checked against block time; no caller supplies a timestamp | `activate`, `settleEpoch`, `releaseEpoch`, `disputeRoot`, `dayDeadline` |
+| **`Counter`, `Map` and `Set`** | Attester votes and dispute counts, attested roots, the nullifier set (an engagement is claimed once), and public counters per profile and tier | `rootVoteCount`, `disputeCount`, `publishedRoot`, `profileNullifiers`, `completedCount`, `kpiHits`, `kpiTotal` |
+| **`@midnight-ntwrk/compact-runtime` 0.21.0** | The contract's 147 tests run the compiled circuits through Midnight's runtime: every hash, path check and assert executes | `packages/contracts/test/*.kat.test.ts` |
+| **Midnight.js 5.0.1, wallet SDK 2.0.1, proof server 9.0.0** | Deployment, DUST registration, every on-chain call, and the scheduled lifecycle | `packages/dapp` |
+| **Midnight's public indexer** | `check-deployment` and the live engagement page read and decode the contract's state with the contract's generated `ledger()`, with no wallet | `packages/dapp/src/check-deployment.ts`, `apps/web/src/lib/chain/engagement.ts` |
 
-## Proof it's real, not a skeleton
+## What is checked, and how we know
 
-- **Real ZK keys.** `zkir` keygen produces non-empty proving/verifying keys for every
-  circuit — `proveEpoch` at **k=20 (~599.5k rows, 305 MB prover key)**, `claim` k=19
-  (~486.7k), plus `register` k=15, `activate` k=10, `postBond` k=14, `releaseEpoch`
-  k=15. **All 11 circuits are keyed on the final ledger layout** (`proveEpoch` keygen
-  peaks ~9.5 GB RSS).
-- **The tests run the compiled circuit, not a model.** ~93 known-answer tests drive
-  the actual compiled contract via `@midnight-ntwrk/compact-runtime`: an honest
-  witness passes and **every tampered witness reverts** — verified by mutation probes
-  (remove an assert → exactly its covering test fails).
-- **All ten invariants (I1–I10) are bound in-circuit**, not trusted off-chain:
-  address sorting, single-accounting, custody floor, net-sell cap, outflow
-  carry-forward, uptime, round-trip cap, settlement, identity-point, once-only claim.
+- **The circuits.** The 147 tests give each circuit an honest witness, which must pass, and
+  tampered witnesses, which must fail on the assert that guards them. The rules the circuits
+  enforce, I1 to I10, are stated in
+  [`packages/contracts/INVARIANTS.md`](../packages/contracts/INVARIANTS.md) with the circuit that
+  enforces each. CI compiles the contract with a checksum-pinned compiler and runs every test.
+- **The keys.** `compact:build` produces proving and verifying keys for all 12 circuits; the largest
+  proving keys are `proveEpoch` and `claim` (344 MiB each) and `proveFunding` (86 MiB).
+- **The deployment.** `epoch_proof` is on Preview at
+  `4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634` with all 12 verifier keys: 7
+  in the deploy transaction and 5 added by maintenance transactions, because one transaction may
+  write about 65% of a block. `pnpm --filter @mmr/dapp check-deployment` compares each on-chain key
+  with a local build; all 12 match.
+- **On chain.** A live engagement on Base data is registered, bonded and activated on this
+  deployment, and a scheduled job carries it day by day
+  ([`preview-lifecycle.json`](../packages/dapp/deployments/preview-lifecycle.json)). On an earlier
+  deployment, a sample engagement ran 16 transactions covering registration, bond, activation,
+  attester votes, funding, three daily proofs and two settlements
+  ([`preview-v1-lifecycle.json`](../packages/dapp/deployments/preview-v1-lifecycle.json)).
 
-## What makes this a *Midnight* showcase specifically
+## Limits
 
-Three things here are impossible or impractical on a transparent L1, and each uses a
-Midnight primitive directly:
-1. **Private delivery proofs** — the MM's books stay secret; only a boolean verdict +
-   uptime count surface (`witness`/`disclose`).
-2. **Unlinkable reputation** — the public record can't be traced to engagements
-   (`HistoricMerkleTree` private membership + nullifier).
-3. **Shielded performance bonds** — real value escrowed privately (Zswap).
-
-## Honest status (for integrity)
-
-The Midnight/ZK core above is real and verified, and the circuit has **zero open
-in-circuit gaps**: I1–I10, the **I8 attester-root registry** (2-of-3, on-chain), and
-the **funding-membership** proof are all bound and KAT-covered (**135/135** tests,
-all run in CI against the compiled circuits). The contract targets ledger 9 (Compact
-0.36.1), and the ledger-9 build is **deployed to Midnight Preview** at
-`2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6` with all 12 circuits'
-verifier keys on chain (7 in the deploy, 5 added by maintenance updates, DD-36). The full lifecycle
-(`register → activate → publishRoot → proveFunding`) has **run live as real on-chain
-calls on a real Midnight node** (`specs/LIVE_LOCAL_LIFECYCLE.md`).
-
-The **IPFS tree publisher** is a real Pinata v3 adapter and the **PostgreSQL/Prisma
-`DbProfileRepository` (`@mmr/db`)** is real, both behind clean interfaces (they need
-only a `PINATA_JWT` / `DATABASE_URL`). What remains is production plumbing, clearly
-labelled and outside the contract logic: running the **three attester operators'**
-daily `publishRoot` / `disputeRoot` votes (members authenticate by proving knowledge of
-their secret, DD-26; the 2-of-3 threshold is enforced on-chain), and a fee-sponsor. One item is an **external ecosystem issue**: live contract *calls* on
-public networks are currently dropped (`NotNormalized`) for a registration-funded
-wallet while deploys land — isolated to the wallet's DUST, reproduced as working on a
-byte-identical local node, and reported to Midnight
-(`specs/CALL_SUBMISSION_BLOCKER.md`).
+- In this demo one operator holds the three attester keys, derived from one seed; in production
+  each attester is a separate party. The two-of-three threshold is enforced by the contract either
+  way.
+- The market maker pays its own DUST; there is no fee sponsor yet.
+- `releaseEpoch`, `defaultEngagement`, `voidUnfunded`, `disputeRoot` and `claim` have run in the
+  tests but not yet on chain: the first release opens 66 hours after the engagement's first day
+  ends, and a claim needs all 30 days.

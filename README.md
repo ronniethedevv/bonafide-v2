@@ -109,7 +109,7 @@ Its public state, read from the contract through Midnight's public indexer on ev
 
 <p align="center"><img src="docs/assets/engagement.png" alt="The live engagement page: status, tier and chain, bond, day 1, funding, releases, the bond's beneficiary and the day table, read from the contract on Midnight Preview" width="100%"></p>
 
-### Every circuit, proven on an earlier deployment
+### Seven circuits, proven live on an earlier deployment
 
 A sample engagement ran on the first deployment of an earlier version, as real, proven
 transactions. It used the contract tests' sample day (two committed wallets, one pool), not real
@@ -273,7 +273,7 @@ The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts k
 ```bash
 pnpm --filter @mmr/contracts compact:build   # circuits and proving keys (about 4 minutes)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
-pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
+pnpm --filter @mmr/dapp run deploy           # bond token, then epoch_proof in batches
 pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 ```
@@ -284,19 +284,19 @@ proves.
 
 ## Tests
 
-524 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+527 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
-| `indexer` | 153 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `indexer` | 154 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
 | `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
 | `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
-| Eight more | 57 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
+| Eight more | 59 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -307,7 +307,8 @@ package and runs every test against the compiled circuits; a missing build fails
 - **The live run has just started.** The engagement is registered, bonded and activated; its first
   day is 24 November. The daily indexer has not yet completed a real day on GitHub Actions: its
   first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
-  (attest, prove, settle, release) is tested end to end offline and has not run live. A claim
+  (attest, prove, settle, release) is tested end to end offline and first ran on 23 November,
+  with no day due yet. A claim
   needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
   included, runs in the tests.
 - **RPC plan.** The indexer reads Base through a free Alchemy key, which returns logs 10 blocks at
@@ -348,13 +349,13 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Roadmap
 
 - **This wave (first submission), done:** the contract on ledger 9 with every invariant enforced in
-  a circuit, deployed to Preview with all 12 circuits; every circuit proven on Preview in a sample
+  a circuit, deployed to Preview with all 12 circuits; seven circuits proven on Preview in a sample
   engagement on an earlier deployment; the deterministic indexer and independent watcher; the
   attesters' recompute-then-vote job and the market maker's proofs from published data, tested
   end to end offline; a live engagement page read from the contract; the public profile, tear sheet
   and dashboards.
-- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL
-  pools on Base, carried forward by the scheduled job.
+- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL/USDC
+  pool on Base, carried forward by the scheduled job.
 - **Next:** the engagement's 30 days, then the claim into a public profile read from the
   contract's per-tier counters; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
   fee sponsor so a market maker needs no NIGHT of its own.
