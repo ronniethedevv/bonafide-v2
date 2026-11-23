@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSession, homeOf } from "@/lib/session";
 import { ArrowRight, Check, Eye, Globe, Lock, Shield } from "@/components/icons";
+import { LIVE_ENGAGEMENT_ID, LIVE_PROFILE_ID } from "@/lib/chain/live";
 
 // Landing page: what the product is, who it's for, and where each kind of visitor goes
 // next. The public directory lives at /explore; private views sit behind sign-in.
@@ -35,6 +36,29 @@ export default async function HomePage() {
             </Link>
           )}
           <Link href="/explore" className="btn btn-ghost">Browse market makers</Link>
+        </div>
+      </section>
+
+      {/* The live demonstration, read from the contract */}
+      <section className="card" style={{ marginTop: 24, padding: "20px 24px" }}>
+        <div className="row" style={{ gap: 18, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+          <div style={{ maxWidth: 620 }}>
+            <div className="eyebrow">Live on Midnight Preview</div>
+            <p className="dim" style={{ fontSize: 13.5, margin: "6px 0 0", lineHeight: 1.55 }}>
+              A 30-day engagement on the VIRTUAL/USDC pool on Base from 24 November: each day is proven against the daily
+              index once it closes. Both pages read the contract on every visit.
+            </p>
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <Link href={`/engagement/${LIVE_ENGAGEMENT_ID}`} className="btn btn-ghost link-arrow">
+              <span>The live engagement</span>
+              <ArrowRight size={15} />
+            </Link>
+            <Link href={`/record/${LIVE_PROFILE_ID}`} className="btn btn-ghost link-arrow">
+              <span>Track record on chain</span>
+              <ArrowRight size={15} />
+            </Link>
+          </div>
         </div>
       </section>
 
