@@ -1,0 +1,120 @@
+name: Market maker command
+
+# One of the market maker's own commands (`pnpm --filter @mmr/dapp mm`) for an engagement
+# file in packages/dapp/deployments, run by hand: status, register, bond, activate, void
+# (return the bond of an engagement never activated, once its 72-hour funding window has
+# passed) or profile. Shares the lifecycle job's concurrency group: both spend from the
+# same wallet, so they never run at the same time.
+#
+# Settings → Secrets and variables → Actions → Secrets: DEPLOY_SEED.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Command"
+        required: true
+        type: choice
+        options: [status, register, bond, activate, void, profile]
+      file:
+        description: "Engagement file in packages/dapp/deployments"
+        required: true
+        default: "deployments/preview-void-demo-engagement.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  mm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DEPLOY_SEED: ${{ secrets.DEPLOY_SEED }}
+      NETWORK_ID: preview
+      MM_COMMAND: ${{ inputs.command }}
+      MM_FILE: ${{ inputs.file }}
+    steps:
+      - name: Check inputs
+        run: |
+          if [ -z "$DEPLOY_SEED" ]; then echo "::error::The DEPLOY_SEED secret is not set."; exit 1; fi
+          case "$MM_FILE" in
+            *..*) echo "::error::The file must be in deployments/."; exit 1 ;;
+            deployments/*-engagement.json) ;;
+            *) echo "::error::The file must be deployments/<name>-engagement.json."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter "@mmr/dapp..."
+
+      - name: Install Compact compiler
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/compactc.zip" \
+            https://github.com/midnightntwrk/compact/releases/download/compactc-v0.36.1/compactc_v0.36.1_x86_64-unknown-linux-musl.zip
+          echo "9d5fedfec9ae775a1e47d5c6f785130b314c1c5c52cd1a4eb9fc56d1fc61d23a  $RUNNER_TEMP/compactc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/compactc.zip" -d "$RUNNER_TEMP/compactc"
+          chmod +x "$RUNNER_TEMP"/compactc/*
+          echo "$RUNNER_TEMP/compactc" >> "$GITHUB_PATH"
+
+      - name: Restore proving keys
+        id: keys
+        uses: actions/cache@v4
+        with:
+          path: packages/contracts/dist
+          key: proving-keys-compactc-0.36.1-${{ hashFiles('packages/contracts/src/*.compact') }}
+
+      - name: Build circuits and proving keys
+        if: steps.keys.outputs.cache-hit != 'true'
+        working-directory: packages/contracts
+        run: |
+          compactc src/epoch_proof.compact dist/epoch_proof
+          compactc src/test_bond_token.compact dist/test_bond_token
+
+      - name: Restore proof server parameters
+        if: inputs.command != 'status' && inputs.command != 'profile'
+        uses: actions/cache@v4
+        with:
+          path: ~/zk-params
+          key: proof-server-9.0.0-params
+
+      - name: Start the proof server
+        if: inputs.command != 'status' && inputs.command != 'profile'
+        run: |
+          mkdir -p ~/zk-params
+          docker run -d --name proof-server -p 127.0.0.1:6300:6300 \
+            -v ~/zk-params:/.cache/midnight midnightntwrk/proof-server:9.0.0
+          for i in $(seq 1 120); do
+            if curl -sf http://127.0.0.1:6300/health > /dev/null; then echo "proof server up"; exit 0; fi
+            sleep 5
+          done
+          docker logs proof-server | tail -20
+          echo "::error::The proof server did not start."
+          exit 1
+
+      - name: Run the command
+        run: pnpm --filter @mmr/dapp mm "$MM_COMMAND" "$MM_FILE"
+
+      - name: Keep the record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mm-${{ inputs.command }}-${{ github.run_id }}
+          path: packages/dapp/deployments/*-lifecycle.json
+          if-no-files-found: ignore
+          retention-days: 90

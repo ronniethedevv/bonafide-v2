@@ -114,6 +114,23 @@ Its public state, read from the contract through Midnight's public indexer on ev
 
 <p align="center"><img src="docs/assets/engagement.png" alt="The live engagement page: status, tier and chain, bond, day 1, funding, releases, the bond's beneficiary and the day table, read from the contract on Midnight Preview" width="100%"></p>
 
+### A second engagement, for the void path
+
+Registered with the market maker's own commands (`pnpm --filter @mmr/dapp mm`) from its own sealed
+file: tier C, a 2,500 bond, the same pool and terms, and never to be activated. Once its 72-hour
+funding window has passed, `voidUnfunded` returns the bond to the market maker. That circuit has
+so far run only in the tests.
+
+| Step | Circuit | Block | Transaction | Proof and inclusion |
+|---|---|---|---|---|
+| Market maker receives 2,500 test bond tokens | `test_bond_token.mint` | 237,863 | `004fe95b…a22db8ca` | 26.5 s |
+| Register: tier C, Base, 2,500 bond | `register` | 237,868 | `00920428…aa79a468` | 29.8 s |
+| Bond held by the contract | `postBond` | 237,876 | `0002b4e9…4053d767` | 30.4 s |
+| The bond goes back: never activated | `voidUnfunded` | from 26 Nov 2026, 14:18 UTC | | |
+
+Engagement `c0d1c6ef…6e1a`. Every transaction id:
+[`packages/dapp/deployments/preview-void-demo-lifecycle.json`](packages/dapp/deployments/preview-void-demo-lifecycle.json).
+
 ### Seven circuits, proven live on an earlier deployment
 
 A sample engagement ran on the first deployment of an earlier version, as real, proven
@@ -183,7 +200,10 @@ proof binds one to the other. That is why this runs on Midnight.
    remaining bond goes to the client.
 6. **Claim.** When the engagement ends, the market maker claims it into its public profile with a
    nullifier: it counts once, cannot be removed, and the profile entry does not reveal which
-   engagement it came from.
+   engagement it came from. A profile's record is read from the contract's per-tier counters by
+   its profile id, which the market maker shares: [the live market maker's record](https://mm-reputation-web.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c)
+   (empty until its first claim; the live engagement's full claim is possible from 26 December,
+   18:00 UTC, when day 30 is credited).
 
 ```mermaid
 flowchart LR
@@ -284,6 +304,8 @@ pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's addre
 pnpm --filter @mmr/dapp run deploy           # bond token, then epoch_proof in batches
 pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
+pnpm --filter @mmr/dapp mm status [file]     # the market maker's own commands for an engagement file:
+                                             # status, register, bond, activate, void, profile
 ```
 
 It needs a proof server 9.0.0 on port 6300 (`pnpm --filter @mmr/dapp proof-server`) and a
@@ -332,6 +354,10 @@ package and runs every test against the compiled circuits; a missing build fails
   addresses that moved VIRTUAL passed. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
+- **The market maker's own commands** (`mm`, also a manual workflow) cover registration, the bond,
+  activation, the void and its profile id. For the live engagement, proving, settling and
+  releasing run in the scheduled job, which holds the same seed; the claim runs in the tests and,
+  as a command, is next. One wallet pays every fee in this demo.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
   out of scope: proving off-chain fills needs zkTLS.
 - **Linkability:** the bond records the coin key of the wallet that posted it, so engagements bonded
@@ -347,7 +373,7 @@ package and runs every test against the compiled circuits; a missing build fails
 | Path | What |
 |---|---|
 | [`packages/contracts/`](packages/contracts) | `epoch_proof.compact` (12 circuits), `test_bond_token.compact`, and the tests that run the compiled circuits |
-| [`packages/dapp/`](packages/dapp) | Preview deploy: headless wallet, DUST registration, batched deploy, deployment check |
+| [`packages/dapp/`](packages/dapp) | Preview deploy: headless wallet, DUST registration, batched deploy, deployment check; the scheduled lifecycle job and the market maker's `mm` commands |
 | [`packages/indexer/`](packages/indexer) | Deterministic indexer for Base and Ethereum: chain readers, per-wallet trees, IPFS publisher |
 | [`packages/merkle/`](packages/merkle) | Leaf schema, indexed Merkle tree, root of roots |
 | [`packages/prover/`](packages/prover) | Engagement model, witness assembly, reference implementation of every invariant |
@@ -356,7 +382,7 @@ package and runs every test against the compiled circuits; a missing build fails
 | [`packages/witness/`](packages/witness) | The market maker's local, private store of daily witnesses |
 | [`packages/attest/`](packages/attest) | Portable epoch attestations and a verifier a client runs itself |
 | [`packages/engagement-file/`](packages/engagement-file) | The encrypted engagement file shared between market maker and client |
-| [`apps/web/`](apps/web) | Public profiles, tear sheets, market maker and client dashboards |
+| [`apps/web/`](apps/web) | Public profiles, tear sheets, market maker and client dashboards; the live engagement and track record pages, read from the contract |
 | [`apps/worker/`](apps/worker) | The daily indexer job |
 | [`specs/`](specs) | Architecture, design decisions, invariants and runbooks ([index](specs/README.md)) |
 

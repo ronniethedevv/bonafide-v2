@@ -82,7 +82,8 @@ export interface EngagementState {
   readAt: string;
 }
 
-async function contractState(): Promise<ReturnType<typeof ledger>> {
+/** The contract's public state, decoded with its generated ledger(). */
+export async function contractState(): Promise<ReturnType<typeof ledger>> {
   const res = await fetch(INDEXER, {
     method: "POST",
     headers: { "content-type": "application/json" },
