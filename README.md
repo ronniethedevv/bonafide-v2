@@ -42,14 +42,14 @@ circuits on chain.
 
 | Contract | Address | Role |
 |---|---|---|
-| `epoch_proof` | `a773ae9733eb2a45c96794e5bc7ca387c2c77034eed8a9722902980fc94103ce` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
+| `epoch_proof` | `4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
 | `test_bond_token` | `30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61` | A shielded test token for bonds. Preview's faucet issues only unshielded tNIGHT, and a bond is a shielded coin |
 
 | Step | Transaction |
 |---|---|
 | Deploy wallet funded from the faucet; its tNIGHT registered to generate DUST for fees | `00bb9e0086039175d676bd93fdd5eb29af03d725e003181a36bcc126187ec8bcdd` |
 | `test_bond_token` deployed | `008c244e594233cd11976466877ef0710cc49cef6f859299b421f434b37d865b21` |
-| `epoch_proof` deployed with 7 circuits' keys (block 227,442) | `0066bf2139748bcadc0e8d3af2975e999fd9969eeff370de0376d8cec3f08057cf` |
+| `epoch_proof` deployed with 7 circuits' keys (block 231,968) | `009fa9c6bc350c7fb12559f37b25f66f58ca34b5925e1bf7377942c31552700417` |
 | Keys added for `settleEpoch`, `releaseEpoch`, `voidUnfunded`, `defaultEngagement` and `claim`, one maintenance transaction each | 5 transactions, listed in the record |
 
 Every address and transaction id: [`packages/dapp/deployments/preview.json`](packages/dapp/deployments/preview.json).
