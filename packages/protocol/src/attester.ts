@@ -1,8 +1,8 @@
 // Attester committee (I8, DD-26: Option B).
 //
 // Each member holds a secret; the contract's committee is the three attesterIds fixed at
-// deploy. To attest an epoch, every online member submits its own publishRoot(epoch,
-// rootOfRoots, cid) transaction, authenticated in-circuit by proving knowledge of its
+// deploy. To attest a day, every online member submits its own publishRoot(chain, day,
+// rootOfRoots, cid) transaction (roots are keyed by chain and UTC day, DD-35), authenticated in-circuit by proving knowledge of its
 // secret (I9: ownPublicKey() is prover-chosen, so it cannot authenticate). The contract
 // counts distinct members and publishes the root at the threshold — there is no
 // off-chain signature aggregation or counting. Submitting the transaction is injected
@@ -45,7 +45,9 @@ const fromHex = (h: string): Uint8Array => {
 /** One member's publishRoot transaction. */
 export interface PublishRootTx {
   readonly secret: Uint8Array;
-  readonly epoch: bigint;
+  readonly chain: bigint;
+  /** UTC day number. */
+  readonly day: bigint;
   readonly rootOfRoots: Uint8Array;
   readonly cid: Uint8Array;
 }
@@ -85,13 +87,13 @@ export class AttesterCommitteeMembers implements AttesterCommittee {
   }
 
   /** Every online member submits publishRoot, in committee order; returns the votes cast. */
-  async publishRoot(epoch: number, rootOfRootsHex: string, cid: string): Promise<AttesterVote[]> {
+  async publishRoot(chainId: number, day: number, rootOfRootsHex: string, cid: string): Promise<AttesterVote[]> {
     const online = this.cfg.online ?? this.cfg.secrets.map((_, i) => i);
     const rootOfRoots = fromHex(rootOfRootsHex);
     const cidB = cidBytes(cid);
     const votes: AttesterVote[] = [];
     for (const i of [...online].sort((a, b) => a - b)) {
-      await this.cfg.submit({ secret: this.cfg.secrets[i]!, epoch: BigInt(epoch), rootOfRoots, cid: cidB });
+      await this.cfg.submit({ secret: this.cfg.secrets[i]!, chain: BigInt(chainId), day: BigInt(day), rootOfRoots, cid: cidB });
       votes.push({ attester: toHex(this.memberIds[i]!) });
     }
     return votes;

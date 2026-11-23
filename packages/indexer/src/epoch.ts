@@ -199,7 +199,7 @@ export async function buildEpoch(
   );
 
   const votes = deps.attesters
-    ? await deps.attesters.publishRoot(range.epoch, rootOfRootsHex, manifestCid)
+    ? await deps.attesters.publishRoot(deps.provider.chainId(), range.epoch, rootOfRootsHex, manifestCid)
     : [];
 
   return {

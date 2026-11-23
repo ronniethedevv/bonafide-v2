@@ -495,7 +495,7 @@ export const KAT_START_DAY = BLOCK_TIME / 86_400n + 1n;
 export const dayOfEpoch = (epoch: bigint): bigint => KAT_START_DAY + epoch - 1n;
 
 /** One member's publishRoot transaction (authenticated by its secret) for KAT epoch `epoch`. */
-export async function runPublishRoot(
+export function runPublishRoot(
   secret: Uint8Array,
   epoch: bigint,
   root: Uint8Array,
@@ -503,9 +503,20 @@ export async function runPublishRoot(
   cid: Uint8Array = KAT_CID,
   chain: bigint = KAT_CHAIN,
 ): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
+  return runPublishRootAt(secret, chain, dayOfEpoch(epoch), root, state, cid);
+}
+
+/** One member's publishRoot transaction for (chain, UTC day). */
+export async function runPublishRootAt(
+  secret: Uint8Array,
+  chain: bigint,
+  day: bigint,
+  root: Uint8Array,
+  state: rt.ChargedState,
+  cid: Uint8Array = KAT_CID,
+): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
-  const day = dayOfEpoch(epoch);
   const res = await contract.circuits.publishRoot(await freshContext(contract, "publishRoot", state), chain, day, root, cid);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);

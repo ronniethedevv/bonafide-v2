@@ -28,6 +28,7 @@ import {
   runProveEpoch,
   runProveFunding,
   runPublishRoot,
+  runPublishRootAt,
   runRegister,
   runningEngagement,
   settle,
@@ -184,9 +185,9 @@ describe.skipIf(!HAVE_BUILD)("I8: the protocol committee drives the compiled pub
     let state = await freshState();
     const committee = new AttesterCommitteeMembers({
       secrets: ATTESTERS, threshold: 2, online,
-      submit: async (tx) => { state = (await runPublishRoot(tx.secret, tx.epoch, tx.rootOfRoots, state, tx.cid)).state; },
+      submit: async (tx) => { state = (await runPublishRootAt(tx.secret, tx.chain, tx.day, tx.rootOfRoots, state, tx.cid)).state; },
     });
-    const votes = await committee.publishRoot(3, `0x${Buffer.from(R1).toString("hex")}`, "bafy-epoch-3");
+    const votes = await committee.publishRoot(Number(KAT_CHAIN), Number(dayOfEpoch(3n)), `0x${Buffer.from(R1).toString("hex")}`, "bafy-epoch-3");
     const led = (await import(BUILD_DIR)).ledger(state);
     return { votes, led };
   }
