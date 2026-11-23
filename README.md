@@ -13,6 +13,7 @@
 </p>
 
 **[Live site](https://mm-reputation-web.vercel.app)** ·
+**[The live engagement, read from the chain](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046)** ·
 **[A market maker's profile](https://mm-reputation-web.vercel.app/mm/vega-mm)** ·
 **[Tear sheet](https://mm-reputation-web.vercel.app/mm/vega-mm/tear-sheet)** ·
 **[Demo guide](DEMO.md)** ·
@@ -103,7 +104,12 @@ From then on the scheduled job attests each indexed day, proves it, settles it a
 share of the bond. Every transaction id:
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
-### Every circuit, proven on an earlier deployment
+Its public state, read from the contract through Midnight's public indexer on every visit:
+[the live engagement page](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
+
+<p align="center"><img src="docs/assets/engagement.png" alt="The live engagement page: status, tier and chain, bond, day 1, funding, releases, the bond's beneficiary and the day table, read from the contract on Midnight Preview" width="100%"></p>
+
+### Seven circuits, proven live on an earlier deployment
 
 A sample engagement ran on the first deployment of an earlier version, as real, proven
 transactions. It used the contract tests' sample day (two committed wallets, one pool), not real
@@ -267,7 +273,7 @@ The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts k
 ```bash
 pnpm --filter @mmr/contracts compact:build   # circuits and proving keys (about 4 minutes)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
-pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
+pnpm --filter @mmr/dapp run deploy           # bond token, then epoch_proof in batches
 pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
 pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 ```
@@ -278,19 +284,19 @@ proves.
 
 ## Tests
 
-524 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+532 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
-| `indexer` | 153 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `indexer` | 158 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
 | `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
 | `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
-| Eight more | 57 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
+| Eight more | 60 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -299,16 +305,20 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Scope and limits
 
 - **The live run has just started.** The engagement is registered, bonded and activated; its first
-  day is 24 November. The daily indexer has not yet completed a real day on GitHub Actions: its
-  first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
-  (attest, prove, settle, release) is tested end to end offline and has not run live. A claim
+  day is 24 November. The daily indexer completed its first real day on GitHub Actions on
+  23 November: 22 November, the day before registration, as a test (root `0xbe1c4e6b…c908`); the
+  engagement's own days start with 23 November. The scheduled lifecycle job
+  (attest, prove, settle, release) is tested end to end offline and first ran on 23 November,
+  with no day due yet. A claim
   needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
   included, runs in the tests.
-- **RPC plan.** The indexer reads Base through a free Alchemy key, which returns logs 10 blocks at
-  a time; Base makes a block every 0.2 s, so one pool-day is about 43,200 requests. The demo
-  indexes only the engagement's pool, and a month's free allowance covers about ten pool-days: the
-  30-day run continues past that only if the allowance resets in time. A paid plan reads a day in a
-  few hundred requests.
+- **RPC plan.** Logs come from a free public endpoint (publicnode) in 10,000-block requests, about
+  44 for a Base day; blocks, state and receipts come from a free Alchemy key, whose log requests
+  span only 10 blocks (43,200 for a day). Before switching we compared 22 November: 65,511 logs,
+  identical to an independent provider's full-day scan and to 200 sampled windows from Alchemy.
+  Indexing that day on GitHub Actions took 62 minutes, 47 of them a one-time scan of every Uniswap
+  v3 position on Base; logs and receipts took 72 seconds. The public endpoint keeps about two weeks of
+  logs, so an older backfill needs a paid plan. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
@@ -342,13 +352,13 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Roadmap
 
 - **This wave (first submission), done:** the contract on ledger 9 with every invariant enforced in
-  a circuit, deployed to Preview with all 12 circuits; every circuit proven on Preview in a sample
+  a circuit, deployed to Preview with all 12 circuits; seven circuits proven on Preview in a sample
   engagement on an earlier deployment; the deterministic indexer and independent watcher; the
   attesters' recompute-then-vote job and the market maker's proofs from published data, tested
   end to end offline; a live engagement page read from the contract; the public profile, tear sheet
   and dashboards.
-- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL
-  pools on Base, carried forward by the scheduled job.
+- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL/USDC
+  pool on Base, carried forward by the scheduled job.
 - **Next:** the engagement's 30 days, then the claim into a public profile read from the
   contract's per-tier counters; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
   fee sponsor so a market maker needs no NIGHT of its own.

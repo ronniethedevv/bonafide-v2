@@ -13,6 +13,8 @@ export const metadata: Metadata = {
 const TIER = ["", "A", "B", "C"];
 const CHAIN: Record<number, string> = { 8453: "Base", 1: "Ethereum" };
 const REPO = "https://github.com/ronniethedevv/mm-reputation";
+/** An on-chain amount (a decimal string of the token's smallest unit) with thousands separators. */
+const amount = (v: string) => BigInt(v).toLocaleString("en-US");
 
 function dayStatus(d: DayState): { text: string; tone?: "pos" | "neg" | "warn" } {
   if (d.disputed) return { text: d.released ? "disputed: neutral, released to the market maker" : "root disputed: neutral", tone: "warn" };
@@ -57,10 +59,10 @@ export default async function LiveEngagementPage({ params }: { params: Promise<{
         <>
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 16 }}>
             <Stat label="Tier · chain" value={`${TIER[e.tier] ?? e.tier} · ${CHAIN[e.chain] ?? e.chain}`} />
-            <Stat label="Bond" value={e.bondPosted ?? "not posted"} sub={`required ${e.bondRequired}, test bond token`} />
+            <Stat label="Bond" value={e.bondPosted ? amount(e.bondPosted) : "not posted"} sub={`required ${amount(e.bondRequired)}, test bond token`} />
             <Stat label="Day 1" value={e.startDate ?? "not activated"} sub={e.activatedAt ? `activated ${e.activatedAt.slice(0, 16).replace("T", " ")} UTC` : undefined} />
             <Stat label="Funding" value={e.fundingProven ? "proven" : "not yet"} sub="against an attested day" />
-            <Stat label="Released" value={`${e.releasedEpochs} of ${EPOCHS} days`} sub={`${e.releasedTotal} of the bond`} />
+            <Stat label="Released" value={`${e.releasedEpochs} of ${EPOCHS} days`} sub={`${amount(e.releasedTotal)} of the bond`} />
           </div>
           <div className="card" style={{ marginTop: 12, padding: 18 }}>
             <div className="eyebrow">Bond goes to, on default</div>

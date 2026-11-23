@@ -65,6 +65,6 @@ targets, or client identity.
 ```sh
 compact update 0.36.1                       # or download the pinned release, as CI does
 pnpm --filter @mmr/contracts kat:build      # compact compile --skip-zk → build/epoch_proof
-pnpm --filter @mmr/contracts test           # 135 KATs on the compiled circuits
+pnpm --filter @mmr/contracts test           # 147 tests on the compiled circuits
 compact compile src/epoch_proof.compact dist/epoch_proof   # with proving keys (slow)
 ```

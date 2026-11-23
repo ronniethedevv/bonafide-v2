@@ -1,5 +1,10 @@
 # Midnight testnet deploy + wallet demo — runbook
 
+> **History.** This runbook was written for the ledger 8 Preview chain and its 11-circuit
+> contract. The contract now targets ledger 9 (Compact 0.36.1, 12 circuits); the current
+> deployment, its record and the commands are in the [README](../README.md) and
+> [DEMO.md](../DEMO.md).
+
 > The last big "their tech in action" win: a **live contract on Midnight testnet** +
 > a **connect-wallet-and-submit-a-proof** demo, which also produces the project's
 > first **real proof instances** (we have keys for all 11 circuits; no live proof has

@@ -28,6 +28,8 @@ export interface ChainConfig {
   readonly name: ChainName;
   /** Env var holding this chain's archive RPC URL (never hard-coded/committed). */
   readonly rpcEnvVar: string;
+  /** Optional wide-range eth_getLogs endpoint; blocks, state and receipts stay on rpcEnvVar. */
+  readonly logsRpcEnvVar: string;
   readonly dexes: readonly DexConfig[];
   /**
    * Quote assets, ranked strongest first (lowercase). A pool's base token is the one
@@ -52,6 +54,7 @@ export const CHAINS: Readonly<Record<number, ChainConfig>> = {
     chainId: 1,
     name: "ethereum",
     rpcEnvVar: "ETH_ARCHIVE_RPC_URL",
+    logsRpcEnvVar: "ETH_LOGS_RPC_URL",
     // positionManager / quoterV2: name() and factory() checked live (factory = UNIV3.ethereum).
     dexes: [
       {
@@ -73,6 +76,7 @@ export const CHAINS: Readonly<Record<number, ChainConfig>> = {
     chainId: 8453,
     name: "base",
     rpcEnvVar: "BASE_ARCHIVE_RPC_URL",
+    logsRpcEnvVar: "BASE_LOGS_RPC_URL",
     // positionManager / quoterV2: name() and factory() checked live (factory = UNIV3.base).
     dexes: [
       {

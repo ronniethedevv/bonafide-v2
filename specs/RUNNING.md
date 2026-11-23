@@ -73,10 +73,11 @@ Repository settings → Secrets and variables → Actions:
 | `DATABASE_URL` | secret | the Neon connection string the web app uses |
 | `BASE_ARCHIVE_RPC_URL` | secret | archive RPC with the key in the URL (e.g. Alchemy `…/v2/<key>`) |
 | `ETH_ARCHIVE_RPC_URL` | secret | only if Ethereum tokens are covered |
+| `BASE_LOGS_RPC_URL` | variable | optional endpoint for `eth_getLogs` only (the workflow defaults to `https://base-rpc.publicnode.com`, which accepts 10,000-block ranges and keeps about two weeks of logs); blocks, state and receipts stay on the archive RPC. `ETH_LOGS_RPC_URL` for Ethereum |
 | `IPFS_PINNING_JWT` | secret | Pinata JWT with Files: Write |
 | `MMR_COVERAGE_8453` | variable | comma-separated base tokens to index on Base |
 | `MMR_COVERAGE_1` | variable | the same for Ethereum (optional) |
-| `MMR_LOG_CHUNK_BLOCKS` | variable | blocks per `eth_getLogs`: `10` on a free key, e.g. `2000` on a paid one |
+| `MMR_LOG_CHUNK_BLOCKS` | variable | blocks per `eth_getLogs` (the workflow defaults to `10000`; `10` if logs come from a free Alchemy key). A request the endpoint refuses for its range or size is split in half until it is accepted |
 | `MMR_CATCHUP_DAYS` | variable | optional, 1–14 (default 3) |
 
 Locally (same variables in the environment):
@@ -87,10 +88,10 @@ pnpm --filter @mmr/worker index                    # catch-up window on every co
 MMR_INDEX_DATE=2026-11-16 MMR_INDEX_CHAIN=8453 pnpm --filter @mmr/worker index   # one day
 ```
 
-## What needs a Midnight environment (not runnable here)
+## What needs the Compact toolchain
 
 `packages/contracts` holds the Compact contract (toolchain 0.36.1, ledger 9). CI
-compiles it (`compactc --skip-zk`) and runs all 135 KATs against the compiled circuits;
+compiles it (`compactc --skip-zk`) and runs all 147 tests against the compiled circuits;
 locally, `pnpm --filter @mmr/contracts kat:build && pnpm --filter @mmr/contracts test`
 with the toolchain installed. Proving keys and live calls need the full Midnight setup. See
 [`packages/contracts/README.md`](../packages/contracts/README.md) for the overview
@@ -106,5 +107,5 @@ walkthrough (toolchain, proof server, keys, `.env`).
 | `@mmr/prover` | engagement model, witness assembly, I1–I8 reference oracle, demo CLI |
 | `@mmr/protocol` | settlement state machine + mock attester committee |
 | `@mmr/watcher` | challenge watchdog (root recomputation) + client verdict log |
-| `@mmr/contracts` | Compact contract (0.36.1, ledger 9) + 135 KATs on the compiled circuits |
+| `@mmr/contracts` | Compact contract (0.36.1, ledger 9) + 147 tests on the compiled circuits |
 | `web` | public profile + tear sheet (Next.js) |

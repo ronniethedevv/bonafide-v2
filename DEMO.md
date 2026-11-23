@@ -1,179 +1,128 @@
-<!--
-  DEMO.md — how to run and independently verify each part of the system.
-  Companion to specs/BUILT_ON_MIDNIGHT.md (what it is and why) and
-  specs/TESTNET_DEPLOY.md (how it was deployed). Block numbers in Demo B1 are
-  from the live local lifecycle run in specs/LIVE_LOCAL_LIFECYCLE.md
-  (contract e45ab713…97ce, 2026-11-01).
--->
-
 # Running and verifying mm-reputation
 
-A privacy-preserving reputation record for crypto **market makers**. A market maker
-proves, in zero knowledge on **Midnight**, that it met per-epoch delivery terms —
-depth, uptime, custody, no round-trips — **without revealing its wallets, balances,
-or order flow**, measured against a **deterministic Base + Ethereum indexer** it
-cannot forge.
+A market maker proves, in zero knowledge on Midnight, that its liquidity met an engagement's terms
+each day, measured against a deterministic index of Uniswap v3 activity on Base and Ethereum, and
+without revealing its wallets, balances or order flow. This page lists what a reviewer can check,
+with the command for each check and what it shows. For which Midnight features the contract uses, see
+[`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).
 
-For what the system is and why it needs Midnight, see
-[`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md). This page is how to run
-each part and check the results independently.
+Requirements: Node.js 22 or later, pnpm 10, and `pnpm install` once. Steps A, B and C need no
+wallet and no Midnight account.
 
----
+| Step | What it shows | Time |
+|---|---|---|
+| [A. Rebuild an indexed day](#a-rebuild-an-indexed-day) | A published day's root is recomputed from public data; a one-unit change breaks it | seconds |
+| [B. Run the compiled contract](#b-run-the-compiled-contract) | Every circuit accepts an honest witness and rejects tampered ones | about a minute |
+| [C. Check the deployment](#c-check-the-deployment-on-preview) | The contract on Preview carries the verifier keys of this source | seconds; 4 minutes to compare keys |
+| [D. Follow the live engagement](#d-follow-the-live-engagement) | A real engagement on Base data, carried by scheduled jobs | on the web |
+| [E. Use the web app](#e-use-the-web-app) | The market maker's and the client's side, and the public record | on the web |
 
-## What the system proves
-
-1. **A real on-chain epoch, recomputed deterministically.** A genuine Base epoch —
-   BROOMY/WETH 0.3%, 2026-10-21 — is indexed end to end, and an independent *watcher*
-   rebuilds the exact attested root-of-roots from the published data, with no RPC:
-   `0x5a3a6373489512ce231856573012a90e45d2bc2720ce5538b92fc74af1d04461`. Changing any
-   single published metric by one unit breaks the root.
-2. **The full ZK lifecycle, with real proofs and real on-chain calls.** One Compact
-   contract runs `register → activate → publishRoot (2-of-3 attesters) → proveFunding
-   → proveEpoch → settleEpoch → releaseEpoch → claim`. Each call is a real
-   zero-knowledge proof submitted to a real Midnight node; the market maker's books
-   never leave the witness.
-3. **A public reputation record that cannot be traced back.** The claim proves credit
-   for each proven epoch by a private Merkle path, so the public profile is
-   **unlinkable** to any specific engagement (nullifier-gated, once only).
-
-These three properties cannot be built on a transparent chain.
-
----
-
-## Demo A — deterministic indexer + watcher (no wallet, ~5 s)
-
-Reproduces the real Base epoch and re-verifies it independently. This is pure
-computation over committed fixture data, so it runs anywhere with no network:
+## A. Rebuild an indexed day
 
 ```bash
-pnpm --filter @mmr/watcher test        # live-epoch KAT: rebuilds + verifies 0x5a3a…04461
+pnpm --filter @mmr/watcher test
 ```
 
-What it checks:
+The watcher holds two real indexed days as fixtures: BROOMY/WETH on Base (21 October 2026) and a
+Uniswap v3 pool on Ethereum quoted in USDT (10 November 2026). It rebuilds each pool tree and the day's root of roots
+from the published data alone, with no RPC. For the Base day the root is
+`0x5a3a6373489512ce231856573012a90e45d2bc2720ce5538b92fc74af1d04461`. The tests then change a published
+metric by one unit and check that the root no longer matches. This is the check every
+attester runs before it votes for a day's root, and that anyone can run before trusting one.
 
-- `packages/watcher/fixtures/base-8453-broomy-weth-2026-10-21/` holds the committed
-  real epoch.
-- The test re-derives the pool root and the root-of-roots, and **fails on a one-unit
-  tamper** of any published metric — so a market maker cannot lie about what the chain
-  recorded.
-
----
-
-## Demo B — the epoch_proof lifecycle, live on a Midnight node + KAT-verified
-
-Runs the contract lifecycle against a real Midnight node (ledger 8.1.3) with real
-proofs and real on-chain contract calls. It runs in two tiers, split by proof weight
-and by what the node's clock allows.
-
-**B1 — live on-chain** (`register → proveFunding`, all ≤ k=17 — each a real ZK proof
-and a real `ContractCall` included in a block):
+## B. Run the compiled contract
 
 ```bash
-# bring up the local stack (node 1.0.400 / ledger 8.1.3, indexer, proof server) via
-# packages/dapp/standalone.override.yml, point the dapp at it, then:
-pnpm --filter @mmr/dapp run interact     # MMR_STOP_AFTER=proveFunding
+pnpm --filter @mmr/contracts kat:build   # compile epoch_proof without keys (Compact 0.36.1)
+pnpm --filter @mmr/contracts test        # 147 tests in 9 files
 ```
 
-| Step | Circuit | What it proves (in ZK) | block |
-|---|---|---|---|
-| 1 | `register` | engagement id derived from a secret; wallet + terms committed | **37** |
-| 2 | `activate` | status → Funded within the 72 h funding window | **41** |
-| 3 | `publishRoot` ×2 | 2-of-3 attester committee publishes the epoch root on-chain (I8) | **45** / **49** |
-| 4 | `proveFunding` | Σ `from_treasury` ≥ loan, opened against the attested root | **62** |
-
-Each row is a real `__typename: ContractCall` in the local indexer — verifiable, not a
-log line. The full transcript and tx hashes are in
-[`specs/LIVE_LOCAL_LIFECYCLE.md`](specs/LIVE_LOCAL_LIFECYCLE.md) (contract
-`e45ab713…97ce`, recorded 2026-11-01). (`postBond` escrows a real shielded Zswap bond;
-it is included when a bond coin is wired.)
-
-**B2 — KAT-verified** (the heavy and the time-gated circuits): `proveEpoch` (k=20,
-~599.5k rows), `settleEpoch`, `releaseEpoch`, `claim`. These run through the **real
-compiled circuit** via `@midnight-ntwrk/compact-runtime` — every `transientHash`,
-`checkRoot` and `assert` executes — with the block clock driven directly, which the
-node's AURA consensus cannot do on-chain without 24 h of real time:
+The tests run the compiled circuits through Midnight's own runtime (`@midnight-ntwrk/compact-runtime`
+0.21.0), so every hash, Merkle path check and `assert` in the contract executes. An honest witness
+passes; each tampered witness must fail on the assert that guards it. The tests drive the block clock
+directly, which covers what a live run cannot show quickly: settlement after a day ends, releases at
+its deadline, disputes, defaults, and `claim` after all 30 days.
 
 ```bash
-pnpm --filter @mmr/contracts test        # 147 tests, 9 files: full lifecycle incl. proveEpoch + claim
+pnpm --filter @mmr/dapp test             # 3 tests
 ```
 
-> **Why the split:** midnight-node advances block time only in real time (fixed AURA
-> slots), so `settle → release → claim` (gated on each day's end and its deadline)
-> cannot be an on-chain tx without waiting 24 h — the KATs cover them with a controlled
-> clock. And `proveEpoch`'s k=20 proof peaks ~9.5 GB, so it is proven live where RAM
-> allows and KAT-verified otherwise. Both tiers exercise the **same** compiled contract;
-> nothing is mocked.
+The same path end to end without a network: a day built by the indexer is published, read back,
+recomputed, turned into a witness and accepted by the compiled contract; tampered published data is
+refused before any proof is made.
 
-Real ZK keys back every circuit: `proveEpoch` k=20 (305 MB prover key), `claim` k=19,
-`proveFunding` k=17, `register` k=15, `postBond` k=14, `activate` k=10 — `zkir` keygen
-output, non-empty, in `build/epoch_proof/keys`.
-
----
-
-## Demo C — also live on the public Preview testnet (supporting)
-
-The ledger-9 build is **deployed to Midnight's Preview testnet** at
-`4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634`, all 12 circuits. It is too large for one
-transaction (one transaction may use about 65% of a block), so 7 circuits deploy in one
-transaction and the other 5 verifier keys are added by signed maintenance updates. A test shielded bond token
-(`30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61`) is deployed with it,
-because Preview's faucet hands out only unshielded tNIGHT.
+## C. Check the deployment on Preview
 
 ```bash
-pnpm --filter @mmr/contracts compact:build   # circuits + proving keys (~4 min)
-pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
-pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
-pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
-pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
+pnpm --filter @mmr/dapp check-deployment
 ```
 
-The live engagement on this deployment (`7e3dc433…b046`) runs on the VIRTUAL/USDC pool on Base
-from 24 November, on three public liquidity-provider wallets we do not control (a demonstration;
-see the README). Its record:
-[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json). A sample engagement ran on the first
-deployment of an earlier version (16 transactions on the contract tests' sample day, blocks 169,367
-to 226,741): [`packages/dapp/deployments/preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
+This reads `epoch_proof`'s state from Midnight's public Preview indexer
+(`4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634`) and lists the 12 circuits with
+a verifier key on chain. After `pnpm --filter @mmr/contracts compact:build` (about 4 minutes) it also
+compares each on-chain key with the local build, byte for byte. Key generation is deterministic, so
+a match means the deployed contract is this source.
 
-### Why Demo B's lifecycle ran locally
+## D. Follow the live engagement
 
-On the retired ledger-8 Preview chain, contract **calls** did not get included, while
-**deploys** and maintenance updates from the same wallet and client did. This was traced to the end: the
-**identical node binary** (`1.0.400-87c0fbdb`, ledger `=8.1.3`) accepts the same calls on
-a **local** node — so the cause is **not** the contract, the ZK, the compiler, or the
-ledger version. It is isolated to the Preview **wallet's DUST/fee structure** (its DUST
-came from registration), matching a known `NotNormalized` DUST-action edge case. It is
-written up in [`specs/CALL_SUBMISSION_BLOCKER.md`](specs/CALL_SUBMISSION_BLOCKER.md) and
-escalated to Midnight. It did not affect the protocol — the byte-identical local node
-runs the whole thing. The lifecycle now runs on the ledger-9 Preview deployment next.
+Engagement `7e3dc433…b046` runs for 30 days from 24 November 2026 on the VIRTUAL/USDC pool on Base
+(Uniswap v3, `0x529d2863a1521d0b57db028168fde2e97120017c`). It is a demonstration on three public
+liquidity-provider wallets that we do not control; the README explains how they and the terms were
+chosen.
 
----
+- **Its state, read from the contract on every visit:**
+  [the live engagement page](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
+  It shows the status, the bond, day 1, funding, and for each day the attested root, the proven
+  uptime, settlement and release.
+- **Every transaction:** [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+- **The jobs that carry it:**
+  - [`daily-index.yml`](.github/workflows/daily-index.yml) indexes the previous UTC day at 01:10 UTC
+    (again at 05:10 and 11:10, in case a scheduled start is late) and publishes the trees and
+    series to IPFS. Days are indexed in order; a day that fails holds back the later ones.
+  - [`preview-lifecycle.yml`](.github/workflows/preview-lifecycle.yml) runs after each index and at
+    02:40 and 18:20 UTC. It recomputes each published day before the attesters vote (or dispute),
+    then proves funding once, and proves, settles and releases each day as its window opens. Each
+    run's summary lists its transactions.
 
-## Demo D — the public profile UI (~10 s)
+Running the lifecycle yourself needs the deploy wallet's seed and is not needed to check anything:
+every result it produces is public chain state that the page and step C read.
+
+## E. Use the web app
+
+**Live:** [mm-reputation-web.vercel.app](https://mm-reputation-web.vercel.app). **Locally:**
 
 ```bash
-pnpm --filter web dev        # profile + depth/uptime chart + tear sheet, at localhost:3000
+pnpm --filter web dev                    # http://localhost:3000
 ```
 
-Or open the hosted version if it is deployed (see the README's **For reviewers** block).
-This is the reputation record as a market maker's counterparty reads it — the
-depth/uptime chart, per-epoch verdicts, and the one-page tear sheet, with no private data
-exposed. It shows what the product is; the cryptography underneath is what Demos A–C
-verify.
+- **Public record.** Browse market makers, open a profile, export its tear sheet. These profiles are
+  sample data and say so on the page; real records appear as engagements are claimed.
+- **Market maker.** Sign in with an Ethereum wallet, register an engagement: tier, bond, the pool,
+  the terms and the client's Midnight key, which the wizard takes from the client's account. The
+  wizard seals the engagement file (secrets and salts) for the market maker to keep.
+- **Client.** Save your Midnight key once; the bond goes to it on a default. Open a registration,
+  check its terms against the commitment, and accept it only if it names your key.
+- **The live engagement page** (step D) is the only page that reads the chain.
 
----
+## Earlier runs
 
-## What's real vs. stubbed
+Before the ledger 9 relaunch of Preview, the lifecycle ran on a local Midnight node
+([`specs/LIVE_LOCAL_LIFECYCLE.md`](specs/LIVE_LOCAL_LIFECYCLE.md)), because contract calls from a
+DUST-registered wallet were not being included on the old Preview chain
+([`specs/CALL_SUBMISSION_BLOCKER.md`](specs/CALL_SUBMISSION_BLOCKER.md)). On ledger 9 calls land:
+a sample engagement on an earlier deployment ran 16 transactions from block 169,367 to 226,741,
+covering registration, bond, activation, attester votes, funding, three daily proofs and two
+settlements
+([`preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json)).
 
-Real and verified: the whole Midnight/ZK core (one Compact 0.36.1 contract for ledger 9,
-all I1–I10 bound in-circuit, 135 known-answer tests that execute the *compiled* circuit
-and revert on any tampered witness, all run in CI), real `zkir` proving/verifying keys
-(all 12 circuits), the deterministic indexer, the independent watcher, the ledger-9 Preview
-deploy (12/12 circuits on chain), and — in Demo B — **5 real on-chain
-lifecycle calls** (`register → proveFunding`) plus the heavy and time-gated circuits
-(`proveEpoch`, `settle`/`release`/`claim`) executed through the real compiled circuit. The
-IPFS publisher (Pinata v3) and Postgres repository (`@mmr/db`) are real behind their
-interfaces.
+## What is real and what is sample data
 
-Still to wire: the three attester operators' daily `publishRoot` / `disputeRoot` votes
-(the contract side, secret-knowledge votes at 2 of 3, is done) and the live lifecycle on
-the Preview deployment. Full detail: [`specs/BUILT_ON_MIDNIGHT.md`](specs/BUILT_ON_MIDNIGHT.md).
+| Part | Status |
+|---|---|
+| Contract on Preview, 12 circuits, keys matching the source | Real |
+| Live engagement: registration, bond, activation | Real, on chain |
+| Daily index of the engagement's pool on Base, attested roots, daily proofs | Real; runs daily from 24 November |
+| Watcher fixtures (step A) | Real indexed days |
+| Profiles, tear sheets and the dashboards' history | Sample data, labelled on the page |
+| Attesters | Three keys held by one operator in this demo; separate parties in production |
+| Daily indexer host | Built for Trigger.dev; runs on GitHub Actions' scheduler for this demo |

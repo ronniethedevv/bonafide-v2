@@ -17,7 +17,7 @@
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolveChain } from "../chains.js";
-import { JsonRpcClient } from "../evm/rpc.js";
+import { JsonRpcClient, routeLogs } from "../evm/rpc.js";
 import { UniswapV3ChainProvider } from "../evm/provider.js";
 import { resolveEpochRange } from "../evm/range.js";
 import { buildEpoch, InMemoryPublisher, type EpochManifest } from "../epoch.js";
@@ -90,12 +90,19 @@ export async function runLiveEpoch(opts: LiveEpochOptions): Promise<RunResult> {
   if (!url) throw new Error(`${cfg.rpcEnvVar} is not set (archive RPC url for ${cfg.name})`);
   const baseFetch = rpcFetch(env);
   const fetchImpl = opts.cacheDir ? cachingFetch(baseFetch, opts.cacheDir) : baseFetch;
-  const rpc = new JsonRpcClient({
-    url,
-    fetchImpl,
-    retries: opts.retries ?? 10,
-    ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
-  });
+  const client = (u: string): JsonRpcClient =>
+    new JsonRpcClient({
+      url: u,
+      fetchImpl,
+      retries: opts.retries ?? 10,
+      ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
+    });
+  const archive = client(url);
+  // A wide-range log endpoint, when set, serves eth_getLogs only (same cache, same chain).
+  const logsUrl = env[cfg.logsRpcEnvVar];
+  const logs = logsUrl ? client(logsUrl) : undefined;
+  if (logs && (await logs.chainId()) !== cfg.chainId) throw new Error(`${cfg.logsRpcEnvVar} is not chain ${cfg.chainId}`);
+  const rpc = logs ? routeLogs(archive, logs) : archive;
   const provider = new UniswapV3ChainProvider(cfg, rpc, opts.activity ?? {});
   await provider.assertChainId();
   const range = await resolveEpochRange(rpc, opts.epoch, opts.startTs, opts.endTs);

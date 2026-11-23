@@ -66,7 +66,18 @@ describe("getLogsChunked", () => {
     }
   });
 
-  it("propagates a failed chunk", async () => {
-    await expect(getLogsChunked(new LogChain(), { fromBlock: 0, toBlock: 30 }, { chunkBlocks: 11 })).rejects.toThrow(/too wide/);
+  it("splits a chunk the provider refuses for its range, with the same result", async () => {
+    const narrow = new LogChain(10);
+    const split = await getLogsChunked(narrow, { fromBlock: 0, toBlock: 99 }, { chunkBlocks: 100 });
+    expect(split).toEqual(await getLogsChunked(new LogChain(), { fromBlock: 0, toBlock: 99 }));
+    expect(narrow.requests.every(([a, b]) => b - a + 1 <= 10)).toBe(true);
+  });
+
+  it("propagates any other failure", async () => {
+    const broken = new LogChain();
+    broken.getLogs = async () => {
+      throw new Error("execution reverted");
+    };
+    await expect(getLogsChunked(broken, { fromBlock: 0, toBlock: 30 })).rejects.toThrow(/reverted/);
   });
 });

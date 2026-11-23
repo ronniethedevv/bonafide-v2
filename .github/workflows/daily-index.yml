@@ -2,15 +2,18 @@ name: Daily index
 
 # The daily deterministic indexer for the demo (DD-33); production runs it on Trigger.dev.
 # Every covered chain, the last few closed UTC days (stored days are skipped, so a missed
-# run is caught up by the next). Runs at 01:10 UTC, once each day's last block is final;
-# run it by hand for a backfill. Skips at once while no chain has covered tokens.
+# run is caught up by the next). Runs at 01:10 UTC, once each day's last block is final,
+# and again at 05:10 and 11:10: GitHub can start a scheduled run hours late or drop it, and
+# a run with nothing left to index ends in seconds. Runs queue, never overlap. Run it by
+# hand for a backfill. Skips at once while no chain has covered tokens.
 #
 # Settings → Secrets and variables → Actions
 #   Secrets:   DATABASE_URL, BASE_ARCHIVE_RPC_URL (archive RPC with the key in the URL),
 #              IPFS_PINNING_JWT; ETH_ARCHIVE_RPC_URL only if Ethereum is covered
 #   Variables: MMR_COVERAGE_8453 (base tokens to index on Base; MMR_COVERAGE_1 for
-#              Ethereum), MMR_LOG_CHUNK_BLOCKS (10 on a free RPC key, e.g. 2000 on a paid
-#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_RPC_CONCURRENCY (default 8),
+#              Ethereum), optional BASE_LOGS_RPC_URL (log endpoint, default publicnode),
+#              MMR_LOG_CHUNK_BLOCKS (blocks per log request, default 10000; 10 if logs come
+#              from a free Alchemy key), MMR_CATCHUP_DAYS (default 3), MMR_RPC_CONCURRENCY (default 8),
 #              MMR_TREASURY_8453, MMR_POOLS_8453 (limit to these pools), MMR_INDEX_FROM
 #              (no catch-up before this day)
 #              (each is read from a variable, or from a secret of the same name)
@@ -18,6 +21,8 @@ name: Daily index
 on:
   schedule:
     - cron: "10 1 * * *"
+    - cron: "10 5 * * *"
+    - cron: "10 11 * * *"
   workflow_dispatch:
     inputs:
       date:
@@ -49,12 +54,15 @@ jobs:
       MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 || secrets.MMR_COVERAGE_1 }}
       MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 || secrets.MMR_TREASURY_8453 }}
       MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 || secrets.MMR_TREASURY_1 }}
-      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS || secrets.MMR_LOG_CHUNK_BLOCKS }}
+      # Logs come from a free public endpoint that accepts wide ranges (10,000 blocks per
+      # request, about 44 requests for a Base day; it keeps about two weeks of logs). Blocks,
+      # state and receipts stay on BASE_ARCHIVE_RPC_URL. Set BASE_LOGS_RPC_URL to override.
+      BASE_LOGS_RPC_URL: ${{ vars.BASE_LOGS_RPC_URL || secrets.BASE_LOGS_RPC_URL || 'https://base-rpc.publicnode.com' }}
+      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS || secrets.MMR_LOG_CHUNK_BLOCKS || '10000' }}
       MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS || secrets.MMR_CATCHUP_DAYS }}
       MMR_RPC_CONCURRENCY: ${{ vars.MMR_RPC_CONCURRENCY || secrets.MMR_RPC_CONCURRENCY }}
-      # On a free RPC plan (10-block log requests; a Base day is 432,000 blocks at 0.2 s) one
-      # pool-day is ~43,200 requests, so the demo indexes only the live engagement's pool,
-      # VIRTUAL/USDC on Uniswap v3, and no day before the engagement registered (23 Nov).
+      # The demo indexes only the live engagement's pool, VIRTUAL/USDC on Uniswap v3, and no
+      # day before the engagement registered (23 Nov).
       MMR_POOLS_8453: ${{ vars.MMR_POOLS_8453 || secrets.MMR_POOLS_8453 || '0x529d2863a1521d0b57db028168fde2e97120017c' }}
       MMR_INDEX_FROM: ${{ vars.MMR_INDEX_FROM || secrets.MMR_INDEX_FROM || '2026-11-23' }}
       # A busy pool's day of logs, receipts and positions exceeds Node's default ~2 GB heap.

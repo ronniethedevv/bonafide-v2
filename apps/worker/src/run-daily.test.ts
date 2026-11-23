@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dayFromDate } from "./day.js";
-import { plan } from "./run-daily.js";
+import { indexInOrder, plan } from "./run-daily.js";
 
 const TOKEN = "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b";
 const NOW = new Date("2026-11-17T01:10:00Z");
@@ -27,5 +27,25 @@ describe("daily run plan", () => {
     expect(() => plan({ ...env, MMR_INDEX_CHAIN: "10" }, NOW)).toThrow(/unsupported chain/);
     // A chain with no covered tokens is not indexed even when asked for.
     expect(plan({ MMR_COVERAGE_8453: TOKEN, MMR_INDEX_CHAIN: "1" }, NOW).chains).toEqual([]);
+  });
+});
+
+describe("indexing order", () => {
+  it("indexes each chain's days oldest first and stops a chain at its first failure", async () => {
+    const calls: string[] = [];
+    const logs: string[] = [];
+    const failed = await indexInOrder(
+      [8453, 1],
+      [D, D - 2, D - 1],
+      async (chainId, day) => {
+        calls.push(`${chainId}:${day - D}`);
+        if (chainId === 8453 && day === D - 1) throw new Error("rpc down");
+        return { status: "indexed" };
+      },
+      (m) => logs.push(m),
+    );
+    expect(calls).toEqual(["8453:-2", "8453:-1", "1:-2", "1:-1", "1:0"]);
+    expect(failed).toBe(1);
+    expect(logs).toContain("stopped: later days wait for this one");
   });
 });

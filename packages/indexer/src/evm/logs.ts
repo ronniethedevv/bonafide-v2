@@ -1,9 +1,10 @@
 // eth_getLogs over a block range in fixed-size chunks (DD-22 context: the Free-tier
 // key allows at most 10 blocks per request). Rate limits are retried with backoff by
-// JsonRpcClient; chunks run with bounded concurrency. Output is sorted by
-// (blockNumber, logIndex), so it is independent of chunking and scheduling.
+// JsonRpcClient; chunks run with bounded concurrency. A chunk the provider refuses for its
+// span or result size is split in half until it is accepted. Output is sorted by
+// (blockNumber, logIndex), so it is independent of chunking, splitting and scheduling.
 
-import type { EvmRpc, LogFilter, RpcLog } from "./rpc.js";
+import { isRangeRejection, type EvmRpc, type LogFilter, type RpcLog } from "./rpc.js";
 
 export interface ChunkOptions {
   /** Blocks per request (inclusive span). Default 10. */
@@ -35,7 +36,7 @@ export async function getLogsChunked(
     while (next < chunks.length) {
       const i = next++;
       const [fromBlock, toBlock] = chunks[i]!;
-      results[i] = await rpc.getLogs({ ...filter, fromBlock, toBlock });
+      results[i] = await getLogsSplitting(rpc, filter, fromBlock, toBlock);
       opts.onProgress?.(++done, chunks.length);
     }
   };
@@ -48,4 +49,17 @@ export async function getLogsChunked(
     }
   }
   return logs.sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
+}
+
+/** One chunk; halved (recursively) while the provider rejects its span or result size. */
+async function getLogsSplitting(rpc: EvmRpc, filter: LogFilter, fromBlock: number, toBlock: number): Promise<RpcLog[]> {
+  try {
+    return await rpc.getLogs({ ...filter, fromBlock, toBlock });
+  } catch (err) {
+    if (fromBlock >= toBlock || !isRangeRejection(err)) throw err;
+    const mid = Math.floor((fromBlock + toBlock) / 2);
+    const left = await getLogsSplitting(rpc, filter, fromBlock, mid);
+    const right = await getLogsSplitting(rpc, filter, mid + 1, toBlock);
+    return [...left, ...right];
+  }
 }
