@@ -185,7 +185,9 @@ async function main(): Promise<void> {
     const toDay = today - 1n < lastDay ? today - 1n : lastDay;
     const loaded = new Map<number, PublishedDay>();
     const days = await indexedDays(engRecord.chain, Number(regDay), Number(toDay));
-    console.log(`\nattesters: ${days.length} indexed day(s) from ${dayLabel(regDay)} to ${dayLabel(toDay)}`);
+    console.log(toDay < regDay
+      ? `\nattesters: no day to attest yet (the first is ${dayLabel(regDay)})`
+      : `\nattesters: ${days.length} indexed day(s) from ${dayLabel(regDay)} to ${dayLabel(toDay)}`);
     for (const d of days) {
       const day = BigInt(d.day);
       const rk = rootKey(CHAIN, day);

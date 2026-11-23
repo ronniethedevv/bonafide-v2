@@ -12,8 +12,9 @@ on Base, three public LP wallets, permissive retainer terms) is registered, bond
 day 1 is 24 Nov. The daily indexer (GitHub
 Actions' scheduler; built to run on Trigger.dev in production) has not yet completed a
 real day: the first runs were too slow and ran out of memory, both since fixed. The
-lifecycle job (attest after recomputing, then prove, settle, release) is built and
-tested offline end to end but has not run. A free RPC plan (10-block log requests, 0.2 s
+lifecycle job (attest after recomputing, then prove, settle, release) is tested offline
+end to end and ran on main for the first time on 23 Nov (run 45120602600: fresh wallet
+sync in about 6 minutes, no day to attest yet, funding waits for 23 or 24 Nov). A free RPC plan (10-block log requests, 0.2 s
 Base blocks) limits indexing to the engagement's pool. Next: the first indexed day, funding
 proven, the lifecycle job running unattended.
 
