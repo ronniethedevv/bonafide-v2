@@ -13,6 +13,7 @@
 </p>
 
 **[Live site](https://mm-reputation-web.vercel.app)** ·
+**[The live engagement, read from the chain](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046)** ·
 **[A market maker's profile](https://mm-reputation-web.vercel.app/mm/vega-mm)** ·
 **[Tear sheet](https://mm-reputation-web.vercel.app/mm/vega-mm/tear-sheet)** ·
 **[Demo guide](DEMO.md)** ·
@@ -102,6 +103,11 @@ Funding is proven against 23 or 24 November once the daily indexer has published
 From then on the scheduled job attests each indexed day, proves it, settles it and releases its
 share of the bond. Every transaction id:
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+
+Its public state, read from the contract through Midnight's public indexer on every visit:
+[the live engagement page](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
+
+<p align="center"><img src="docs/assets/engagement.png" alt="The live engagement page: status, tier and chain, bond, day 1, funding, releases, the bond's beneficiary and the day table, read from the contract on Midnight Preview" width="100%"></p>
 
 ### Every circuit, proven on an earlier deployment
 
