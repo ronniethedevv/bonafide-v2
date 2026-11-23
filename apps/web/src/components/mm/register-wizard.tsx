@@ -54,7 +54,17 @@ interface Form {
   floorPrice: string;
   wallets: string[];
   bond: string;
+  /** 1 = A, 2 = B, 3 = C: sets the minimum bond (the contract's tierMinBond). */
+  tier: number;
+  /** The client's Midnight coin public key (32-byte hex): receives the bond on default. */
+  beneficiary: string;
 }
+
+/** The contract's minimum bond per tier, in the bond token's smallest unit (DD-35). */
+const TIER_MIN_BOND: Record<number, number> = { 1: 10_000, 2: 5_000, 3: 2_500 };
+const TIER_NAME: Record<number, string> = { 1: "A", 2: "B", 3: "C" };
+const CHAIN_ID: Record<string, number> = { Base: 8453, Ethereum: 1 };
+const KEY_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 const EMPTY: Form = {
   poolId: POOLS[0].id,
@@ -72,6 +82,8 @@ const EMPTY: Form = {
   floorPrice: "",
   wallets: [""],
   bond: "",
+  tier: 1,
+  beneficiary: "",
 };
 
 /**
@@ -86,6 +98,32 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
 
   const set = (k: keyof Form, v: string | number | string[]) => setF((p) => ({ ...p, [k]: v }));
   const pool = POOLS.find((p) => p.id === f.poolId)!;
+
+  // A stored engagement names the client's own Midnight key (saved on their account) as the
+  // bond's beneficiary; the market maker cannot type another. The client's acceptance
+  // checks it again before they sign.
+  const [beneficiaryNote, setBeneficiaryNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!persist) return;
+    const address = f.clientAddress.trim();
+    if (!ADDR_RE.test(address)) {
+      setBeneficiaryNote(null);
+      return;
+    }
+    let live = true;
+    fetch(`/api/clients/inbox-key?address=${encodeURIComponent(address)}`, { cache: "no-store" })
+      .then(async (r) => {
+        const b = (await r.json()) as { midnightCoinKey?: string | null; error?: string };
+        if (!live) return;
+        set("beneficiary", r.ok && b.midnightCoinKey ? b.midnightCoinKey : "");
+        setBeneficiaryNote(r.ok ? (b.midnightCoinKey ? null : "Your client hasn't saved their Midnight key yet. Ask them to add it in their client portal.") : (b.error ?? "Couldn't look up your client."));
+      })
+      .catch(() => live && setBeneficiaryNote("Couldn't look up your client. Check your connection."));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persist, f.clientAddress]);
   const client = clients.find((c) => c.id === f.clientId);
   const cleanWallets = f.wallets.map((w) => w.trim()).filter(Boolean);
   const clientLabel = persist ? (ADDR_RE.test(f.clientAddress.trim()) ? shortAddress(f.clientAddress.trim()) : "—") : (client?.name ?? "—");
@@ -95,7 +133,7 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
     if (s === 0) return !errors.label && !errors.loan && !errors.clientAddress;
     if (s === 1) return !errors.depthTarget && !errors.minUptime && !errors.epochs && !errors.roundtrip && !errors.outflowCap && !errors.netSellCap && !errors.floorPrice;
     if (s === 2) return !errors.wallets;
-    if (s === 3) return !errors.bond;
+    if (s === 3) return !errors.bond && !errors.beneficiary;
     return Object.keys(errors).length === 0;
   };
 
@@ -224,9 +262,32 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
         )}
 
         {step === 3 && (
-          <Section title="Bond" hint="The bond you post against the engagement — released in tranches as epochs settle, slashed on default.">
-            <Field label="Bond amount" err={errors.bond} suffix="USDM">
-              <input className="inp" inputMode="decimal" placeholder="120000" value={f.bond} onChange={(e) => set("bond", e.target.value)} />
+          <Section title="Bond" hint="The bond you post against the engagement: released in tranches as days settle, and paid to the client if the engagement defaults. Tier, chain, bond and the client's key are public on chain; nothing else is.">
+            <Field label="Tier" suffix={`minimum bond ${TIER_MIN_BOND[f.tier]!.toLocaleString("en-US")}`}>
+              <select className="inp" value={f.tier} onChange={(e) => set("tier", Number(e.target.value))}>
+                {[1, 2, 3].map((t) => (
+                  <option key={t} value={t}>{`Tier ${TIER_NAME[t]} (minimum ${TIER_MIN_BOND[t]!.toLocaleString("en-US")})`}</option>
+                ))}
+              </select>
+            </Field>
+            <div style={{ height: 14 }} />
+            <Field label="Bond amount" err={errors.bond} suffix="bond token units">
+              <input className="inp" inputMode="numeric" placeholder={String(TIER_MIN_BOND[f.tier])} value={f.bond} onChange={(e) => set("bond", e.target.value)} />
+            </Field>
+            <div style={{ height: 14 }} />
+            <Field
+              label="Client's Midnight coin public key"
+              err={persist ? (beneficiaryNote ?? undefined) : f.beneficiary.trim() ? errors.beneficiary : undefined}
+              suffix={persist ? "from your client's account" : "receives the bond on default"}
+            >
+              <input
+                className="inp mono"
+                style={{ fontSize: 13 }}
+                placeholder={persist ? "filled from your client's account" : "64 hex characters"}
+                value={f.beneficiary}
+                readOnly={persist}
+                onChange={(e) => set("beneficiary", e.target.value)}
+              />
             </Field>
           </Section>
         )}
@@ -271,7 +332,10 @@ function validate(f: Form, wallets: string[], persist: boolean, pool: Pool): Rec
   // link a profile claim back to its engagement.
   if (f.epochs !== "30") e.epochs = "Engagements run 30 epochs.";
   if (!pct(f.roundtrip)) e.roundtrip = "0–100.";
-  if (!pos(f.bond)) e.bond = "Enter a bond amount.";
+  const minBond = TIER_MIN_BOND[f.tier] ?? 0;
+  const bond = f.bond.replace(/,/g, "").trim();
+  if (!/^\d+$/.test(bond) || Number(bond) < minBond) e.bond = `Enter a whole number, at least ${minBond.toLocaleString("en-US")} for tier ${TIER_NAME[f.tier]}.`;
+  if (!KEY_RE.test(f.beneficiary.trim()) || /^(0x)?0+$/.test(f.beneficiary.trim())) e.beneficiary = "Enter your client's Midnight coin public key (64 hex characters).";
   for (const k of ["outflowCap", "netSellCap"] as const) {
     if (f[k].trim() && !amount(f[k], pool.base)) e[k] = `Enter an amount of ${pool.base.symbol}, or leave blank.`;
   }
@@ -322,7 +386,7 @@ function Review({
 
   // Fresh secrets + the protocol's real commitments, once per visit to this step.
   useEffect(() => {
-    const { terms, human } = buildTerms({ ...f, base: pool.base, quote: pool.quote });
+    const { terms, human } = buildTerms({ ...f, pool: pool.addr, base: pool.base, quote: pool.quote });
     newOpening({
       pool: { chain: pool.chain, address: pool.addr, pair: pool.pair, base: pool.base, quote: pool.quote },
       client: persist ? { address: f.clientAddress.trim().toLowerCase() } : demoClientName ? { name: demoClientName } : {},
@@ -330,6 +394,12 @@ function Review({
       wallets,
       terms,
       human,
+      registration: {
+        tier: f.tier,
+        chainId: CHAIN_ID[pool.chain] ?? 0,
+        bond: f.bond.replace(/,/g, "").trim(),
+        beneficiary: f.beneficiary.trim().replace(/^0x/, "").toLowerCase(),
+      },
     })
       .then(setOpening)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't prepare the engagement."));
@@ -409,7 +479,8 @@ function Review({
         <Row k="Net-selling cap" v={`${fmt(f.netSellCap.trim() || "0")} ${pool.base.symbol}`} />
         <Row k="Floor price" v={f.floorPrice.trim() ? `${fmt(f.floorPrice)} ${pool.quote.symbol} per ${pool.base.symbol}` : "not set"} />
         <Row k="Wallets (private)" v={`${wallets.length} committed`} />
-        <Row k="Bond" v={`${fmt(f.bond)} USDM`} />
+        <Row k="Tier · bond (public)" v={`${TIER_NAME[f.tier]} · ${fmt(f.bond)}`} />
+        <Row k="Client's Midnight key (public)" v={`${f.beneficiary.trim().replace(/^0x/, "").slice(0, 10)}…`} />
       </dl>
 
       {persist && clientError && (

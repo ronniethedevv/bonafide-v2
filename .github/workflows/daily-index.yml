@@ -10,7 +10,10 @@ name: Daily index
 #              IPFS_PINNING_JWT; ETH_ARCHIVE_RPC_URL only if Ethereum is covered
 #   Variables: MMR_COVERAGE_8453 (base tokens to index on Base; MMR_COVERAGE_1 for
 #              Ethereum), MMR_LOG_CHUNK_BLOCKS (10 on a free RPC key, e.g. 2000 on a paid
-#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_TREASURY_8453
+#              one), optional MMR_CATCHUP_DAYS (default 3), MMR_RPC_CONCURRENCY (default 8),
+#              MMR_TREASURY_8453, MMR_POOLS_8453 (limit to these pools), MMR_INDEX_FROM
+#              (no catch-up before this day)
+#              (each is read from a variable, or from a secret of the same name)
 
 on:
   schedule:
@@ -42,12 +45,20 @@ jobs:
       BASE_ARCHIVE_RPC_URL: ${{ secrets.BASE_ARCHIVE_RPC_URL }}
       ETH_ARCHIVE_RPC_URL: ${{ secrets.ETH_ARCHIVE_RPC_URL }}
       IPFS_PINNING_JWT: ${{ secrets.IPFS_PINNING_JWT }}
-      MMR_COVERAGE_8453: ${{ vars.MMR_COVERAGE_8453 }}
-      MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 }}
-      MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 }}
-      MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 }}
-      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS }}
-      MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS }}
+      MMR_COVERAGE_8453: ${{ vars.MMR_COVERAGE_8453 || secrets.MMR_COVERAGE_8453 }}
+      MMR_COVERAGE_1: ${{ vars.MMR_COVERAGE_1 || secrets.MMR_COVERAGE_1 }}
+      MMR_TREASURY_8453: ${{ vars.MMR_TREASURY_8453 || secrets.MMR_TREASURY_8453 }}
+      MMR_TREASURY_1: ${{ vars.MMR_TREASURY_1 || secrets.MMR_TREASURY_1 }}
+      MMR_LOG_CHUNK_BLOCKS: ${{ vars.MMR_LOG_CHUNK_BLOCKS || secrets.MMR_LOG_CHUNK_BLOCKS }}
+      MMR_CATCHUP_DAYS: ${{ vars.MMR_CATCHUP_DAYS || secrets.MMR_CATCHUP_DAYS }}
+      MMR_RPC_CONCURRENCY: ${{ vars.MMR_RPC_CONCURRENCY || secrets.MMR_RPC_CONCURRENCY }}
+      # On a free RPC plan (10-block log requests; a Base day is 432,000 blocks at 0.2 s) one
+      # pool-day is ~43,200 requests, so the demo indexes only the live engagement's pool,
+      # VIRTUAL/USDC on Uniswap v3, and no day before the engagement registered (23 Nov).
+      MMR_POOLS_8453: ${{ vars.MMR_POOLS_8453 || secrets.MMR_POOLS_8453 || '0x529d2863a1521d0b57db028168fde2e97120017c' }}
+      MMR_INDEX_FROM: ${{ vars.MMR_INDEX_FROM || secrets.MMR_INDEX_FROM || '2026-11-23' }}
+      # A busy pool's day of logs, receipts and positions exceeds Node's default ~2 GB heap.
+      NODE_OPTIONS: --max-old-space-size=6144
       MMR_INDEX_DATE: ${{ inputs.date }}
       MMR_INDEX_CHAIN: ${{ inputs.chain }}
     steps:
@@ -90,6 +101,12 @@ jobs:
       - name: Install dependencies
         if: steps.cfg.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile --filter "@mmr/worker..."
+
+      # Idempotent: applies only the migrations this database has not recorded, in one
+      # transaction under an advisory lock.
+      - name: Apply database migrations
+        if: steps.cfg.outputs.ready == 'true'
+        run: node packages/db/scripts/migrate.mjs --force
 
       - name: Index
         if: steps.cfg.outputs.ready == 'true'

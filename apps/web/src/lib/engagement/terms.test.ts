@@ -8,6 +8,7 @@ const DEGEN: TokenInfo = { symbol: "DEGEN", decimals: 18 };
 const CBBTC: TokenInfo = { symbol: "cbBTC", decimals: 8 };
 
 const INPUT = {
+  pool: "0xd0b53d9277642d899df5c87a3966a349a798f224",
   base: WETH,
   quote: USDC,
   loan: "1,000",
@@ -70,6 +71,7 @@ describe("terms from the wizard", () => {
       bandBps: 100,
       minUptimeBuckets: 44, // ceil(0.9 × 48)
       epochsTotal: 30,
+      pool: BigInt(INPUT.pool),
     });
     expect(human).toMatchObject({ base: "WETH", quote: "USDC", outflowCap: "1,000" });
   });

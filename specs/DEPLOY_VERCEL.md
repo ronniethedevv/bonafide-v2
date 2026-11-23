@@ -18,9 +18,9 @@ This is a pnpm monorepo, so the one setting that matters is the **Root Directory
    package resolves.)
 3. **Framework Preset:** `Next.js` — auto-detected; leave it.
 4. **Build / Install / Output commands:** leave all on **Default**. Do not set any.
-5. **Environment Variables:** **none.** Leave this empty — the app runs on
-   fixtures. (If you later stand up the read-model API, add `API_URL` here and the
-   app will fetch live instead; until then, leave it unset.)
+5. **Environment Variables:** **none** are needed for the sample pages. The live
+   engagement pages read the contract from Midnight's public Preview indexer (override
+   with `MIDNIGHT_INDEXER_URL`).
 6. Click **Deploy**.
 
 That's it. The dynamic routes (`/mm/[handle]`, `/mm/[handle]/tear-sheet`) are

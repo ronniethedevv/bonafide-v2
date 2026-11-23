@@ -127,11 +127,12 @@ export interface AttesterVote {
 
 /**
  * The attester committee (I8, DD-26: Option B). Each online member submits
- * publishRoot(epoch, rootOfRoots, cid) in its own transaction; the contract counts
- * distinct members and publishes the root at the threshold (2 of 3).
+ * publishRoot(chain, day, rootOfRoots, cid) in its own transaction (roots are keyed by
+ * chain and UTC day, DD-35); the contract counts distinct members and publishes the
+ * root at the threshold (2 of 3).
  */
 export interface AttesterCommittee {
   readonly threshold: number;
   readonly size: number;
-  publishRoot(epoch: number, rootOfRootsHex: string, cid: string): Promise<AttesterVote[]>;
+  publishRoot(chainId: number, day: number, rootOfRootsHex: string, cid: string): Promise<AttesterVote[]>;
 }

@@ -53,6 +53,7 @@ import {
   termsToEngagement,
   proveEpochs,
   runClaim,
+  creditEpochs,
   type ClaimArgs,
   runRegister,
   buildScenario,
@@ -187,11 +188,11 @@ describe.skipIf(!HAVE_BUILD)("proveEpoch KAT (compiled circuit)", () => {
     await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
   });
 
-  it("rejects a tampered pool address", async () => {
+  it("rejects a tampered pool address (DD-38: it is no longer the committed pool)", async () => {
     const { rootOfRoots, witness } = buildScenario();
     const w = cloneWitness(witness);
     w.poolEntry.poolAddr += 1n;
-    await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(POOL_PATH);
+    await expect(runProveEpoch(w, ID, rootOfRoots, EPOCH)).rejects.toThrow(/the proof's pool is not the engagement's \(DD-38\)/);
   });
 
   it("rejects a different rootOfRoots", async () => {
@@ -390,7 +391,7 @@ describe.skipIf(!HAVE_BUILD)("H1: depth witness bound to depth_root (I6)", () =>
     const engagement = createEngagement({
       id: "h1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
+               depthTarget: 10n, roundtripSharePpm: 1_000_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3, pool: POOL },
     });
     const hasher = new PoseidonHasher();
     const openings = assembleDepthOpenings(hasher, engagement, activities, DEFAULT_CONFIG, KAT_RANGE);
@@ -443,7 +444,7 @@ describe.skipIf(!HAVE_BUILD)("M1: flow witness bound to flow_root; round-trip ca
     const engagement = createEngagement({
       id: "m1-kat", poolAddr: POOL, wallets, salt: new Uint8Array(32).fill(1),
       terms: { floorPriceP: 2n, loanL0: 0n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
-               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3 },
+               depthTarget: 10n, roundtripSharePpm: 500_000n, bandBps: BAND, minUptimeBuckets: 48, epochsTotal: 3, pool: POOL },
     });
     const openings = assembleFlowOpenings(engagement, activities);
     const hasher = new PoseidonHasher();
@@ -591,10 +592,12 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     buildScenario(undefined, 0, {}, { 0: flatDepth(0n) }), // 0
   ];
 
-  /** Register, prove `n` epochs on one ledger, and return what a claim needs. */
+  /** Register, prove `n` epochs on one ledger, credit them (DD-37), and return what a claim needs. */
   async function setup(scenarios = epochScenarios()) {
     const reg = await runRegister(scenarios[0]!.witness, SECRET);
-    const { state, records } = await proveEpochs(scenarios, reg.id, new CompactHasher(), reg.state);
+    const proven = await proveEpochs(scenarios, reg.id, new CompactHasher(), reg.state);
+    const records = proven.records;
+    const state = await creditEpochs(proven.state, reg.id, records);
     const { terms, termsSalt } = scenarios[0]!.witness;
     const present = new Map(records.map((r) => [Number(r.epoch), r]));
     const base: ClaimArgs = {
@@ -638,7 +641,7 @@ describe.skipIf(!HAVE_BUILD)("H4: claim credits only on-ledger epochs (DD-12)", 
     const present = new Map(base.present);
     present.set(3, { ...records[2]!, uptime: 48n }); // epoch 3 really recorded 0
     await expect(runClaim({ ...base, present, epochsPassed: 3n }, state))
-      .rejects.toThrow(/epoch record not on the ledger \(H4\)/);
+      .rejects.toThrow(/epoch record not credited \(H4, DD-37\)/);
   });
 
   it("rejects a real record presented in the wrong epoch slot", async () => {

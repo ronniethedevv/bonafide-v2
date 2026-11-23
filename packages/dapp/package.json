@@ -15,7 +15,9 @@
     "register-dust": "tsx src/register-dust.ts",
     "proof-server": "docker run --rm -p 127.0.0.1:6300:6300 -v midnight-zk-params:/.cache/midnight --name mmr-proof-server midnightntwrk/proof-server:9.0.0",
     "check-deployment": "tsx src/check-deployment.ts",
-    "lifecycle": "tsx src/lifecycle.ts"
+    "lifecycle": "tsx src/lifecycle.ts",
+    "test": "vitest run",
+    "engagement:new": "tsx src/engagement-new.ts"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-js": "3.0.2",
@@ -33,19 +35,24 @@
     "@midnightntwrk/onchain-runtime-v4": "4.0.2",
     "@midnightntwrk/wallet-sdk": "2.0.1",
     "@mmr/contracts": "workspace:*",
+    "@mmr/engagement-file": "workspace:*",
     "@mmr/indexer": "workspace:*",
     "@mmr/merkle": "workspace:*",
     "@mmr/protocol": "workspace:*",
     "@mmr/prover": "workspace:*",
+    "@mmr/watcher": "workspace:*",
     "bip39": "^3.1.0",
     "dotenv": "^16.4.7",
+    "pg": "8.23.1",
     "rxjs": "^7.8.1",
     "undici": "^8.12.3"
   },
   "devDependencies": {
     "@midnight-ntwrk/testkit-js": "5.0.1",
     "@types/node": "^22.10.2",
+    "@types/pg": "8.23.1",
     "tsx": "4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   }
 }

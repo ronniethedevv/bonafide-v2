@@ -13,7 +13,9 @@ claim circuit enforces I10. A proof that breaks any invariant cannot be generate
 - `R_e` — the epoch's **root-of-roots**. `P` — the deal's floor price (option
   strike for loans, agreed floor for retainers). `L_0` — loan amount. `D` —
   allowed disposal (outflow cap). `S` — net-selling cap. `Q_0` — quote already in
-  the set at start. `δ*` — depth target. `ρ` — round-trip share cap.
+  the set at start. `δ*` — depth target. `ρ` — round-trip share cap. `π` — the
+  engagement's pool, committed with the terms: `proveEpoch` and `proveFunding` open
+  only `π`'s tree in `R_e` (DD-38).
 - All amounts are **unsigned**; every inequality is written to avoid a
   subtraction that could underflow.
 
@@ -83,26 +85,35 @@ An epoch counts only against the root its attester committee published:
 each submitted `publishRoot(e, root, cid)` for the same `(root, cid)`, each
 authenticated by proving knowledge of its secret (one vote per member per epoch).
 `proveEpoch` requires `rootOfRoots == publishedRoot[e]`; `settleEpoch` requires the
-root published; an epoch whose root was never published is not defaultable. The
-challenge window runs from settlement (`releaseEpoch`).
-*Circuits:* `publishRoot`, `proveEpoch`, `settleEpoch`, `defaultEngagement` (DD-26).
+root published; an epoch whose root was never published is not defaultable.
+A committee member whose recomputation disagrees votes `disputeRoot`; at 2 of 3 the root
+is disputed. Votes count only until the day's deadline (its end + 66 h), so after it every
+day is final: **settled** (released, and its record credited to `claim`), **disputed**
+(neutral: released to the market maker, never credited, never defaultable) or
+**neither** (defaultable). Releases open at that deadline (DD-37).
+*Circuits:* `publishRoot`, `disputeRoot`, `proveEpoch`, `settleEpoch`, `releaseEpoch`,
+`defaultEngagement` (DD-26, DD-35, DD-37).
 
 ## Funding · the loan reached the committed wallets (DD-27)
 
-Once per engagement, before any epoch settles: against epoch 1's published root
-(`publishedRoot[1]`, I8), with the same leaf openings as the epoch circuit (C1, I2, H2)
+Once per engagement, before any epoch settles: against the published, undisputed root
+of any day from the registration day through day 1 (I8; DD-37, so a loan that lands
+before day 1 is provable), with the same leaf openings as the epoch circuit (C1, I2, H2)
 and the registered wallets and terms (C2), `Σ_j from_treasury(m_j) ≥ L_0` over member
 slots. *Circuit:* `proveFunding`; `settleEpoch` requires it.
 
 ## I9 · Callers prove a secret
 No circuit trusts `ownPublicKey()` (the prover's machine chooses its value).
 Authorization is by proving knowledge of a secret: the engagement secret for the
-market maker's own steps (activation is owner-only), each attester's secret for root
-votes and disputes. `register` requires a non-zero bond beneficiary. *Circuits:*
-`activate`, `publishRoot`, `disputeRoot`, `proveEpoch`, `claim`.
+market maker's own steps (posting the bond and activation are owner-only, DD-37), each
+attester's secret for root votes and disputes. `register` requires a non-zero bond
+beneficiary. *Circuits:* `postBond`, `activate`, `publishRoot`, `disputeRoot`,
+`proveEpoch`, `claim`.
 
 ## I10 · The record only grows
 
 Public counters never decrease, and each finished engagement is claimed **at most
 once** via a nullifier `ν = H(engagement_secret ‖ engagement_id)`. A second claim
-with the same `ν` is rejected. *Circuit:* `claim`; *ledger:* nullifier set.
+with the same `ν` is rejected. A claim counts only **credited** days (records released
+undisputed, the `creditedRecords` tree) and must present at least one (DD-37).
+*Circuit:* `claim`; *ledger:* nullifier set, `creditedRecords`.

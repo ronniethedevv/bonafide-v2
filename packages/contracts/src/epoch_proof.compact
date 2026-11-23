@@ -48,7 +48,10 @@ struct Terms {
   disposal_D: Uint<128>, net_sell_S: Uint<128>, depth_target: Uint<128>,
   roundtrip_share_ppm: Uint<64>, band_bps: Uint<64>,
   // H4 (DD-12): I6 pass threshold (bucket count) and committed contract length in epochs.
-  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>
+  min_uptime_buckets: Uint<64>, epochs_total: Uint<64>,
+  // DD-38: the engagement's pool. Committed with the terms (so it stays private) and
+  // checked by proveEpoch and proveFunding: a proof opens only this pool's tree.
+  pool: Uint<160>
 }
 
 // C2: proveEpoch's public output. Both commitments are now checked on-chain: the
@@ -123,8 +126,8 @@ export ledger carryCommitment: Map<Bytes<32>, Bytes<32>>;
 // H4: append-only record of every proven epoch (2^20 records), read by claim privately.
 export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
 
-// Seed epochRecords with an all-zero genesis record so a valid path always exists for
-// claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
+// Seed epochRecords and creditedRecords with an all-zero genesis record so a valid path
+// always exists for claim's unpresented slots. It can never match an engagement (id = H(secret) != 0).
 // I8 (DD-26): the attester committee is fixed at deploy — three member ids
 // attesterId(secret_i); there is no circuit that changes it.
 // DD-35: the protocol's bond token (a shielded token type) is fixed at deploy too, so the
@@ -132,6 +135,8 @@ export ledger epochRecords: HistoricMerkleTree<20, EpochRecord>;
 constructor(members: Vector<3, Bytes<32>>, token: Bytes<32>) {
   epochRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
                                     termsCommit: default<Bytes<32>>, tier: 0 });
+  creditedRecords.insert(EpochRecord { id: default<Bytes<32>>, epoch: 0, uptime: 0,
+                                       termsCommit: default<Bytes<32>>, tier: 0 });
   bondToken = disclose(token);
   assert(members[0] != members[1] && members[0] != members[2] && members[1] != members[2],
          "committee members must be distinct (I8)");
@@ -578,7 +583,9 @@ export circuit proveEpoch(
   const fb = flowBuy();
   const fs = flowSell();
 
-  // Pool inclusion: the engagement's pool tree root is in rootOfRoots.
+  // Pool inclusion: the engagement's pool tree root is in rootOfRoots. DD-38: and the pool
+  // is the one committed in the terms, not another pool in the same day's root.
+  assert(pe.poolAddr == t.pool, "the proof's pool is not the engagement's (DD-38)");
   verifyPoolPath(transientHash<PoolEntry>(pe), pp, rootOfRoots);
 
   // Per active slot: the opened leaf (membership or low-leaf) is in pe.poolRoot
@@ -727,12 +734,16 @@ export circuit proveEpoch(
 // --- claim (I10 + H4) ---------------------------------------------------------
 //
 // A finished engagement is added to the MM's public profile exactly once. The claim
-// discloses only the counter updates, the nullifier and a historic epochRecords root —
+// discloses only the counter updates, the nullifier and a historic creditedRecords root —
 // never which engagement it came from. Mirrors @mmr/watcher deriveClaimFromRecords
 // (DD-12): over epochs 1..epochs_total, an epoch passes when the MM presents its
-// on-ledger record and the recorded uptime >= min_uptime_buckets; a missing epoch counts
+// credited record and the recorded uptime >= min_uptime_buckets; a missing epoch counts
 // toward the total, never toward passed. The MM may withhold a record (only lowering
-// its own score) but cannot present one that is not on the ledger.
+// its own score) but cannot present one that was not credited.
+// DD-37: only credited records count: a day is credited when its tranche is released
+// undisputed (releaseEpoch), so a proven day whose root was later disputed counts as not
+// met. A claim must present at least one credited day, so an engagement with none adds
+// nothing to completedCount.
 
 // ν = H(engagement_secret ‖ engagement_id). Each finished engagement yields one.
 circuit nullifier(secret: Bytes<32>, id: Bytes<32>): Bytes<32> {
@@ -770,16 +781,18 @@ export circuit claim(
   const tr = disclose(tier);
   assert(tr >= 1 && tr <= 3, "unknown tier (DD-35)");
 
-  // Every slot's path must reach a historic epochRecords root, unconditionally: the ledger
-  // check is in the public transcript, so doing it only for presented epochs would leak
-  // which epochs exist. An unpresented slot carries any on-ledger path (the genesis
+  // Every slot's path must reach a historic creditedRecords root, unconditionally: the
+  // ledger check is in the public transcript, so doing it only for presented epochs would
+  // leak which epochs exist. An unpresented slot carries any on-ledger path (the genesis
   // record always exists). A PRESENTED slot's record must be this engagement's, for
   // epoch e + 1, under these committed terms and this tier.
   const present = claimRecordPresent();
+  assert(fold((acc: Boolean, p: Boolean): Boolean => acc || p, false, present),
+         "a claim presents at least one credited day (DD-37)");
   const paths = claimRecordPaths();
   for (const e of 0..30) {
-    assert(epochRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(paths[e]))),
-           "epoch record not on the ledger (H4)");
+    assert(creditedRecords.checkRoot(disclose(merkleTreePathRoot<20, EpochRecord>(paths[e]))),
+           "epoch record not credited (H4, DD-37)");
     if (present[e]) {
       const rec = paths[e].leaf;
       assert(rec.id == engagementId && rec.epoch == e + 1 && rec.termsCommit == tc && rec.tier == tier,
@@ -817,7 +830,8 @@ export circuit claim(
 //   - funding window:  registeredAt[id] (recorded by register)
 //   - epoch schedule:  activatedAt[id]  (recorded by activate; epoch e ends at
 //                      activatedAt + e * EPOCH)
-//   - challenge window: settledAt[epochKey(id, e)] (recorded by settleEpoch)
+//   - release:         the day's deadline (DD-37); settledAt[epochKey(id, e)] (recorded
+//                      by settleEpoch) marks the epoch as settled
 // Compact exposes block time only through comparisons, so each anchor is a timestamp
 // argument CHECKED against the recording block's time when it is written:
 // block time - 600 s < ts <= block time (H3). A caller can shift an anchor by at most
@@ -897,6 +911,13 @@ circuit tierMinBond(t: Uint<8>): Uint<128> {
 circuit graceDeadline(id: Bytes<32>, epoch: Uint<64>): Uint<64> {
   const AFTER_END: Uint<64> = 237600;   // 6h + 12h + 24h + 24h
   return (epochEnd(id, epoch) + AFTER_END) as Uint<64>;
+}
+// DD-37: the same deadline by UTC day: the end of `day` + 66 h. Equals graceDeadline of
+// every epoch that falls on `day`; disputes of that day's root close then.
+circuit dayDeadline(day: Uint<64>): Uint<64> {
+  const DAY: Uint<64> = 86400;
+  const AFTER_END: Uint<64> = 237600;
+  return ((day + 1) * DAY + AFTER_END) as Uint<64>;
 }
 
 // H3: Compact exposes block time only through comparisons, never as a value, so the
@@ -995,6 +1016,9 @@ circuit payOut(id: Bytes<32>, to: ZswapCoinPublicKey, amount: Uint<128>): [] {
 // the beneficiary was fixed at registration.
 export circuit postBond(id: Bytes<32>): [] {
   const key = disclose(id);
+  // DD-37: the bond's owner receives every released tranche, so only the engagement's
+  // owner (who registered it) may post it.
+  assert(deriveEngagementId(engagementSecret()) == id, "only the engagement owner can post the bond (DD-37)");
   assert(status.member(key) && status.lookup(key) == Status.Registered, "engagement not open for a bond");
   assert(!escrowed.member(key), "bond already posted");
   // Declared disclosure: a contract can only take custody of a coin it can see.
@@ -1009,8 +1033,8 @@ export circuit postBond(id: Bytes<32>): [] {
   releasedTotal.insert(key, 0);
 }
 
-// H3b: settle a proven epoch, recording settledAt (block-time-checked) as the anchor of
-// its challenge window. Only an epoch with a record in epochRecords under the
+// H3b: settle a proven epoch, recording settledAt (block-time-checked) and the record it
+// settled with (DD-37: credited at release unless the day's root is disputed). Only an epoch with a record in epochRecords under the
 // engagement's REGISTERED terms (proveEpoch's termsCommit == termsCommit[id], the C2
 // check done on-chain), only after the epoch has ended, once, and no later than its
 // grace deadline (a later proof cannot settle; the epoch is defaultable instead).
@@ -1039,23 +1063,29 @@ export circuit settleEpoch(id: Bytes<32>, epoch: Uint<64>, settledTs: Uint<64>):
   assert(rec.id == key && rec.epoch == e, "record is not this engagement's epoch (H3b)");
   assert(rec.termsCommit == termsCommit.lookup(key), "epoch proven under unregistered terms (H3b)");
   settledAt.insert(ek, ts);
+  settledRecord.insert(ek, rec);
 }
 
-// Release one settled epoch's tranche once its challenge window has passed (anchor: the
-// stored settledAt). No client veto (I8 gates acceptance upstream).
-// M3b (DD-18): each settled epoch releases exactly one tranche, always to the bond's
-// owner. After k released epochs of E the cumulative release is exactly floor(B * k / E)
+// Release one day's tranche once the day's dispute deadline has passed (DD-37: the same
+// moment as its grace deadline, so the day's outcome is final: no settlement, dispute or
+// proof can change it after). No client veto (I8 gates acceptance upstream). A day is
+// released when it was settled (its record is credited for claim) or when its root was
+// disputed (neutral: the MM is not paid for, or slashed on, a bad root, and the day is not
+// credited). A day neither settled nor disputed is defaultable instead.
+// M3b (DD-18): each released day pays exactly one tranche, always to the bond's owner.
+// After k released epochs of E the cumulative release is exactly floor(B * k / E)
 // (B = the posted bond): `amount` must be that step — checked without division as
 // cum * E <= B * k < (cum + 1) * E — so the tranches sum to B and never exceed escrow.
 // The last tranche settles the engagement.
 export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): [] {
-  const CHALLENGE: Uint<64> = 43200;   // 12h
   const key = disclose(id);
-  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: disclose(epoch) });
-  assert(settledAt.member(ek), "epoch not settled (H3b)");
-  assert(blockTimeGte((settledAt.lookup(ek) + CHALLENGE) as Uint<64>), "challenge window open");
-  // DD-35: a root the committee disputed inside the window releases nothing.
-  assert(!disputedRoot.member(epochRootKey(key, disclose(epoch))), "epoch root disputed (DD-35)");
+  const e = disclose(epoch);
+  assert(startDay.member(key), "engagement not activated (DD-35)");
+  assert(e >= 1 && e <= contractEpochs.lookup(key), "epoch outside the contract (M3b)");
+  const ek = persistentHash<EpochRef>(EpochRef { id: key, epoch: e });
+  const disputed = disputedRoot.member(epochRootKey(key, e));
+  assert(disputed || settledAt.member(ek), "epoch not settled (H3b)");
+  assert(blockTimeGte(graceDeadline(key, e)), "dispute window open (DD-37)");
   assert(!slashed.member(key) || !slashed.lookup(key), "already slashed");
   assert(escrowed.member(key), "no bond escrowed (M3)");
   assert(!epochReleased.member(ek), "epoch tranche already released (M3b)");
@@ -1069,6 +1099,10 @@ export circuit releaseEpoch(id: Bytes<32>, epoch: Uint<64>, amount: Uint<128>): 
   epochReleased.insert(ek);
   releasedEpochs.insert(key, k);
   releasedTotal.insert(key, cum as Uint<128>);
+  // DD-37: credit the settled record for claim only when the day's root stood.
+  if (!disputed) {
+    creditedRecords.insert(settledRecord.lookup(ek));
+  }
   if (a > 0) {
     payOut(key, bondOwner.lookup(key), a);
   }
@@ -1169,8 +1203,11 @@ export circuit publishRoot(chain: Uint<64>, day: Uint<64>, root: Bytes<32>, cid:
 
 // DD-35: the challenge window made real. A committee member whose watcher recomputes a
 // published root and gets a different one votes to dispute it; at 2 of 3 the root is
-// disputed, and no epoch on that (chain, day) settles, releases or defaults. One vote
-// per member per root.
+// disputed. One vote per member per root.
+// DD-37: votes count only until the day's deadline (its end + 66 h, the grace deadline of
+// every epoch on that day), so a day's outcome is final once that passes. A disputed day
+// is neutral for every engagement on it: it cannot be settled or defaulted, its tranche
+// is released to the MM after the deadline, and it is never credited to a claim.
 export ledger disputeVote: Set<Bytes<32>>;
 export ledger disputeCount: Map<Bytes<32>, Counter>;
 export ledger disputedRoot: Set<Bytes<32>>;
@@ -1181,6 +1218,7 @@ export circuit disputeRoot(chain: Uint<64>, day: Uint<64>): [] {
   assert(committee.member(member), "not a committee attester (I8)");
   const k = rootKey(disclose(chain), disclose(day));
   assert(publishedRoot.member(k), "no published root to dispute (DD-35)");
+  assert(blockTimeLt(dayDeadline(disclose(day))), "dispute window closed (DD-37)");
   const vk = persistentHash<MemberRoot>(MemberRoot { member: member, key: k });
   if (!disputeVote.member(vk)) {
     disputeVote.insert(vk);
@@ -1196,22 +1234,29 @@ export circuit disputeRoot(chain: Uint<64>, day: Uint<64>): [] {
 
 // --- Funding membership (DD-27) ----------------------------------------------------
 //
-// Proves the loan reached the committed wallets, against epoch 1's attested root (the
-// first indexed data after activation; I8 must publish it first, so the opening cannot
-// use a self-made root). Same openings as proveEpoch (C1 + I2 + H2 via openSlotLeaves)
+// Proves the loan reached the committed wallets, against an attested root (I8 must
+// publish it first, so the opening cannot use a self-made root). DD-37: the root of any
+// day from the registration day through day 1 counts, so a loan that lands on the day
+// of registration or activation is provable; the day's root must not be disputed. Same openings as proveEpoch (C1 + I2 + H2 via openSlotLeaves)
 // and the same binding to the registration (C2: wallets and terms, so loan_L0 is the
 // registered one); then Σ from_treasury over member slots ≥ loan_L0. Once per
 // engagement; settleEpoch requires it. Nothing private is disclosed.
 
 export ledger fundingProven: Set<Bytes<32>>;
 
-export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
+export circuit proveFunding(id: Bytes<32>, day: Uint<64>, rootOfRoots: Bytes<32>): [] {
+  const DAY: Uint<64> = 86400;
   const key = disclose(id);
+  const d = disclose(day);
   assert(status.member(key) && status.lookup(key) == Status.Funded, "engagement not running");
   assert(!fundingProven.member(key), "funding already proven (DD-27)");
-  const rk = epochRootKey(key, 1);
+  // DD-37: the day ends after registration, and is no later than day 1 (epoch 1).
+  assert(((d + 1) * DAY) as Uint<64> > registeredAt.lookup(key), "funding day before registration (DD-37)");
+  assert(d <= startDay.lookup(key), "funding day after day 1 (DD-37)");
+  const rk = rootKey(chainOf.lookup(key), d);
   assert(publishedRoot.member(rk) && publishedRoot.lookup(rk) == disclose(rootOfRoots),
-         "funding root is not epoch-1's attested root (DD-27)");
+         "funding root is not that day's attested root (DD-27)");
+  assert(!disputedRoot.member(rk), "funding root disputed (DD-37)");
 
   const w = committedWallets();
   const n = activeCount();
@@ -1224,9 +1269,11 @@ export circuit proveFunding(id: Bytes<32>, rootOfRoots: Bytes<32>): [] {
   assert(disclose(persistentCommit<Terms>(t, termsSalt())) == termsCommit.lookup(key),
          "terms commitment does not match registration (C2)");
 
-  // C1: the pool is in epoch 1's root, and every slot's leaf is in the pool.
+  // C1: the pool is in the day's root, and every slot's leaf is in the pool. DD-38: the
+  // pool is the one committed in the terms.
   const leaves = slotLeaves();
   const pe = poolEntry();
+  assert(pe.poolAddr == t.pool, "the proof's pool is not the engagement's (DD-38)");
   verifyPoolPath(transientHash<PoolEntry>(pe), poolPath(), rootOfRoots);
   openSlotLeaves(w, act, leaves, slotPaths(), pe.poolRoot);
 
@@ -1246,3 +1293,7 @@ export ledger bondToken: Bytes<32>;                    // the protocol bond toke
 export ledger chainOf: Map<Bytes<32>, Uint<64>>;       // the engagement's chain (1 or 8453)
 export ledger bondRequired: Map<Bytes<32>, Uint<128>>; // the bond the MM must post
 export ledger startDay: Map<Bytes<32>, Uint<64>>;      // UTC day number of epoch 1
+// DD-37: the record each settled epoch was settled with (keyed epochKey(id, e)), and the
+// records credited at release: claim counts only these, so a disputed day counts as not met.
+export ledger settledRecord: Map<Bytes<32>, EpochRecord>;
+export ledger creditedRecords: HistoricMerkleTree<20, EpochRecord>;

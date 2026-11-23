@@ -53,6 +53,12 @@ export interface IndexerConfig {
    * excludes the loan from the outflow budget). Lowercase, strictly ascending.
    */
   readonly treasuryAddresses: readonly string[];
+  /**
+   * If set, only these of the discovered pools are indexed (lowercase 0x addresses). The
+   * manifest records the list, so the day's root is rebuilt from the same pool set. Used
+   * when an RPC plan cannot afford every pool of a covered token.
+   */
+  readonly poolAllowlist?: readonly string[];
   /** Only blocks at or before this finalized height are indexed. */
   readonly finalityConfirmations: number;
 }

@@ -77,6 +77,8 @@ export function pToPrice(p: bigint, base: TokenInfo, quote: TokenInfo): string {
 }
 
 export interface TermsInput {
+  /** The pool's address: committed with the terms, so proofs open only its tree (DD-38). */
+  pool: string;
   base: TokenInfo;
   quote: TokenInfo;
   loan: string; // base
@@ -92,6 +94,7 @@ export interface TermsInput {
 }
 
 export function buildTerms(i: TermsInput): { terms: Terms; human: Record<string, string> } {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(i.pool)) throw new Error("the pool is not an address");
   const loan = toUnits(i.loan, i.base.decimals);
   const depth = toUnits(i.depthTarget, i.quote.decimals);
   if (loan === null || depth === null) throw new Error("loan and depth target must be amounts");
@@ -115,6 +118,7 @@ export function buildTerms(i: TermsInput): { terms: Terms; human: Record<string,
     bandBps: i.bandBps,
     minUptimeBuckets: Math.ceil((Number(i.minUptime) / 100) * BUCKETS_PER_EPOCH),
     epochsTotal: Number(i.epochs),
+    pool: BigInt(i.pool),
   };
   const human: Record<string, string> = {
     base: i.base.symbol,

@@ -2,7 +2,7 @@
 //
 // Pipeline (deterministic end to end):
 //   pools above floor -> per-address leaves -> per-pool indexed tree
-//   -> publish each tree to the content store -> epoch root-of-roots
+//   -> publish each tree and its committed series to the content store -> epoch root-of-roots
 //   -> (optional) the attester committee's publishRoot votes on (epoch, root, cid).
 //
 // Everything that touches the network is injected (ChainProvider, TreePublisher,
@@ -27,6 +27,7 @@ import {
   type TreePublisher,
 } from "./provider.js";
 import { activityToLeaf } from "./leaves.js";
+import { serializePoolSeries } from "./series.js";
 import { winsorizedTwap } from "./twap.js";
 
 export interface EpochDeps {
@@ -46,6 +47,11 @@ export interface PoolManifestEntry {
   poolAddr: string;
   rootHex: string;
   cid: string;
+  /**
+   * The pool's committed depth and flow series (series.ts), so a wallet's leaf can be
+   * opened from public data. Absent in manifests published before it was added.
+   */
+  seriesCid?: string;
   leafCount: number;
   referencePrice: string;
 }
@@ -69,6 +75,8 @@ export interface EpochManifest {
   winsorFraction: number;
   /** Anti-JIT window (DD-31): needed to recompute which depth series earn credit. */
   kMinSeconds: number;
+  /** The pools this day was limited to, when a pool allowlist was configured. */
+  poolAllowlist?: string[];
   poolCount: number;
   rootOfRootsHex: string;
   pools: PoolManifestEntry[];
@@ -114,7 +122,9 @@ export async function buildEpoch(
     range.endBlock,
     config.baseTokens,
   );
+  const allow = config.poolAllowlist?.length ? new Set(config.poolAllowlist.map((a) => BigInt(a))) : null;
   const pools = [...discovered]
+    .filter((p) => !allow || allow.has(p.poolAddr))
     .sort((a, b) => (a.poolAddr < b.poolAddr ? -1 : a.poolAddr > b.poolAddr ? 1 : 0));
 
   const trees = new Map<bigint, IndexedMerkleTree>();
@@ -132,6 +142,7 @@ export async function buildEpoch(
     trees.set(pool.poolAddr, tree);
 
     const cid = await deps.publisher.publish(serializePoolTree(tree));
+    const seriesCid = await deps.publisher.publish(serializePoolSeries(activity, config, range));
 
     const samples = await deps.provider.poolPriceSamples(
       pool,
@@ -150,6 +161,7 @@ export async function buildEpoch(
       poolAddr: formatAddr(pool.poolAddr),
       rootHex: digestToHex(tree.root),
       cid,
+      seriesCid,
       leafCount: tree.size,
       referencePrice: referencePrice.toString(),
     });
@@ -182,6 +194,7 @@ export async function buildEpoch(
     priceSampleSeconds: config.priceSampleSeconds,
     winsorFraction: config.winsorFraction,
     kMinSeconds: config.kMinSeconds,
+    ...(allow ? { poolAllowlist: [...config.poolAllowlist!].map((a) => a.toLowerCase()).sort() } : {}),
     poolCount: pools.length,
     rootOfRootsHex,
     pools: poolManifest,
@@ -191,7 +204,7 @@ export async function buildEpoch(
   );
 
   const votes = deps.attesters
-    ? await deps.attesters.publishRoot(range.epoch, rootOfRootsHex, manifestCid)
+    ? await deps.attesters.publishRoot(deps.provider.chainId(), range.epoch, rootOfRootsHex, manifestCid)
     : [];
 
   return {

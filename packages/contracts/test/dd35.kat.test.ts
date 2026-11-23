@@ -112,13 +112,16 @@ describe.skipIf(!HAVE_BUILD)("DD-35: disputeRoot (2 of 3) blocks a root", () => 
     await expect(settle(g, state, 1n, epochEndOf(g, 1n))).rejects.toThrow(/epoch root disputed \(DD-35\)/);
   });
 
-  it("a settled epoch whose root is disputed inside the window releases nothing", async () => {
+  it("a settled epoch whose root is disputed releases as neutral: paid to the MM, never credited (DD-37)", async () => {
     const s = (await settle(g, g.state, 1n, epochEndOf(g, 1n))).state;
-    const at = epochEndOf(g, 1n) + T.CHALLENGE;
+    const at = graceDeadlineOf(g, 1n);
     const release = (state: typeof s) =>
       runLifecycle("releaseEpoch", [g.id, 1n, nextTranche(BOND_COIN.value, 30, 0)], { state, blockTime: at });
-    await expect(release(s)).resolves.toBeDefined(); // undisputed: releases
-    await expect(release(await disputed(1n, s))).rejects.toThrow(/epoch root disputed \(DD-35\)/);
+    const plain = await release(s); // undisputed: releases and credits the record
+    const neutral = await release(await disputed(1n, s)); // disputed: releases, credits nothing
+    expect(plain.ledger.creditedRecords.findPathForLeaf(g.records[0]!)).toBeDefined();
+    expect(neutral.ledger.creditedRecords.findPathForLeaf(g.records[0]!)).toBeUndefined();
+    expect(neutral.ledger.releasedEpochs.lookup(g.id)).toBe(1n);
   });
 
   it("an epoch on a disputed root is not defaultable (the MM is not slashed for a bad root)", async () => {

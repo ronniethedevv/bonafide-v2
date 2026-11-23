@@ -79,7 +79,7 @@ beforeEach(async () => {
     pool: { chain: "Base", address: POOL, pair: "TKN / USDC" },
     client: { address: "0x70997970c51812dc3a010c7d01b50e0d17dc79c8" },
     wallets: [MM_WALLET],
-    terms: { floorPriceP: 0n, loanL0: 1000n, quoteStartQ0: 0n, disposalD: 1000n, netSellS: 0n, depthTarget: 100n, roundtripSharePpm: 600_000n, bandBps: 100, minUptimeBuckets: 44, epochsTotal: 30 },
+    terms: { floorPriceP: 0n, loanL0: 1000n, quoteStartQ0: 0n, disposalD: 1000n, netSellS: 0n, depthTarget: 100n, roundtripSharePpm: 600_000n, bandBps: 100, minUptimeBuckets: 44, epochsTotal: 30, pool: BigInt(POOL) },
     human: {},
   });
   home.saveEngagementFile("rec_abc", await sealFile(opening, PASS, 1_000));

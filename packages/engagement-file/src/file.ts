@@ -40,6 +40,12 @@ export interface EngagementOpening {
     termsSalt: `0x${string}`;
   };
   commitments: { walletCommit: `0x${string}`; termsCommit: `0x${string}` };
+  /**
+   * The public arguments of the on-chain `register` call (DD-35): tier (1 A, 2 B, 3 C),
+   * chain id, the bond in the bond token's smallest unit, and the client's Midnight coin
+   * public key (32-byte hex), which receives the bond if the engagement defaults.
+   */
+  registration?: { tier: number; chainId: number; bond: string; beneficiary: string };
   createdAt: string;
 }
 
@@ -60,6 +66,7 @@ export async function newOpening(input: {
   wallets: string[];
   terms: Terms;
   human: Record<string, string>;
+  registration?: EngagementOpening["registration"];
 }): Promise<EngagementOpening> {
   const engagementSecret = randomBytes(32);
   const walletSalt = randomBytes(32);
@@ -82,6 +89,7 @@ export async function newOpening(input: {
       walletCommit: await walletCommit(wallets, walletSalt),
       termsCommit: await termsCommit(input.terms, termsSalt),
     },
+    ...(input.registration ? { registration: input.registration } : {}),
     createdAt: new Date().toISOString(),
   };
 }

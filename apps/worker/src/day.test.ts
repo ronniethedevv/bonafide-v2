@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressList, catchUpDays, catchUpWindow, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, previousDay } from "./day.js";
+import { addressList, catchUpDays, catchUpWindow, coverage, coveredChains, dayFromDate, dayLabel, dayWindow, logChunkBlocks, poolAllowlist, previousDay, rpcConcurrency } from "./day.js";
 
 describe("day helpers", () => {
   it("numbers epochs by UTC day and indexes the last closed day", () => {
@@ -37,5 +37,18 @@ describe("day helpers", () => {
     expect(logChunkBlocks({})).toBe(10);
     expect(logChunkBlocks({ MMR_LOG_CHUNK_BLOCKS: "2000" })).toBe(2000);
     expect(() => logChunkBlocks({ MMR_LOG_CHUNK_BLOCKS: "0" })).toThrow();
+  });
+
+  it("reads a per-chain pool allowlist", () => {
+    expect(poolAllowlist({}, 8453)).toEqual([]);
+    expect(poolAllowlist({ MMR_POOLS_8453: "0x529D2863A1521D0B57DB028168FDE2E97120017C" }, 8453)).toEqual(["0x529d2863a1521d0b57db028168fde2e97120017c"]);
+    expect(() => poolAllowlist({ MMR_POOLS_8453: "0x12" }, 8453)).toThrow(/not an address/);
+  });
+
+  it("defaults RPC concurrency to 8 and bounds it", () => {
+    expect(rpcConcurrency({})).toBe(8);
+    expect(rpcConcurrency({ MMR_RPC_CONCURRENCY: "4" })).toBe(4);
+    expect(() => rpcConcurrency({ MMR_RPC_CONCURRENCY: "0" })).toThrow();
+    expect(() => rpcConcurrency({ MMR_RPC_CONCURRENCY: "64" })).toThrow();
   });
 });

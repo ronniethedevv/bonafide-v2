@@ -94,11 +94,11 @@ compiled circuit** via `@midnight-ntwrk/compact-runtime` — every `transientHas
 node's AURA consensus cannot do on-chain without 24 h of real time:
 
 ```bash
-pnpm --filter @mmr/contracts test        # 135 KATs, 8 files: full lifecycle incl. proveEpoch + claim
+pnpm --filter @mmr/contracts test        # 147 tests, 9 files: full lifecycle incl. proveEpoch + claim
 ```
 
 > **Why the split:** midnight-node advances block time only in real time (fixed AURA
-> slots), so `settle → release → claim` (gated on epoch-end and challenge windows)
+> slots), so `settle → release → claim` (gated on each day's end and its deadline)
 > cannot be an on-chain tx without waiting 24 h — the KATs cover them with a controlled
 > clock. And `proveEpoch`'s k=20 proof peaks ~9.5 GB, so it is proven live where RAM
 > allows and KAT-verified otherwise. Both tiers exercise the **same** compiled contract;
@@ -113,10 +113,9 @@ output, non-empty, in `build/epoch_proof/keys`.
 ## Demo C — also live on the public Preview testnet (supporting)
 
 The ledger-9 build is **deployed to Midnight's Preview testnet** at
-`2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6`, all 12 circuits. It is
-too large for one block (its deploy would write ~79% of a block; one transaction may use
-~65%), so 7 circuits deploy in one transaction and the other 5 verifier keys are added by
-signed maintenance updates. A test shielded bond token
+`4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634`, all 12 circuits. It is too large for one
+transaction (one transaction may use about 65% of a block), so 7 circuits deploy in one
+transaction and the other 5 verifier keys are added by signed maintenance updates. A test shielded bond token
 (`30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61`) is deployed with it,
 because Preview's faucet hands out only unshielded tNIGHT.
 
@@ -124,12 +123,16 @@ because Preview's faucet hands out only unshielded tNIGHT.
 pnpm --filter @mmr/contracts compact:build   # circuits + proving keys (~4 min)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
 pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
-pnpm --filter @mmr/dapp lifecycle            # a sample engagement, as far as the clock allows
+pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
+pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 ```
 
-A sample engagement runs on the deployment: three days proven and two settled so far (16
-transactions, blocks 169,367 to 226,741); its record is
-[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+The live engagement on this deployment (`7e3dc433…b046`) runs on the VIRTUAL/USDC pool on Base
+from 24 November, on three public liquidity-provider wallets we do not control (a demonstration;
+see the README). Its record:
+[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json). A sample engagement ran on the first
+deployment of an earlier version (16 transactions on the contract tests' sample day, blocks 169,367
+to 226,741): [`packages/dapp/deployments/preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 
 ### Why Demo B's lifecycle ran locally
 

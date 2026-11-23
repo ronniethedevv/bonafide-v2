@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { PinataTreePublisher } from "@mmr/indexer";
-import { catchUpDays, catchUpWindow, coveredChains, dayFromDate, dayLabel, SUPPORTED_CHAINS } from "./day.js";
+import { catchUpDays, catchUpWindow, coveredChains, dayFromDate, dayLabel, indexFromDay, SUPPORTED_CHAINS } from "./day.js";
 import { indexDay } from "./index-day.js";
 
 const log = (message: string, data?: Record<string, unknown>): void =>
@@ -35,7 +35,11 @@ export function plan(env: Record<string, string | undefined>, now: Date): { chai
     if (!(SUPPORTED_CHAINS as readonly number[]).includes(c)) throw new Error(`unsupported chain ${env.MMR_INDEX_CHAIN}`);
     chains = chains.filter((x) => x === c);
   }
-  const days = env.MMR_INDEX_DATE ? [dayFromDate(env.MMR_INDEX_DATE)] : catchUpDays(now, catchUpWindow(env));
+  // A named day is indexed as asked; the catch-up window starts no earlier than MMR_INDEX_FROM.
+  const from = indexFromDay(env);
+  const days = env.MMR_INDEX_DATE
+    ? [dayFromDate(env.MMR_INDEX_DATE)]
+    : catchUpDays(now, catchUpWindow(env)).filter((d) => from === undefined || d >= from);
   return { chains, days };
 }
 

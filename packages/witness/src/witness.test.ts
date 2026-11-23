@@ -34,6 +34,7 @@ const TERMS: EngagementTerms = {
   bandBps: 100,
   minUptimeBuckets: bucketsPerEpoch(DEFAULT_CONFIG),
   epochsTotal: 30,
+  pool: 0xabcdn,
 };
 
 function fullDepth(minBid: bigint, minAsk: bigint): DepthBucketSample[] {

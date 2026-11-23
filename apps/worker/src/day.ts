@@ -71,6 +71,17 @@ export function treasury(env: Record<string, string | undefined>, chainId: numbe
   return addressList(env[`MMR_TREASURY_${chainId}`], `MMR_TREASURY_${chainId}`);
 }
 
+/** Pools to limit `chainId` to (MMR_POOLS_<chainId>), optional: every discovered pool when empty. */
+export function poolAllowlist(env: Record<string, string | undefined>, chainId: number): string[] {
+  return addressList(env[`MMR_POOLS_${chainId}`], `MMR_POOLS_${chainId}`);
+}
+
+/** The earliest day the catch-up window indexes (MMR_INDEX_FROM, YYYY-MM-DD), optional. */
+export function indexFromDay(env: Record<string, string | undefined>): number | undefined {
+  const raw = env.MMR_INDEX_FROM;
+  return raw === undefined || raw.trim() === "" ? undefined : dayFromDate(raw.trim());
+}
+
 /** Supported chains that have at least one covered token. */
 export function coveredChains(env: Record<string, string | undefined>): number[] {
   return SUPPORTED_CHAINS.filter((c) => coverage(env, c).length > 0);
@@ -80,6 +91,19 @@ export function coveredChains(env: Record<string, string | undefined>): number[]
  * Blocks per eth_getLogs request. 10 on a free Alchemy key; a paid key takes thousands,
  * which turns a day of 0.2 s Base blocks from ~43k requests per scan into ~200.
  */
+/**
+ * RPC requests in flight for the log scan and the swap receipts (MMR_RPC_CONCURRENCY,
+ * default 8). A rate-limited request is retried with backoff, so a value above the key's
+ * capacity slows the scan rather than failing it.
+ */
+export function rpcConcurrency(env: Record<string, string | undefined>): number {
+  const raw = env.MMR_RPC_CONCURRENCY;
+  if (raw === undefined || raw === "") return 8;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 32) throw new Error(`MMR_RPC_CONCURRENCY must be 1..32, got ${raw}`);
+  return n;
+}
+
 export function logChunkBlocks(env: Record<string, string | undefined>): number {
   const raw = env.MMR_LOG_CHUNK_BLOCKS;
   if (raw === undefined || raw === "") return 10;

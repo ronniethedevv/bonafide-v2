@@ -30,7 +30,7 @@ const SALT = new Uint8Array(32).fill(7);
 const terms: EngagementTerms = {
   floorPriceP: 1n, loanL0: 1000n, quoteStartQ0: 0n, disposalD: 0n, netSellS: 0n,
   depthTarget: 100n, roundtripSharePpm: 600_000n, bandBps: 100,
-  minUptimeBuckets: bucketsPerEpoch(DEFAULT_CONFIG), epochsTotal: 30,
+  minUptimeBuckets: bucketsPerEpoch(DEFAULT_CONFIG), epochsTotal: 30, pool: POOL_ADDR,
 };
 const engagement = (): Engagement =>
   createEngagement({ id: "eng-live", poolAddr: POOL_ADDR, wallets: WALLETS, salt: SALT, terms });

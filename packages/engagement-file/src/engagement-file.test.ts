@@ -34,6 +34,7 @@ const TERMS: Terms = {
   bandBps: 100,
   minUptimeBuckets: 44,
   epochsTotal: 30,
+  pool: 0xd0b53d9277642d899df5c87a3966a349a798f224n,
 };
 const WALLETS = ["0x00000000000000000000000000000000000000f2", "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01", "0x0000000000000000000000000000000000000010"];
 const salt = (b: number) => new Uint8Array(32).fill(b);

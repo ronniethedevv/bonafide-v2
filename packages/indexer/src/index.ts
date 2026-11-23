@@ -21,6 +21,7 @@ export * from "./twap.js";
 export * from "./commit.js";
 export * from "./leaves.js";
 export * from "./epoch.js";
+export * from "./series.js";
 export * from "./live/proxy-fetch.js";
 export * from "./live/rpc-cache.js";
 export * from "./live/run-epoch.js";

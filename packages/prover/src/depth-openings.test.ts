@@ -52,6 +52,7 @@ const TERMS: EngagementTerms = {
   bandBps: BAND,
   minUptimeBuckets: 48, // every bucket (DEFAULT_CONFIG: 48 per epoch)
   epochsTotal: 30,
+  pool: POOL,
 };
 
 function depthAt(

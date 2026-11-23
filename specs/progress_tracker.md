@@ -5,8 +5,17 @@ of every working unit.
 
 ## Current phase
 
-**Phase 0 → Phase 1:** foundations + build-order item #1 (deterministic indexer,
-leaf schema, root-of-roots).
+**Built and deployed; the live engagement is registered, its first day pending (first
+submission).** The contract (`epoch_proof`, 12 circuits, Compact 0.36.1, ledger 9) is deployed
+on Preview with the review fixes (DD-35, DD-37, DD-38). Engagement `7e3dc433…b046` (VIRTUAL/USDC
+on Base, three public LP wallets, permissive retainer terms) is registered, bonded and activated;
+day 1 is 24 Nov. The daily indexer (GitHub
+Actions' scheduler; built to run on Trigger.dev in production) has not yet completed a
+real day: the first runs were too slow and ran out of memory, both since fixed. The
+lifecycle job (attest after recomputing, then prove, settle, release) is built and
+tested offline end to end but has not run. A free RPC plan (10-block log requests, 0.2 s
+Base blocks) limits indexing to the engagement's pool. Next: the first indexed day, funding
+proven, the lifecycle job running unattended.
 
 ## Status log
 
@@ -97,6 +106,9 @@ leaf schema, root-of-roots).
 | 2026-11-18 | **Presentation and licence** — licence changed from MIT to Apache-2.0 (canonical apache.org text, copyright line filled; `package.json`). README rewritten to the standard of winning Midnight submissions: product screenshot, badges, links, contract and transaction tables, `check-deployment` (reads the Preview indexer, decodes the state, compares all 12 on-chain verifier keys byte for byte with a local build: identical; key generation is deterministic), why privacy, numbered flow, checks table, private/public table, try it, tests per package (509 in 16), scope and limits, layout, roadmap. Deployment record committed (`packages/dapp/deployments/preview.json`). Stale I9 text in INVARIANTS.md fixed; the standard recorded in AGENTS.md | **done** |
 | 2026-11-18 | **CI: contract KATs no longer stall Vitest** — the compiled circuits are async but resolve without real I/O, so a test file ran as one unbroken microtask chain (event-loop stalls of 52–128 s measured); an RPC in flight when a stall began timed out at Vitest's 60 s ("Timeout calling onTaskUpdate") and a file's results were lost, on CI's slower CPU every time. The harness now yields to the event loop before each circuit call (worst stall 1.9 s); files run in parallel again (135/135 in 118 s) | **done** |
 | 2026-11-18 | **Deploy package on ledger 9 (DD-36)** — `@mmr/dapp` on Midnight.js 5.0.1 / wallet SDK 2.0.1 (seed-started wallet, byte hand-off, provider `config`); `deploy` publishes `test_bond_token` then `epoch_proof` with the committee and the token's color and records both in `.deploy/<network>.json`; `register-dust` stops with the faucet step when the wallet is empty; committee secrets derived from the seed; ledger-8 diagnostics (call-submission repro, batched deploy, pre-DD-35 `interact`) removed; full keys for both contracts built (`compact:build`); CI typechecks the dapp. **Deployed to Preview (ledger 9):** wallet funded from the faucet, DUST registered (tx `00bb9e00…`); `test_bond_token` `30cba593…31b61` (color `e371ca24…b146`); `epoch_proof` `2f663d74…c2b6` at block 168,424 with 7 circuits (deploy writes 54% of a block; all 12 would be 79%, over the ~65% one transaction may use), then 5 verifier-key inserts (~18 s each): 12/12 on chain. Next: the live lifecycle | **done** |
+| 2026-11-22 | **Second review fixes, redeploy, real-data pipeline (DD-37)** — contract: `proveFunding(id, day, root)` takes any attested, undisputed day from registration through day 1; `postBond` owner-only; disputes close at the day's deadline (end + 66 h) and a disputed day is neutral (released to the MM, never credited, never defaultable); releases open at that deadline; released undisputed days are credited to `creditedRecords`, which `claim` reads, and a claim needs at least one. 145 contract tests (10 new). Redeployed: `epoch_proof` `a773ae97…03ce` (tx `0066bf21…`, block 227,442), 12/12 keys match the local build; first deployment kept as `preview-v1*.json`. Indexer publishes each pool's committed depth and flow series (`seriesCid`). Daily index reads settings from a variable or secret and applies DB migrations. `@mmr/dapp`: published-day reader (recomputes trees and root), real witness builder, sealed engagement file, lifecycle with attesters that recompute before voting or disputing; offline end-to-end test (indexer pipeline → published day → witness → compiled contract). Lifecycle job follows each index run | **done** (engagement registration next) |
+| 2026-11-23 | **Pool bound into the terms (DD-38); indexer throughput** — `Terms.pool` committed and checked by `proveEpoch`/`proveFunding`; 147 contract tests (2 new). Daily index: the first real run (VIRTUAL, 2 pools) spent ~1.5 h per pool at 4 requests in flight and ran out of memory on the second; now 8 in flight (`MMR_RPC_CONCURRENCY`), a 6 GB heap, and the position registry is saved when a day fails. Redeployed: `epoch_proof` `4ff2c93d…a634` (tx `009fa9c6…`, block 231,968), 12/12 keys match the local build; the DD-37 deployment `a773ae97…03ce` had no engagement and is superseded | **done** |
+| 2026-11-23 | **Live engagement registered** — VIRTUAL/USDC (Uniswap v3, Base, `0x529d…017c`), three public LP wallets with 48/48 two-sided depth every October day, retainer terms that cannot fail on their behaviour (loan 0; D, S at 2^127−1; round-trip 100%; depth 250 USDC a side within 200 bps in 36 of 48 buckets). Engagement `7e3dc433…b046`: mint (block 232,532), register (232,537), postBond (232,542), activate (232,546); day 1 = 24 Nov. Found: Base blocks are now 0.2 s (432,000 a day) and the free Alchemy key returns logs 10 blocks at a time; daily index limited to the engagement's pool (`MMR_POOLS_8453`) and to days from 23 Nov (`MMR_INDEX_FROM`). Client-side beneficiary check (client's own Midnight key; acceptance compares) | **done** |
 
 Total: 212 tests passing (1 skipped) across 9 projects; `pnpm -r typecheck` clean; `next build`
 passes; API + web verified end-to-end. Pushed incrementally to
@@ -122,25 +134,20 @@ attester signing.
 
 ## Build-order progress (from product spec)
 
-- [x] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (TS; injectable `TreePublisher`, in-mem fake + **real Pinata v3 adapter**, [verify] on live Pinata)
-- [~] 2. Proving benchmark — TS I1–I8 reference oracle done; the Compact circuit
-      benchmark itself needs the Midnight toolchain (not available here)
-- [x] 3. Compact contract — registration + bond (now in `epoch_proof.compact`, DD-17) compile under `compact compile --skip-zk` (0.31.1)
-- [x] 4. Epoch proof / claim circuits — `epoch_proof.compact` (incl. `claim`, DD-15) compile under `compact compile --skip-zk` (0.31.1)
-- [~] 5. Attester committee, challenge flow, void rules — **TS done** (settlement
-      state machine, engagement reducer, mock committee, challenge watchdog);
-      Jubjub signing + on-chain flow need Midnight integration
-- [~] 6. MM prover — **CLI + reference oracle + client watcher done**; fee-sponsor pending
-- [ ] 7. Pilot
-- [x] CI/CD (blueprint §5.2) — GitHub Actions: typecheck + test + web build
-
-**What remains needs a Midnight-provisioned environment** (not this container):
-compile the `.compact` circuits (`compactc`), run the proving benchmark to fix
-bucket sizes, implement Jubjub attester signing behind the existing
-`AttesterCommittee` interface, and wire a real Base archive-RPC `ChainProvider`
-behind the existing interface. The live IPFS `TreePublisher` is **done** (Pinata
-v3, [verify] on live Pinata); a fee-sponsor (DUST + self-relay) is the remaining
-TS adapter, behind an interface that already exists and is tested against fakes.
+- [~] 1. Deterministic indexer, leaf schema, root-of-roots → IPFS (Pinata), plus each
+      pool's committed depth and flow series: built; first successful daily run pending
+- [x] 2. Proving: every circuit proves on the Preview proof server (9.0.0); times per
+      transaction are recorded in the lifecycle record
+- [x] 3. Compact contract — registration, bond escrow, tranches, void, default (`epoch_proof.compact`, Compact 0.36.1)
+- [x] 4. Epoch proof and claim circuits, with credited days only (DD-37) and the pool bound into the terms (DD-38)
+- [x] 5. Attester committee (2 of 3, on chain), recompute-before-vote, disputes with a
+      deadline, neutral disputed days, void rules
+- [~] 6. Market maker prover: witnesses from published data and the scheduled lifecycle
+      job are built and tested offline; first live run pending; no fee sponsor yet (the
+      market maker pays its own DUST)
+- [ ] 7. Pilot with a real market maker
+- [x] CI/CD — GitHub Actions: typecheck, every package's tests including the compiled
+      contract's, web build; scheduled indexer and lifecycle jobs
 
 ## Remaining circuit work (from specs/CIRCUIT_REVIEW.md)
 
@@ -525,6 +532,30 @@ Done: C1, C2, H2/L1, Poseidon/transientHash migration (DD-8 resolved), M2, H1, M
   (79% of a block; one transaction may use ~65%), so `deploy` sends the constructor state
   with 7 circuits' keys (54%) and adds the other 5 with `submitInsertVerifierKeyTx`, storing
   the maintenance key before submitting and recording each step so a re-run resumes.
+- **DD-37** (contract, pipeline) **Funding from registration day, owner-only bond, final days,
+  credited claims; proofs from published data.** From the second external review.
+  (1) `proveFunding(id, day, root)` accepts the published, undisputed root of any day from the
+  registration day through day 1: a loan that lands on the day of registration or activation
+  was otherwise unprovable and the market maker would be slashed. (2) `postBond` requires the
+  engagement secret, like `activate`: the bond's owner receives every tranche. (3) Disputes
+  count until the day's deadline (end + 66 h, the grace deadline of every epoch on that day);
+  after it each day is final: settled (released, credited), disputed (neutral: released to the
+  market maker, never credited, never defaultable) or neither (defaultable). Releases open at
+  that deadline, so the 12-hour challenge after settlement is gone. (4) `settleEpoch` keeps the
+  record it settled with; `releaseEpoch` credits it to `creditedRecords` only when the root
+  stood, and `claim` reads only that tree (the claim still never reveals its engagement), and
+  must present at least one day. Pipeline: the indexer publishes each pool's committed series
+  next to its tree (roots unchanged), so the market maker's witness comes from public data
+  alone and anyone can check every leaf's depth and flow roots; attesters recompute each day
+  from IPFS before voting and dispute a published root that does not recompute. The open point
+  found here (the pool was not committed) is closed by DD-38.
+- **DD-38** (contract) **The engagement's pool is committed with the terms.** `Terms` ends with
+  `pool: Uint<160>`; `proveEpoch` and `proveFunding` assert the opened pool entry is that pool.
+  Before, a market maker could prove on any pool in the day's root (another fee tier, another
+  covered token). The pool stays private (inside `termsCommit`); the contract, `@mmr/prover`
+  and `@mmr/engagement-file` encode it identically (20 bytes, little-endian), and the wizard
+  commits the pool it registers. Done before the real-data engagement registered, so no live
+  engagement was lost to the redeploy.
 
 ## Open decisions (carry from spec)
 

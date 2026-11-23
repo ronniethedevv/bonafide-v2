@@ -82,6 +82,8 @@ model Account {
   // Public half of the account's private inbox (X25519, 0x-hex). Market makers seal
   // terms and figures to it; only the account's own wallet can re-derive the private half.
   encryptionKey String?
+  /// The client's Midnight coin public key (32-byte hex): the bond's beneficiary on default.
+  midnightCoinKey String?
 
   mmRegistrations     EngagementRegistration[] @relation("MmRegistrations")
   clientRegistrations EngagementRegistration[] @relation("ClientRegistrations")

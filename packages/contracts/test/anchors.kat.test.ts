@@ -126,7 +126,7 @@ describe.skipIf(!HAVE_BUILD)("H3b: settledAt is recorded on-chain, bounded, for 
   });
 });
 
-describe.skipIf(!HAVE_BUILD)("H3b: releaseEpoch reads the stored settledAt", () => {
+describe.skipIf(!HAVE_BUILD)("H3b / DD-37: releaseEpoch opens at the day's deadline", () => {
   let g: Engagement;
   beforeAll(async () => { g = await runningEngagement({ proven: 1 }); });
   const release = (state: BondRun["state"], blockTime: bigint) =>
@@ -136,14 +136,13 @@ describe.skipIf(!HAVE_BUILD)("H3b: releaseEpoch reads the stored settledAt", () 
     await expect(release(g.state, graceDeadlineOf(g, 1n) + 10n * T.EPOCH)).rejects.toThrow(/epoch not settled \(H3b\)/);
   });
 
-  it("a back-dated settlement opens the window at most 599 s early", async () => {
+  it("a settled epoch releases exactly at its day's deadline, however early it settled", async () => {
     const b = epochEndOf(g, 1n) + 1_000n; // the block the settlement lands in
     const { state } = await settle(g, g.state, 1n, b, b - 599n);
-    await expect(release(state, b - 599n + T.CHALLENGE - 1n)).rejects.toThrow(/challenge window open/);
-    await expect(release(state, b - 599n + T.CHALLENGE)).resolves.toBeDefined();
-    // one second more of back-dating is refused at settlement, so b - 600 + 12h never opens
+    await expect(release(state, graceDeadlineOf(g, 1n) - 1n)).rejects.toThrow(/dispute window open \(DD-37\)/);
+    await expect(release(state, graceDeadlineOf(g, 1n))).resolves.toBeDefined();
+    // back-dating is still bounded at settlement
     await expect(settle(g, g.state, 1n, b, b - 600n)).rejects.toThrow(/settledTs too far in the past \(H3b\)/);
-    await expect(release(state, b - 600n + T.CHALLENGE)).rejects.toThrow(/challenge window open/);
   });
 });
 

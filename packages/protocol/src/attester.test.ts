@@ -26,12 +26,12 @@ describe("attesterId", () => {
 });
 
 describe("AttesterCommitteeMembers (I8: each member submits publishRoot)", () => {
-  it("every online member submits its own publishRoot with the same (epoch, root, cid)", async () => {
+  it("every online member submits its own publishRoot with the same (chain, day, root, cid)", async () => {
     const { c, sent } = committee();
-    const votes = await c.publishRoot(7, ROOT, "bafy-tree");
+    const votes = await c.publishRoot(8453, 20_780, ROOT, "bafy-tree");
     expect(sent.map((t) => t.secret)).toEqual(secrets);
     for (const t of sent) {
-      expect(t.epoch).toBe(7n);
+      expect([t.chain, t.day]).toEqual([8453n, 20_780n]);
       expect(Buffer.from(t.rootOfRoots).toString("hex")).toBe("11".repeat(32));
       expect(t.cid).toEqual(cidBytes("bafy-tree"));
     }
@@ -40,7 +40,7 @@ describe("AttesterCommitteeMembers (I8: each member submits publishRoot)", () =>
 
   it("an offline member submits nothing (the contract decides whether 2 of 3 is met)", async () => {
     const { c, sent } = committee([2, 0]);
-    const votes = await c.publishRoot(1, ROOT, "cid");
+    const votes = await c.publishRoot(8453, 1, ROOT, "cid");
     expect(sent.map((t) => t.secret)).toEqual([secrets[0], secrets[2]]);
     expect(votes).toHaveLength(2);
   });
@@ -50,7 +50,7 @@ describe("AttesterCommitteeMembers (I8: each member submits publishRoot)", () =>
     expect(() => new AttesterCommitteeMembers({ secrets, threshold: 4, submit })).toThrow(/threshold/);
     expect(() => new AttesterCommitteeMembers({ secrets: [secrets[0]!, secrets[0]!], threshold: 1, submit })).toThrow(/distinct/);
     expect(() => new AttesterCommitteeMembers({ secrets, threshold: 2, submit, online: [3] })).toThrow(/no member 3/);
-    await expect(committee().c.publishRoot(1, "0x12", "cid")).rejects.toThrow(/32-byte hex/);
+    await expect(committee().c.publishRoot(8453, 1, "0x12", "cid")).rejects.toThrow(/32-byte hex/);
   });
 
   it("cidBytes pads to 64 bytes and rejects longer cids", () => {

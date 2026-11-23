@@ -42,24 +42,26 @@ circuits on chain.
 
 | Contract | Address | Role |
 |---|---|---|
-| `epoch_proof` | `2f663d748df2a50c02d74ebfdcc367361a39df01fbb03dd29b9a5c0d3e13c2b6` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
+| `epoch_proof` | `4ff2c93db78baabc96e66b58eb4890f2ab2d7a7fc3f8930b6a89395de7f9a634` | The protocol: registration, bond escrow, daily proofs, attested roots, settlement, claims |
 | `test_bond_token` | `30cba5938199c82e9e4c06355d59797913d9641023582e7f8436ce673bd31b61` | A shielded test token for bonds. Preview's faucet issues only unshielded tNIGHT, and a bond is a shielded coin |
 
 | Step | Transaction |
 |---|---|
 | Deploy wallet funded from the faucet; its tNIGHT registered to generate DUST for fees | `00bb9e0086039175d676bd93fdd5eb29af03d725e003181a36bcc126187ec8bcdd` |
 | `test_bond_token` deployed | `008c244e594233cd11976466877ef0710cc49cef6f859299b421f434b37d865b21` |
-| `epoch_proof` deployed with 7 circuits' keys (block 168,424) | `005730daadad9179da8db83eb704a37f8f1f0401677c3f62d9faa8b89920e98f1e` |
+| `epoch_proof` deployed with 7 circuits' keys (block 231,968) | `009fa9c6bc350c7fb12559f37b25f66f58ca34b5925e1bf7377942c31552700417` |
 | Keys added for `settleEpoch`, `releaseEpoch`, `voidUnfunded`, `defaultEngagement` and `claim`, one maintenance transaction each | 5 transactions, listed in the record |
 
 Every address and transaction id: [`packages/dapp/deployments/preview.json`](packages/dapp/deployments/preview.json).
 
 **Why the deploy takes six transactions.** A deploy writes the whole contract state, verifier keys
 included, and a Midnight block accepts 50,000 written bytes, of which one transaction may use about
-65%. With all 12 keys, `epoch_proof`'s deploy writes 39,464 bytes (79% of a block), so the node
-would refuse it. It is deployed with 7 keys (27,058 bytes, 54%), and the other 5 are added by
-maintenance transactions signed with the contract's maintenance key, following Midnight's
-batched-deploy runbook.
+65%. With all 12 keys, `epoch_proof`'s deploy writes more than that, so the node would refuse it. It
+is deployed with 7 keys, and the other 5 are added by maintenance transactions signed with the
+contract's maintenance key, following Midnight's batched-deploy runbook. The first deployment of
+an earlier version (`2f663d74…c2b6`) and its sample engagement are kept in
+[`preview-v1.json`](packages/dapp/deployments/preview-v1.json) and
+[`preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 
 **Check it yourself, without a wallet:**
 
@@ -77,11 +79,36 @@ different source would produce different keys. Preview explorers:
 [Subscan](https://midnight-preview.subscan.io/),
 [1AM](https://explorer.1am.xyz/?network=preview).
 
-### A sample engagement, live on Preview
+### The live engagement, on real Base data
 
-One engagement runs through the deployed contract as real, proven transactions. It uses the
-contract tests' sample day (two committed wallets, one pool), not real trading data, because an
-engagement's day 1 is always the day after activation.
+Engagement `7e3dc433…b046` runs for 30 days on the VIRTUAL/USDC pool (Uniswap v3
+on Base, `0x529d2863a1521d0b57db028168fde2e97120017c`). Day 1 is 24 November 2026.
+
+**A demonstration on public wallets.** The committed wallets are three liquidity providers on that
+pool, chosen from public data because they kept two-sided depth through October. We do not
+control them and they do nothing for us. The terms are a retainer set so that no proof can fail on
+these wallets' behaviour: no loan, and the outflow, net-selling and round-trip caps are wide open.
+What is measured is depth of 250 USDC a side within 2% of the price, in 36 of 48 half-hours; each
+day's uptime is recorded on chain. Every figure comes from Base, indexed daily.
+
+| Step | Circuit | Block | Transaction | Proof and inclusion |
+|---|---|---|---|---|
+| Market maker receives 10,000 test bond tokens | `test_bond_token.mint` | 232,532 | `00e4245d…9da354bd` | 24.6 s |
+| Register: wallet and terms commitments; tier A, Base, 10,000 bond | `register` | 232,537 | `00acfee7…4e2d3ee1` | 30.6 s |
+| Bond held by the contract | `postBond` | 232,542 | `007dc77d…58b6dec8` | 29.2 s |
+| Market maker starts the clock; day 1 is 24 Nov 2026 | `activate` | 232,546 | `00ca2e3e…dede1473` | 23.9 s |
+
+Funding is proven against 23 or 24 November once the daily indexer has published one of those days.
+From then on the scheduled job attests each indexed day, proves it, settles it and releases its
+share of the bond. Every transaction id:
+[`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
+
+### Every circuit, proven on an earlier deployment
+
+A sample engagement ran on the first deployment of an earlier version, as real, proven
+transactions. It used the contract tests' sample day (two committed wallets, one pool), not real
+trading data. That deployment is retired; it shows each step proving and landing on Preview, and
+how long each takes.
 
 | Step | Circuit | Block | Transaction | Proof and inclusion |
 |---|---|---|---|---|
@@ -96,23 +123,14 @@ engagement's day 1 is always the day after activation.
 | Day 2's root: attester 1 votes | `publishRoot` | 226,692 | `0088be1c…5f601139` | 23.9 s |
 | Day 2's root: attester 2 votes; published | `publishRoot` | 226,696 | `00f54316…f6676168` | 24.1 s |
 | Day 2 met the terms, outflow totals carried from day 1 | `proveEpoch` | 226,712 | `00a60d48…91ff208b` | 95.6 s |
-| Day 2 settled; its 12-hour challenge window starts | `settleEpoch` | 226,716 | `00f22da0…da3348c9` | 23.9 s |
+| Day 2 settled | `settleEpoch` | 226,716 | `00f22da0…da3348c9` | 23.9 s |
 | Day 3's root: attester 1 votes | `publishRoot` | 226,720 | `00e0dc68…0f8ef66a` | 22.4 s |
 | Day 3's root: attester 2 votes; published | `publishRoot` | 226,724 | `002e5c57…359eae02` | 23.9 s |
 | Day 3 met the terms, outflow totals carried from day 2 | `proveEpoch` | 226,737 | `00f31cec…dcb9e82b` | 78.6 s |
 | Day 3 settled | `settleEpoch` | 226,741 | `00bcb910…d6885c03` | 23.7 s |
 
-Engagement `4909ffd1f91c856448427eb6596cb574858c58448c4a802f92ffa97779c97e18`. Days 2 and 3 are proven
-and settled; their shares of the bond are released after the 12-hour challenge window. Day 1 is
-proven but was not settled inside its window (the run due on 20 Nov did not start), so under the
-contract's rules day 1 is now defaultable: anyone may call `defaultEngagement`, which sends the bond
-to the client. Since then a scheduled job carries the engagement forward every day
-([`.github/workflows/preview-lifecycle.yml`](.github/workflows/preview-lifecycle.yml)): at 02:40 UTC
-the committee votes for the ended day's root and the day is proven and settled; at 15:10 UTC, after
-the challenge window, its share of the bond is released.
-Every transaction id: [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
-Run it again, or carry it forward, with `pnpm --filter @mmr/dapp lifecycle`: each step reads the
-contract's state first and is skipped if it already landed.
+Engagement `4909ffd1…7e18` on that deployment. Every transaction id:
+[`packages/dapp/deployments/preview-v1-lifecycle.json`](packages/dapp/deployments/preview-v1-lifecycle.json).
 
 ## Why privacy is the requirement
 
@@ -130,22 +148,25 @@ proof binds one to the other. That is why this runs on Midnight.
 
 1. **Register.** The market maker and the client agree the terms off chain. The contract stores a
    commitment to the market maker's wallet set and a commitment to the terms, plus the public tier,
-   chain, required bond and the client's address for a forfeited bond. The engagement id is the hash
-   of a secret only the market maker holds.
+   chain, required bond and the client's Midnight key, which receives the bond on a default. The
+   client saves that key on its own account, and its portal lets it accept only a registration
+   that names it. The engagement id is the hash of a secret only the market maker holds.
 2. **Bond and activate.** The market maker posts a bond in the bond token, held by the contract, at
    least the tier's minimum (A 10,000, B 5,000, C 2,500). Only the market maker can start the clock,
    and only after the bond is in. Day 1 is the next UTC day.
 3. **Index and attest.** Each day, a deterministic indexer reads Uniswap v3 activity on Base and
    Ethereum from an archive node and builds a Merkle tree of per-wallet results, published to IPFS.
-   A committee of three attesters puts the day's root on chain once two of them vote for it. Anyone
-   can rebuild the root from the published tree, and two committee members can dispute a bad one,
-   which freezes everything that depends on it.
+   A committee of three attesters puts the day's root on chain once two of them vote for it, each
+   after rebuilding it from the published trees. Anyone can rebuild it the same way, and two
+   committee members can dispute a bad one until the day's deadline (66 hours after it ends).
 4. **Prove.** For each day, the market maker proves in zero knowledge that its committed wallets,
    opened against that day's published root, met the terms (`proveEpoch`). Once per engagement it
    proves that the client's loan reached those wallets (`proveFunding`).
-5. **Settle and release.** A proven day is settled after it ends. After a 12-hour challenge window,
-   that day's share of the bond goes back to the market maker. A day left unproven past its
-   deadline defaults, and the whole remaining bond goes to the client.
+5. **Settle and release.** A proven day is settled after it ends, before its deadline. At the
+   deadline, when disputes have closed, its share of the bond goes back to the market maker and the
+   day counts toward the claim. A disputed day is neutral: its share goes back, it never counts and
+   it cannot default. A day neither settled nor disputed by its deadline defaults, and the whole
+   remaining bond goes to the client.
 6. **Claim.** When the engagement ends, the market maker claims it into its public profile with a
    nullifier: it counts once, cannot be removed, and the profile entry does not reveal which
    engagement it came from.
@@ -247,7 +268,8 @@ The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts k
 pnpm --filter @mmr/contracts compact:build   # circuits and proving keys (about 4 minutes)
 pnpm --filter @mmr/dapp register-dust        # after funding DEPLOY_SEED's address from the faucet
 pnpm --filter @mmr/dapp deploy               # bond token, then epoch_proof in batches
-pnpm --filter @mmr/dapp lifecycle            # the sample engagement, as far as the clock allows
+pnpm --filter @mmr/dapp engagement:new       # seal the engagement (MMR_POOL, MMR_WALLETS, MMR_TERMS)
+pnpm --filter @mmr/dapp lifecycle            # attest indexed days; register and carry the engagement
 ```
 
 It needs a proof server 9.0.0 on port 6300 (`pnpm --filter @mmr/dapp proof-server`) and a
@@ -256,17 +278,19 @@ proves.
 
 ## Tests
 
-509 tests across 16 packages, all run in CI on every change.
+524 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
-| `contracts` | 135 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows |
-| `indexer` | 152 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the IPFS publisher |
-| `web` | 38 | Wallet sign-in and sessions, the engagement registry, engagement terms, agent tokens |
-| `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine |
+| `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
+| `indexer` | 153 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `web` | 41 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, agent tokens |
+| `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
-| Nine more | 61 | Read model, engagement files, witness capture, attestations, the daily job, the database, the API, the agent, the tear sheet |
+| `dapp` | 3 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused |
+| Eight more | 57 | Read model, engagement files, witness capture, attestations, the daily job, the database, the agent, the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -274,10 +298,17 @@ package and runs every test against the compiled circuits; a missing build fails
 
 ## Scope and limits
 
-- **The lifecycle on Preview is in progress.** On Preview so far: the deploy, its maintenance
-  updates, and a sample engagement with three days proven and two settled; the releases follow
-  their challenge windows. Day 1 missed its settlement window and is defaultable. A claim needs all
-  30 days, so it has not run on chain; every circuit, `claim` included, runs in the tests.
+- **The live run has just started.** The engagement is registered, bonded and activated; its first
+  day is 24 November. The daily indexer has not yet completed a real day on GitHub Actions: its
+  first runs were too slow and ran out of memory, both since fixed. The scheduled lifecycle job
+  (attest, prove, settle, release) is tested end to end offline and has not run live. A claim
+  needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
+  included, runs in the tests.
+- **RPC plan.** The indexer reads Base through a free Alchemy key, which returns logs 10 blocks at
+  a time; Base makes a block every 0.2 s, so one pool-day is about 43,200 requests. The demo
+  indexes only the engagement's pool, and a month's free allowance covers about ten pool-days: the
+  30-day run continues past that only if the allowance resets in time. A paid plan reads a day in a
+  few hundred requests.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
 - **Venues:** Uniswap v3 on Base and Ethereum. Aerodrome on Base is next. Centralized exchanges are
@@ -286,8 +317,8 @@ package and runs every test against the compiled circuits; a missing build fails
   from the same wallet can be linked. Claims are not yet batched, so a claim's timing can hint at
   which engagement just ended.
 - **Spread at a stated size** needs the full liquidity curve and is not proven.
-- **The daily indexer** runs on Trigger.dev in production; for this demo it runs on GitHub Actions'
-  scheduler ([`.github/workflows/daily-index.yml`](.github/workflows/daily-index.yml)).
+- **The daily indexer** is built to run on Trigger.dev in production; for this demo it runs on
+  GitHub Actions' scheduler ([`.github/workflows/daily-index.yml`](.github/workflows/daily-index.yml)).
 - **Fees:** the market maker pays its own DUST; there is no fee sponsor yet.
 
 ## Repository layout
@@ -310,13 +341,16 @@ package and runs every test against the compiled circuits; a missing build fails
 
 ## Roadmap
 
-- **This wave (first submission):** the contract on ledger 9 with every invariant enforced in a
-  circuit; deployed to Preview with all 12 circuits; a sample engagement on Preview, carried forward
-  daily by a scheduled job; the deterministic indexer and independent watcher on real Base and
-  Ethereum data; the daily indexer job; the public profile, tear sheet and
-  dashboards.
-- **Next:** the daily job carries the engagement to day 30 (19 Dec), then the claim into a public
-  profile; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
+- **This wave (first submission), done:** the contract on ledger 9 with every invariant enforced in
+  a circuit, deployed to Preview with all 12 circuits; every circuit proven on Preview in a sample
+  engagement on an earlier deployment; the deterministic indexer and independent watcher; the
+  attesters' recompute-then-vote job and the market maker's proofs from published data, tested
+  end to end offline; a live engagement page read from the contract; the public profile, tear sheet
+  and dashboards.
+- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL
+  pools on Base, carried forward by the scheduled job.
+- **Next:** the engagement's 30 days, then the claim into a public profile read from the
+  contract's per-tier counters; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
   fee sponsor so a market maker needs no NIGHT of its own.
 
 ## License

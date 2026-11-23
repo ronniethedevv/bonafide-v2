@@ -35,6 +35,7 @@ import {
   DEFAULT_CONFIG, type DepthBucketSample, type FlowWindowSample,
   commitDepth, commitFlow, openBand, openFlow,
 } from "@mmr/indexer";
+import { nextTranche } from "@mmr/protocol";
 
 // KAT_EPOCH_BUILD overrides the compiled-contract dir (e.g. to test a draft circuit).
 export const BUILD_DIR = process.env.KAT_EPOCH_BUILD
@@ -68,6 +69,8 @@ export interface TermsW {
   disposal_D: bigint; net_sell_S: bigint; depth_target: bigint;
   roundtrip_share_ppm: bigint; band_bps: bigint;
   min_uptime_buckets: bigint; epochs_total: bigint;
+  /** DD-38: the engagement's pool. */
+  pool: bigint;
 }
 
 /** The harness terms as @mmr/prover EngagementTerms (for commitTerms / the oracle). */
@@ -77,6 +80,7 @@ export function termsToEngagement(t: TermsW): EngagementTerms {
     disposalD: t.disposal_D, netSellS: t.net_sell_S, depthTarget: t.depth_target,
     roundtripSharePpm: t.roundtrip_share_ppm, bandBps: Number(t.band_bps),
     minUptimeBuckets: Number(t.min_uptime_buckets), epochsTotal: Number(t.epochs_total),
+    pool: t.pool,
   };
 }
 
@@ -285,7 +289,7 @@ export function buildScenario(
         floor_price_P: 2n, loan_L0: 1_000n, quote_start_Q0: 5n,
         disposal_D: 100n, net_sell_S: 100n, depth_target: 10n,
         roundtrip_share_ppm: 500_000n, band_bps: BigInt(BAND),
-        min_uptime_buckets: 40n, epochs_total: 30n,
+        min_uptime_buckets: 40n, epochs_total: 30n, pool: POOL,
       },
       termsSalt: fill32(0x7e),
       carryPrev: { ...ZERO_CARRY_W }, carryPrevSalt: fill32(0), carryNewSalt: fill32(0xc1), // genesis
@@ -491,7 +495,7 @@ export const KAT_START_DAY = BLOCK_TIME / 86_400n + 1n;
 export const dayOfEpoch = (epoch: bigint): bigint => KAT_START_DAY + epoch - 1n;
 
 /** One member's publishRoot transaction (authenticated by its secret) for KAT epoch `epoch`. */
-export async function runPublishRoot(
+export function runPublishRoot(
   secret: Uint8Array,
   epoch: bigint,
   root: Uint8Array,
@@ -499,9 +503,20 @@ export async function runPublishRoot(
   cid: Uint8Array = KAT_CID,
   chain: bigint = KAT_CHAIN,
 ): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
+  return runPublishRootAt(secret, chain, dayOfEpoch(epoch), root, state, cid);
+}
+
+/** One member's publishRoot transaction for (chain, UTC day). */
+export async function runPublishRootAt(
+  secret: Uint8Array,
+  chain: bigint,
+  day: bigint,
+  root: Uint8Array,
+  state: rt.ChargedState,
+  cid: Uint8Array = KAT_CID,
+): Promise<{ state: rt.ChargedState; published: Uint8Array | undefined; cid: Uint8Array | undefined }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
-  const day = dayOfEpoch(epoch);
   const res = await contract.circuits.publishRoot(await freshContext(contract, "publishRoot", state), chain, day, root, cid);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   const led = mod.ledger(after);
@@ -527,23 +542,27 @@ export async function runDisputeRoot(
   secret: Uint8Array,
   epoch: bigint,
   state: rt.ChargedState,
+  /** DD-37: when the vote lands (votes count until the day's deadline). */
+  blockTime: bigint = BLOCK_TIME,
 ): Promise<{ state: rt.ChargedState; disputed: boolean }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({ ...stubWitnesses(), attesterSecret: wit(secret) });
-  const res = await contract.circuits.disputeRoot(await freshContext(contract, "disputeRoot", state), KAT_CHAIN, dayOfEpoch(epoch));
+  const res = await contract.circuits.disputeRoot(await freshContext(contract, "disputeRoot", state, blockTime), KAT_CHAIN, dayOfEpoch(epoch));
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   return { state: after, disputed: mod.ledger(after).disputedRoot.member(rootKey(KAT_CHAIN, dayOfEpoch(epoch))) };
 }
 
 /**
- * DD-27: proveFunding with the scenario's openings against `rootOfRoots` (which must be
- * epoch 1's published root); returns the state and whether funding is recorded.
+ * DD-27: proveFunding with the scenario's openings against `rootOfRoots`, which must be
+ * the published root of `day` (DD-37: any day from the registration day through day 1;
+ * default day 1 of a KAT engagement); returns the state and whether funding is recorded.
  */
 export async function runProveFunding(
   w: EpochWitness,
   id: Uint8Array,
   rootOfRoots: Uint8Array,
   state: rt.ChargedState,
+  day: bigint = KAT_START_DAY,
 ): Promise<{ state: rt.ChargedState; proven: boolean }> {
   const mod = await import(BUILD_DIR);
   const contract = new mod.Contract({
@@ -552,7 +571,7 @@ export async function runProveFunding(
     slotLeaves: wit(w.slotLeaves), terms: wit(w.terms), termsSalt: wit(w.termsSalt),
     slotPaths: wit(w.slotPaths), poolEntry: wit(w.poolEntry), poolPath: wit(w.poolPath),
   });
-  const res = await contract.circuits.proveFunding(await freshContext(contract, "proveFunding", state), id, rootOfRoots);
+  const res = await contract.circuits.proveFunding(await freshContext(contract, "proveFunding", state), id, day, rootOfRoots);
   const after = res.context.callContext.currentQueryContext.state as rt.ChargedState;
   return { state: after, proven: mod.ledger(after).fundingProven.member(id) };
 }
@@ -692,8 +711,9 @@ export async function runLifecycle(
   const mod = await import(BUILD_DIR);
   const values: Record<string, unknown> = {};
   if (opts.coin) values.bondCoin = wit(opts.coin);
-  // DD-35: activate is the owner's; default to the secret the engagement was registered with.
-  const known = circuit === "activate" ? SECRETS.get(hex(args[0] as Uint8Array)) : undefined;
+  // DD-35 / DD-37: activate and postBond are the owner's; default to the secret the
+  // engagement was registered with.
+  const known = circuit === "activate" || circuit === "postBond" ? SECRETS.get(hex(args[0] as Uint8Array)) : undefined;
   if (opts.secret ?? known) values.engagementSecret = wit(opts.secret ?? known);
   if (opts.record && opts.state) {
     const records = mod.ledger(opts.state).epochRecords;
@@ -718,7 +738,6 @@ export async function runLifecycle(
 /** Lifecycle timing (seconds), mirroring the circuit constants. */
 export const T = {
   EPOCH: 86_400n,
-  CHALLENGE: 43_200n,
   FUNDING: 259_200n,
   /** epoch end -> grace deadline: attester 6h + challenge 12h + proving 24h + grace 24h. */
   AFTER_END: 237_600n,
@@ -786,6 +805,38 @@ export function settle(g: Engagement, state: rt.ChargedState, e: bigint, blockTi
                        settledTs: bigint = blockTime, record?: EpochRecordW): Promise<BondRun> {
   return runLifecycle("settleEpoch", [g.id, e, settledTs],
     { state, blockTime, record: record ?? g.records[Number(e) - 1]! });
+}
+
+/**
+ * DD-37: credit proven KAT epochs the way the chain does. Proves funding (unless done)
+ * against `funding`'s root published for the activation day, settles each record's epoch
+ * an hour after it ends, then releases each at its deadline. Only released, undisputed
+ * days reach creditedRecords, which claim reads. The engagement must be a KAT one
+ * (activated on KAT_START_DAY, bond posted).
+ */
+export async function creditEpochs(
+  state: rt.ChargedState,
+  id: Uint8Array,
+  records: readonly EpochRecordW[],
+  funding: Scenario = buildScenario(undefined, 0, FUNDED_A),
+): Promise<rt.ChargedState> {
+  const mod = await import(BUILD_DIR);
+  if (!mod.ledger(state).fundingProven.member(id)) {
+    state = await publishRoot(state, 0n, funding.rootOfRoots);
+    state = (await runProveFunding(funding.witness, id, funding.rootOfRoots, state, dayOfEpoch(0n))).state;
+  }
+  const end = (e: bigint) => (KAT_START_DAY + e) * T.EPOCH;
+  for (const rec of records) {
+    const at = end(rec.epoch) + 3_600n;
+    state = (await runLifecycle("settleEpoch", [id, rec.epoch, at], { state, blockTime: at, record: rec })).state;
+  }
+  const bond = mod.ledger(state).bondValue.lookup(id) as bigint;
+  let k = Number(mod.ledger(state).releasedEpochs.lookup(id) as bigint);
+  for (const rec of records) {
+    state = (await runLifecycle("releaseEpoch", [id, rec.epoch, nextTranche(bond, CONTRACT_EPOCHS, k++)],
+      { state, blockTime: end(rec.epoch) + T.AFTER_END })).state;
+  }
+  return state;
 }
 
 // --- H4: a run of proven epochs, then claim ----------------------------------------
@@ -858,12 +909,15 @@ export interface ClaimResult {
   kpiTotal: bigint;
 }
 
-/** Execute epoch_proof.claim against `state`, building every path from the ledger itself. */
+/**
+ * Execute epoch_proof.claim against `state`, building every path from the ledger itself
+ * (DD-37: the creditedRecords tree, which only released, undisputed days reach).
+ */
 export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<ClaimResult> {
   const mod = await import(BUILD_DIR);
   const led = mod.ledger(state);
   const pathFor = (rec: EpochRecordW) => {
-    const p = led.epochRecords.findPathForLeaf(rec);
+    const p = led.creditedRecords.findPathForLeaf(rec);
     if (p === undefined) throw new Error(`record for epoch ${rec.epoch} is not on the ledger`);
     return p;
   };
@@ -874,7 +928,7 @@ export async function runClaim(a: ClaimArgs, state: rt.ChargedState): Promise<Cl
     const rec = a.present.get(e + 1);
     presentFlags.push(rec !== undefined);
     // a presented record not on the ledger gets a forged path (leaf swapped into a real one)
-    paths.push(rec === undefined ? genesis : (led.epochRecords.findPathForLeaf(rec) ?? { ...genesis, leaf: rec }));
+    paths.push(rec === undefined ? genesis : (led.creditedRecords.findPathForLeaf(rec) ?? { ...genesis, leaf: rec }));
   }
   const contract = new mod.Contract({
     ...stubWitnesses(),

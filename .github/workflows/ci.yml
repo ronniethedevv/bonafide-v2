@@ -68,7 +68,7 @@ jobs:
         run: pnpm -r typecheck
 
       - name: Test
-        run: pnpm -r --filter='!@mmr/dapp' test
+        run: pnpm -r test
         env:
           TEST_DATABASE_URL: postgresql://mmr:mmr@localhost:5432/mmr
           KAT_REQUIRE_BUILD: "1"
