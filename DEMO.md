@@ -116,6 +116,8 @@ pnpm --filter web dev                    # http://localhost:3000
   committed wallet signed for this engagement, and only then lets you accept. Before sending the
   loan, "Check on Midnight" finds the engagement on chain by the commitments you accepted and
   checks the bond, its beneficiary, the tier and the clock.
+- **Step by step:** [the market maker's guide](docs/guide-market-maker.md) and
+  [the client's guide](docs/guide-client.md).
 - **Read from the chain:** the live engagement page (step D), a market maker's track record
   (`/record/<profile id>`) and the client's check before funding. Both live pages are linked from
   the landing page.

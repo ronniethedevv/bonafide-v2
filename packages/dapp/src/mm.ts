@@ -110,6 +110,8 @@ async function main(): Promise<void> {
   useEnvProxy();
   const command = process.argv[2] as Command;
   if (!COMMANDS.includes(command)) throw new Error(`usage: mm <${COMMANDS.join("|")}> [engagement file]`);
+  // A market maker sets only MM_SEED; it then stands in for the deploy seed the config asks for.
+  if (process.env.MM_SEED && !process.env.DEPLOY_SEED && !process.env.MIDNIGHT_WALLET_SEED) process.env.DEPLOY_SEED = process.env.MM_SEED;
   const base = loadConfig();
   // The market maker's own seed; the demo falls back to the deploy seed.
   const cfg = { ...base, deploySeed: process.env.MM_SEED || base.deploySeed };

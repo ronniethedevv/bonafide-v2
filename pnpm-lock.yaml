@@ -40,6 +40,9 @@ importers:
       '@mmr/read-model':
         specifier: workspace:*
         version: link:../../packages/read-model
+      '@scure/base':
+        specifier: 2.4.0
+        version: 2.4.0
       '@walletconnect/ethereum-provider':
         specifier: 2.26.0
         version: 2.26.0(@types/react@19.0.7)(react@19.0.0)(typescript@5.9.3)(zod@3.25.76)

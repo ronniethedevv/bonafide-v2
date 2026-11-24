@@ -17,6 +17,7 @@
 **[A market maker's profile](https://bonafide-v2.vercel.app/mm/vega-mm)** ·
 **[Tear sheet](https://bonafide-v2.vercel.app/mm/vega-mm/tear-sheet)** ·
 **[Demo guide](DEMO.md)** ·
+**How-to: [market maker](docs/guide-market-maker.md), [client](docs/guide-client.md)** ·
 **[Built on Midnight](specs/BUILT_ON_MIDNIGHT.md)** ·
 **[Specifications](specs/README.md)**
 
@@ -321,6 +322,10 @@ pnpm -r test
 The contract's tests need the compiled contract: `pnpm --filter @mmr/contracts kat:build` (Compact
 0.36.1, a few seconds). Database tests need `TEST_DATABASE_URL`. Node.js 22 or later and pnpm 10.
 
+**Step by step for each role:** [the market maker's guide](docs/guide-market-maker.md) (the wizard
+or the agent, then the Midnight steps from your machine) and [the client's guide](docs/guide-client.md)
+(all in the browser).
+
 **As a market maker, from your own machine:** connect the agent with a token from your dashboard,
 create the engagement file locally, have each trading wallet sign its ownership message, then
 propose. The trading wallets stay on your machine.
@@ -361,14 +366,14 @@ proves.
 
 ## Tests
 
-545 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+550 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
 |---|---|---|
 | `contracts` | 147 | The compiled circuits: an honest witness passes, every tampered witness reverts, the full lifecycle with real time windows, disputes and credited days, the committed pool |
-| `indexer` | 159 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
-| `web` | 46 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, the client's check before funding, agent tokens |
+| `indexer` | 162 | Chain readers (RPC, logs, multicall), price and tick math, per-wallet depth and flow, tree building, the anti-JIT rule, the published series, the IPFS publisher |
+| `web` | 48 | Wallet sign-in and sessions, the engagement registry, engagement terms, the bond's beneficiary check, the client's check before funding, agent tokens |
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
@@ -405,8 +410,9 @@ package and runs every test against the compiled circuits; a missing build fails
   and the void) runs from the `mm` commands on its own machine, with a local proof server, so its
   keys, wallets, terms and salts never reach the website. A client needs no terminal: it reviews
   and accepts in the browser, checks the engagement on Midnight before funding and follows the live
-  page. Two client steps are not on the site yet: the per-day figures view runs on sample data, and
-  collecting a defaulted bond has no button.
+  page. Two client steps are not complete: the daily figures a market maker's agent shares come
+  from replayed data in this preview (the proven outcome of each day is on the live page), and
+  declaring a default has no button on the site.
 - **The market maker's own commands** (`mm`, also a manual workflow) run every market-maker step
   on the market maker's machine, with its own seed (`MM_SEED`) and a local proof server:
   registration, bond, activation, the daily funding, proof, settlement and release, the claim and

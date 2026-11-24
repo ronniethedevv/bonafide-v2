@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { contexts, newOpening, ownershipMessage, registrationFingerprint, seal, sealFile, MIN_PASSPHRASE, type EngagementOpening, type WalletOwnership } from "@mmr/engagement-file";
 import { verifyWalletOwnership, type OwnershipStatus } from "@/lib/engagement/ownership";
+import { normalizeMidnightKey } from "@/lib/engagement/beneficiary";
 import { signMessage, walletErrorText } from "@/lib/wallet/browser";
 import { BackLink, Check, Info, Lock, Plus } from "@/components/icons";
 import { shortAddress } from "@/lib/auth/shared";
@@ -66,7 +67,6 @@ interface Form {
 const TIER_MIN_BOND: Record<number, number> = { 1: 10_000, 2: 5_000, 3: 2_500 };
 const TIER_NAME: Record<number, string> = { 1: "A", 2: "B", 3: "C" };
 const CHAIN_ID: Record<string, number> = { Base: 8453, Ethereum: 1 };
-const KEY_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 const EMPTY: Form = {
   poolId: POOLS[0].id,
@@ -347,7 +347,7 @@ function validate(f: Form, wallets: string[], persist: boolean, pool: Pool): Rec
   const minBond = TIER_MIN_BOND[f.tier] ?? 0;
   const bond = f.bond.replace(/,/g, "").trim();
   if (!/^\d+$/.test(bond) || Number(bond) < minBond) e.bond = `Enter a whole number, at least ${minBond.toLocaleString("en-US")} for tier ${TIER_NAME[f.tier]}.`;
-  if (!KEY_RE.test(f.beneficiary.trim()) || /^(0x)?0+$/.test(f.beneficiary.trim())) e.beneficiary = "Enter your client's Midnight coin public key (64 hex characters).";
+  if (!normalizeMidnightKey(f.beneficiary)) e.beneficiary = "Enter your client's shielded address (mn_shield-addr_…) or Midnight coin public key (64 hex characters).";
   for (const k of ["outflowCap", "netSellCap"] as const) {
     if (f[k].trim() && !amount(f[k], pool.base)) e[k] = `Enter an amount of ${pool.base.symbol}, or leave blank.`;
   }
@@ -418,7 +418,7 @@ function Review({
         tier: f.tier,
         chainId: CHAIN_ID[pool.chain] ?? 0,
         bond: f.bond.replace(/,/g, "").trim(),
-        beneficiary: f.beneficiary.trim().replace(/^0x/, "").toLowerCase(),
+        beneficiary: normalizeMidnightKey(f.beneficiary) ?? "",
       },
     })
       .then(setOpening)
@@ -500,7 +500,7 @@ function Review({
         <Row k="Floor price" v={f.floorPrice.trim() ? `${fmt(f.floorPrice)} ${pool.quote.symbol} per ${pool.base.symbol}` : "not set"} />
         <Row k="Wallets (private)" v={`${wallets.length} committed`} />
         <Row k="Tier · bond (public)" v={`${TIER_NAME[f.tier]} · ${fmt(f.bond)}`} />
-        <Row k="Client's Midnight key (public)" v={`${f.beneficiary.trim().replace(/^0x/, "").slice(0, 10)}…`} />
+        <Row k="Client's Midnight key (public)" v={`${(normalizeMidnightKey(f.beneficiary) ?? "").slice(0, 10)}…`} />
       </dl>
 
       {persist && clientError && (
