@@ -1,10 +1,6 @@
-function fillFor(pct: number): string {
-  // Semantic tone, but as a gentle gradient so the meters read as one system.
-  if (pct >= 95) return "linear-gradient(90deg, color-mix(in srgb, var(--pos) 70%, var(--surface)), var(--pos))";
-  if (pct >= 80) return "linear-gradient(90deg, color-mix(in srgb, var(--warn) 70%, var(--surface)), var(--warn))";
-  return "linear-gradient(90deg, color-mix(in srgb, var(--neg) 70%, var(--surface)), var(--neg))";
-}
-
+// One hue for every bar: the bars show how often each KPI was met, on one 0–100 scale, and
+// the engagement's targets are private, so the record has no public threshold to colour
+// against. The track is a pale step of the same blue (`.meter-data` in globals.css).
 export function KpiBar({ label, pct }: { label: string; pct: number }) {
   const clamped = Math.max(0, Math.min(100, pct));
   return (
@@ -21,14 +17,14 @@ export function KpiBar({ label, pct }: { label: string; pct: number }) {
         </span>
       </div>
       <div
-        className="meter"
+        className="meter meter-data"
         role="meter"
         aria-valuenow={clamped}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={label}
       >
-        <span style={{ width: `${clamped}%`, background: fillFor(clamped) }} />
+        <span style={{ width: `${clamped}%` }} />
       </div>
     </div>
   );

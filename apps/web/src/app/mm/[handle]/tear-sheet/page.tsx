@@ -133,7 +133,7 @@ export default async function TearSheetPage({
                 </td>
                 <td
                   className="mono"
-                  style={{ padding: "12px 16px", color: e.custodyIntact ? "var(--pos)" : "var(--neg)" }}
+                  style={{ padding: "12px 16px", color: e.custodyIntact ? "var(--text)" : "var(--neg)" }}
                 >
                   {e.custodyIntact ? "intact" : "breached"}
                 </td>

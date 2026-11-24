@@ -44,6 +44,11 @@ Reusable utilities live in `globals.css`: `.hero`, `.pill`, `.badge-new`, `.btn`
 
 - **Semantics:** `--pos` = KPI met / proof verified / bond intact; `--neg` =
   missed / defaulted / slashed; `--warn` = flagged / grace / challenged.
+- **Colour is for exceptions.** On record cards, labels use `--text-muted` and values
+  `--text`; an outcome that went as agreed stays in the text colours, and `--neg` marks
+  only what a reader must notice (custody breached, bond slashed). Data bars use one hue
+  (`.meter-data`: `--accent-2` on a pale track of the same blue), never a red/amber/green
+  scale: a KPI's target is private, so the public record has no threshold to colour against.
 - Tier badges: A/B/C with distinct, colour-blind-safe treatments (not red/green
   alone — pair with shape/label).
 

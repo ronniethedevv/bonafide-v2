@@ -13,20 +13,17 @@ const LABEL: Record<Tier, string> = {
   C: "Sandbox · C",
 };
 
-// Shape + label, never colour alone (colour-blind safe, per ui_context).
+// Shape + label, never colour alone (colour-blind safe, per ui_context). A neutral pill:
+// only the small shape carries the tier's colour, so the badge does not compete with the data.
 export function TierBadge({ tier }: { tier: Tier }) {
-  const color = COLOR[tier];
   return (
     <span
       className="pill"
-      style={{
-        color,
-        background: `color-mix(in srgb, ${color} 14%, transparent)`,
-        borderColor: `color-mix(in srgb, ${color} 42%, transparent)`,
-        fontWeight: 550,
-      }}
+      style={{ color: "var(--text)", background: "var(--surface-2)", fontWeight: 550 }}
     >
-      <TierShape tier={tier} />
+      <span style={{ color: COLOR[tier], display: "inline-flex" }}>
+        <TierShape tier={tier} />
+      </span>
       {LABEL[tier]}
     </span>
   );
