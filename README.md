@@ -98,15 +98,21 @@ day's uptime is recorded on chain. Every figure comes from Base, indexed daily.
 | Register: wallet and terms commitments; tier A, Base, 10,000 bond | `register` | 232,537 | `00acfee7…4e2d3ee1` | 30.6 s |
 | Bond held by the contract | `postBond` | 232,542 | `007dc77d…58b6dec8` | 29.2 s |
 | Market maker starts the clock; day 1 is 24 Nov 2026 | `activate` | 232,546 | `00ca2e3e…dede1473` | 23.9 s |
+| Attester 1 recomputes 23 Nov from IPFS and votes for its root | `publishRoot` | 247,965 | `0062b39a…a711cc92` | 31.2 s |
+| Attester 2 votes; 23 Nov's root is published | `publishRoot` | 247,970 | `00d7afe8…17686dc2` | 27.3 s |
+| Funding proven against 23 Nov; these terms carry no loan, and settlement needs this step | `proveFunding` | 247,978 | `006fb049…d9d5bcc6` | 47.9 s |
 
 Before day 1 we checked the terms against real data, with no transaction: the engagement's own
 wallets, terms and salts, and 22 November as published by the daily indexer, run through the
 compiled contract. The published day recomputed, all three wallets were in the pool, `proveEpoch`
 accepted with uptime 48 of 48 (the terms need 36) and `proveFunding` accepted.
 
-Funding is proven against 23 or 24 November once the daily indexer has published one of those days.
-From then on the scheduled job attests each indexed day, proves it, settles it and releases its
-share of the bond. Every transaction id:
+On 24 November the daily indexer published 23 November (root
+`0x3ab50619cf9bbb306118321ebb062f4a18a92d5a08342b72180256445861f960`, manifest
+`bafkreiefdrxs4s6jfsve2mdgdrcooxaq5jo74sor5ofccrpt5u4k6x3wom` on IPFS); two attesters rebuilt it
+from IPFS before voting, and funding was proven against it. From here the scheduled job attests
+each indexed day, proves it, settles it and releases its share of the bond; day 1 (24 November)
+is indexed after it ends. Every transaction id:
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 Its public state, read from the contract through Midnight's public indexer on every visit:

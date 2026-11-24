@@ -36,6 +36,27 @@
       "blockHeight": 232546,
       "seconds": 23.9,
       "at": "2026-11-23T05:25:01.961Z"
+    },
+    {
+      "step": "publishRoot 2026-11-23 (attester 1)",
+      "txId": "0062b39a5e8e989513e7550d303603e49337f1af4a331d691d31e5019aa711cc92",
+      "blockHeight": 247965,
+      "seconds": 31.2,
+      "at": "2026-11-24T07:09:40.001Z"
+    },
+    {
+      "step": "publishRoot 2026-11-23 (attester 2)",
+      "txId": "00d7afe8a83752bef4324ada8a4b9ef45a15e04086679d89f12fc9210c17686dc2",
+      "blockHeight": 247970,
+      "seconds": 27.3,
+      "at": "2026-11-24T07:10:07.519Z"
+    },
+    {
+      "step": "proveFunding (2026-11-23)",
+      "txId": "006fb049004eb45abc3319a0004799c033871ef5ef099636663c2e77f5d9d5bcc6",
+      "blockHeight": 247978,
+      "seconds": 47.9,
+      "at": "2026-11-24T07:10:55.635Z"
     }
   ],
   "engagementId": "7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046",
