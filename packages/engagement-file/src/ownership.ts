@@ -13,7 +13,10 @@ export interface WalletOwnership {
   signature: string;
 }
 
-/** The exact text each committed wallet signs. */
+/**
+ * The exact text each committed wallet signs. Its first line keeps the project's earlier
+ * name: signatures already in engagement files were made over it.
+ */
 export function ownershipMessage(a: { wallet: string; chainId: number; fingerprint: string }): string {
   return [
     "mm-reputation: wallet ownership",

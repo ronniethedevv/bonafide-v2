@@ -1,6 +1,6 @@
 # Specs index
 
-The design, decisions and runbooks behind mm-reputation, grouped by what you want to know.
+The design, decisions and runbooks behind BonaFide v2, grouped by what you want to know.
 
 ## Start here
 

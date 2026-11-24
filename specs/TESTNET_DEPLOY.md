@@ -216,8 +216,8 @@ its one dep resolves cleanly (ledger-v8 8.1.0 is already our pin):
 ```sh
 mkdir -p /tmp/measure && cd /tmp/measure
 npm i @midnight-ntwrk/ledger-v8@8.1.0
-cp ~/mm-reputation/packages/dapp/scripts/measure-deploy-cost.mjs .
-node measure-deploy-cost.mjs ~/mm-reputation/packages/contracts/dist/epoch_proof
+cp ~/bonafide-v2/packages/dapp/scripts/measure-deploy-cost.mjs .
+node measure-deploy-cost.mjs ~/bonafide-v2/packages/contracts/dist/epoch_proof
 #   exit 3 = needs batching, 0 = synthetic fits (NOT conclusive — see below), 2 = bad input
 ```
 
@@ -243,7 +243,7 @@ deploy, so use the runbook's `batch-deploy.ts` (dry-run by default; `execute: tr
 submit). Fetch it verbatim — do not hand-reconstruct it — into `packages/dapp/scripts/`:
 
 ```sh
-cd ~/mm-reputation/packages/dapp/scripts
+cd ~/bonafide-v2/packages/dapp/scripts
 curl -fsSLO https://raw.githubusercontent.com/midnightntwrk/servicedesk/main/runbooks/contract-batched-deploy-runbook/scripts/batch-deploy.ts
 curl -fsSLO https://raw.githubusercontent.com/midnightntwrk/servicedesk/main/runbooks/contract-batched-deploy-runbook/scripts/batch-deploy.NOTES.md
 ```

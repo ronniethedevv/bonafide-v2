@@ -6,13 +6,13 @@ import { CONTRACT_ADDRESS, EPOCHS, NETWORK, readEngagement, type DayState } from
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Engagement on Midnight · mm-reputation",
+  title: "Engagement on Midnight · BonaFide v2",
   description: "An engagement's public state, read from the epoch_proof contract on Midnight Preview.",
 };
 
 const TIER = ["", "A", "B", "C"];
 const CHAIN: Record<number, string> = { 8453: "Base", 1: "Ethereum" };
-const REPO = "https://github.com/ronniethedevv/mm-reputation";
+const REPO = "https://github.com/ronniethedevv/bonafide-v2";
 /** An on-chain amount (a decimal string of the token's smallest unit) with thousands separators. */
 const amount = (v: string) => BigInt(v).toLocaleString("en-US");
 

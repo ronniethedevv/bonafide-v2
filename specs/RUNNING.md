@@ -7,8 +7,8 @@
 ## Setup
 
 ```bash
-git clone https://github.com/ronniethedevv/mm-reputation.git
-cd mm-reputation
+git clone https://github.com/ronniethedevv/bonafide-v2.git
+cd bonafide-v2
 git checkout ccr-0ae4f61d-euy47e
 pnpm install
 ```

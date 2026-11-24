@@ -11,7 +11,7 @@ This is a pnpm monorepo, so the one setting that matters is the **Root Directory
 ## One-time setup (≈ 3 minutes)
 
 1. Go to **vercel.com → Add New → Project** and import
-   `ronniethedevv/mm-reputation`.
+   `ronniethedevv/bonafide-v2`.
 2. **Root Directory:** click *Edit* and set it to **`apps/web`**.
    (Vercel detects the pnpm workspace above it and installs the whole workspace
    from the repo root automatically — that is how the shared `@mmr/read-model`

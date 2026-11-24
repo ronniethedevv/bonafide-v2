@@ -4,7 +4,7 @@ import { dbConfigured } from "@/lib/db/pool";
 import { SignInGate } from "@/components/signin-gate";
 import { RegisterWizard } from "@/components/mm/register-wizard";
 
-export const metadata = { title: "Register an engagement · MM Reputation" };
+export const metadata = { title: "Register an engagement · BonaFide v2" };
 
 export default async function NewEngagementPage() {
   const session = await getSession();

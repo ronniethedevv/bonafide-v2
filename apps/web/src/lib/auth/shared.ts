@@ -2,7 +2,7 @@
 // sign-in UI in the browser and the verifier on the server.
 
 export const SIWE_STATEMENT =
-  "Sign in to MM Reputation. This only proves you control this address: it sends no transaction and costs nothing.";
+  "Sign in to BonaFide v2. This only proves you control this address: it sends no transaction and costs nothing.";
 
 /** How long a nonce / signed sign-in message stays usable. */
 export const SIWE_TTL_MS = 10 * 60_000;

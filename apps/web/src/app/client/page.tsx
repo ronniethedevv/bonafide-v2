@@ -11,7 +11,7 @@ import { MidnightKeyCard } from "@/components/client/midnight-key";
 import { db } from "@/lib/db/pool";
 import { getInboxKey, getMidnightKey, registrationsForClient, type Registration } from "@/lib/db/store";
 
-export const metadata = { title: "My engagements · MM Reputation" };
+export const metadata = { title: "My engagements · BonaFide v2" };
 
 // The signed-in client's portal: the engagements they're the counterparty to, and how
 // each market maker is performing against the agreed terms — seen through the client's

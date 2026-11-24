@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Public reputation profile + tear sheet (read-mostly) for the MM Reputation Record.",
+  "description": "Public reputation profile + tear sheet (read-mostly) for BonaFide v2.",
   "engines": {
     "node": "22.x"
   },

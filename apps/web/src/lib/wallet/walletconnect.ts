@@ -27,7 +27,7 @@ export function getWalletConnectProvider(): Promise<WcProvider> {
         showQrModal: true,
         rpcMap: { 8453: "https://mainnet.base.org", 1: "https://ethereum-rpc.publicnode.com" },
         metadata: {
-          name: "MM Reputation",
+          name: "BonaFide v2",
           description: "Verified reputation records for crypto market makers.",
           url: window.location.origin,
           icons: [],

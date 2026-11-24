@@ -4,7 +4,7 @@ import { SampleDataBanner } from "@/components/sample-banner";
 import { getSession } from "@/lib/session";
 import { ChevronRight, Globe } from "@/components/icons";
 
-export const metadata = { title: "Explore market makers · MM Reputation" };
+export const metadata = { title: "Explore market makers · BonaFide v2" };
 
 // The public directory: every market maker with a public record. This is what anyone —
 // a project shopping for an MM, a fund doing diligence — can see without an account.

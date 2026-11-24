@@ -1,28 +1,28 @@
-<p align="center"><img src="docs/assets/landing.png" alt="mm-reputation: prove your track record, keep your books private." width="100%"></p>
+<p align="center"><img src="docs/assets/landing.png" alt="BonaFide v2: prove your track record, keep your books private." width="100%"></p>
 
-# mm-reputation
+# BonaFide v2
 
 **A verifiable track record for crypto market makers. Built on Midnight.**
 
 <p>
-  <a href="https://github.com/ronniethedevv/mm-reputation/actions/workflows/ci.yml"><img src="https://github.com/ronniethedevv/mm-reputation/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ronniethedevv/bonafide-v2/actions/workflows/ci.yml"><img src="https://github.com/ronniethedevv/bonafide-v2/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0d1220" alt="Apache-2.0"></a>
   <img src="https://img.shields.io/badge/Compact-0.36.1-1a1040" alt="Compact 0.36.1">
   <img src="https://img.shields.io/badge/Ledger-9-1a1040" alt="Ledger 9">
   <img src="https://img.shields.io/badge/Midnight-Preview-3b5bff" alt="Midnight Preview">
 </p>
 
-**[Live site](https://mm-reputation-web.vercel.app)** ·
-**[The live engagement, read from the chain](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046)** ·
-**[A market maker's profile](https://mm-reputation-web.vercel.app/mm/vega-mm)** ·
-**[Tear sheet](https://mm-reputation-web.vercel.app/mm/vega-mm/tear-sheet)** ·
+**[Live site](https://bonafide-v2.vercel.app)** ·
+**[The live engagement, read from the chain](https://bonafide-v2.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046)** ·
+**[A market maker's profile](https://bonafide-v2.vercel.app/mm/vega-mm)** ·
+**[Tear sheet](https://bonafide-v2.vercel.app/mm/vega-mm/tear-sheet)** ·
 **[Demo guide](DEMO.md)** ·
 **[Built on Midnight](specs/BUILT_ON_MIDNIGHT.md)** ·
 **[Specifications](specs/README.md)**
 
 Token projects hand market makers inventory, loans and fees, and then have to take their word for
 the result. A market maker cannot prove it delivered without showing its wallets, balances and
-strategy, which no serious firm will do. mm-reputation closes that gap. The market maker commits to
+strategy, which no serious firm will do. BonaFide v2 closes that gap. The market maker commits to
 an engagement's wallets and terms, then proves each day, in zero knowledge, that its liquidity met
 those terms: depth inside the agreed price band, uptime, custody of the client's tokens, capped
 selling and no self-dealing volume. Every figure is checked against a public, deterministic index of
@@ -110,7 +110,7 @@ share of the bond. Every transaction id:
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 Its public state, read from the contract through Midnight's public indexer on every visit:
-[the live engagement page](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
+[the live engagement page](https://bonafide-v2.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
 
 <p align="center"><img src="docs/assets/engagement.png" alt="The live engagement page: status, tier and chain, bond, day 1, funding, releases, the bond's beneficiary and the day table, read from the contract on Midnight Preview" width="100%"></p>
 
@@ -207,7 +207,7 @@ proof binds one to the other. That is why this runs on Midnight.
 6. **Claim.** When the engagement ends, the market maker claims it into its public profile with a
    nullifier: it counts once, cannot be removed, and the profile entry does not reveal which
    engagement it came from. A profile's record is read from the contract's per-tier counters by
-   its profile id, which the market maker shares: [the live market maker's record](https://mm-reputation-web.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c)
+   its profile id, which the market maker shares: [the live market maker's record](https://bonafide-v2.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c)
    (empty until its first claim; the live engagement's full claim is possible from 26 December,
    18:00 UTC, when day 30 is credited).
 
@@ -285,7 +285,7 @@ compiler rejects any other path from private data to public state.
 
 ## Try it
 
-**On the live site, no install:** [mm-reputation-web.vercel.app](https://mm-reputation-web.vercel.app).
+**On the live site, no install:** [bonafide-v2.vercel.app](https://bonafide-v2.vercel.app).
 Browse market makers, open a profile, then export its tear sheet. The profiles there are sample data
 and say so on the page; real records appear as engagements complete.
 
@@ -320,7 +320,7 @@ create the engagement file locally, have each trading wallet sign its ownership 
 propose. The trading wallets stay on your machine.
 
 ```bash
-pnpm --filter @mmr/agent agent connect --server https://mm-reputation-web.vercel.app --token <agent token>
+pnpm --filter @mmr/agent agent connect --server https://bonafide-v2.vercel.app --token <agent token>
 pnpm --filter @mmr/agent agent create --client 0x… --pool 0x… --pair VIRTUAL/USDC --wallets 0x…,0x… \
   --terms terms.json --tier 1 --bond 10000 --out engagement.mmr.json
 pnpm --filter @mmr/agent agent propose engagement.mmr.json --signatures engagement.mmr.json.ownership.json
@@ -453,4 +453,4 @@ Apache-2.0 ([LICENSE](LICENSE)).
 
 Built for the Midnight Buildathon on Midnight's tools: the Compact compiler, `compact-runtime`,
 Midnight.js, the wallet SDK and the proof server, running against Midnight's public Preview node and
-indexer. mm-reputation is independent and not endorsed by the Midnight Foundation.
+indexer. BonaFide v2 is independent and not endorsed by the Midnight Foundation.

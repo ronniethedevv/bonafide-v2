@@ -1,4 +1,4 @@
-// Client for the MM Reputation agent API (/api/agent/v1). Authenticated with the agent
+// Client for the BonaFide v2 agent API (/api/agent/v1). Authenticated with the agent
 // token from the workspace's "Connect agent". Sends phases and sealed envelopes only.
 
 import type { SealedEnvelope } from "@mmr/engagement-file";
