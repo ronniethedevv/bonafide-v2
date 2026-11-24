@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../config.js";
 import type {
   AddressActivity,
@@ -8,7 +11,7 @@ import type {
   PriceSample,
 } from "../provider.js";
 import { parseAddr } from "@mmr/merkle";
-import { runEpochTwice } from "./run-epoch.js";
+import { runEpochTwice, snapshotFile } from "./run-epoch.js";
 
 const POOL = parseAddr("0x00000000000000000000000000000000000000a1");
 
@@ -93,9 +96,40 @@ describe("runEpochTwice", () => {
     expect(res.manifest.rootOfRootsHex).toBe(res.rootHex);
   });
 
+  it("runs the hook between the two builds, once", async () => {
+    const calls: string[] = [];
+    class Recording extends StableProvider {
+      override async poolActivity(): Promise<AddressActivity[]> {
+        calls.push("build");
+        return super.poolActivity();
+      }
+    }
+    await runEpochTwice(new Recording(), DEFAULT_CONFIG, range, undefined, () => calls.push("hook"));
+    expect(calls).toEqual(["build", "hook", "build"]);
+  });
+
   it("throws if the pipeline is not deterministic", async () => {
     await expect(runEpochTwice(new DriftingProvider(), DEFAULT_CONFIG, range)).rejects.toThrow(
       /non-deterministic root/,
     );
+  });
+});
+
+describe("snapshotFile", () => {
+  it("puts a file back as it was before the first run changed it", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mmr-snap-")), "registry.json");
+    writeFileSync(path, "scanned to the day's start");
+    const restore = snapshotFile(path);
+    writeFileSync(path, "scanned to the day's end");
+    restore();
+    expect(readFileSync(path, "utf8")).toBe("scanned to the day's start");
+  });
+
+  it("removes a file the first run created when there was none", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mmr-snap-")), "registry.json");
+    const restore = snapshotFile(path);
+    writeFileSync(path, "new registry");
+    restore();
+    expect(existsSync(path)).toBe(false);
   });
 });
