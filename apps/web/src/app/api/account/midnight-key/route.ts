@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
   const key = normalizeMidnightKey(body.key);
-  if (!key) return NextResponse.json({ error: "Enter your Midnight coin public key: 64 hex characters." }, { status: 422 });
+  if (!key) return NextResponse.json({ error: "Paste your shielded address (mn_shield-addr_…) or your coin public key (64 hex characters)." }, { status: 422 });
   try {
     await setMidnightKey(pool, session.accountId, key);
     return NextResponse.json({ ok: true });

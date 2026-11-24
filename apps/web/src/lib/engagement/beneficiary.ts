@@ -3,13 +3,31 @@
 // own key would collect its own slashed bond. The client saves its key on its account,
 // and acceptance is allowed only when the registration names that key.
 
+import { bech32m } from "@scure/base";
 import type { ClientTermsPayload } from "./terms";
 
-/** A Midnight coin public key: 32 bytes, as lowercase hex without 0x, not all zero. */
+/**
+ * A Midnight coin public key: 32 bytes, as lowercase hex without 0x, not all zero. Accepts
+ * the key itself or the shielded address a Midnight wallet such as Lace shows
+ * (`mn_shield-addr_<network>1…`), whose payload is the coin public key followed by the
+ * encryption public key.
+ */
 export function normalizeMidnightKey(v: unknown): string | null {
   if (typeof v !== "string") return null;
-  const k = v.trim().replace(/^0x/i, "").toLowerCase();
-  return /^[0-9a-f]{64}$/.test(k) && !/^0+$/.test(k) ? k : null;
+  const s = v.trim();
+  const k = /^mn_/i.test(s) ? coinKeyOfShieldedAddress(s) : s.replace(/^0x/i, "").toLowerCase();
+  return k !== null && /^[0-9a-f]{64}$/.test(k) && !/^0+$/.test(k) ? k : null;
+}
+
+function coinKeyOfShieldedAddress(address: string): string | null {
+  try {
+    const { prefix, bytes } = bech32m.decodeToBytes(address.toLowerCase(), false);
+    const [mn, type] = prefix.split("_");
+    if (mn !== "mn" || type !== "shield-addr" || bytes.length !== 64) return null;
+    return Array.from(bytes.subarray(0, 32), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return null;
+  }
 }
 
 export type BeneficiaryCheck = { ok: true } | { ok: false; reason: string };

@@ -85,7 +85,10 @@ async function pollForDust(wallet: HeadlessWallet): Promise<bigint> {
 }
 
 async function main(): Promise<void> {
-  const cfg = loadConfig();
+  // A market maker registers its own wallet with MM_SEED, the seed its mm commands use.
+  if (process.env.MM_SEED && !process.env.DEPLOY_SEED && !process.env.MIDNIGHT_WALLET_SEED) process.env.DEPLOY_SEED = process.env.MM_SEED;
+  const base = loadConfig();
+  const cfg = { ...base, deploySeed: process.env.MM_SEED || base.deploySeed };
 
   console.log("mmr register-dust — designate a DUST address for the NIGHT UTXOs");
   console.log(`  network   ${cfg.networkId}`);

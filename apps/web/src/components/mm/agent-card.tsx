@@ -90,7 +90,7 @@ export function AgentCard({ tokens, server }: { tokens: AgentTokenInfo[]; server
       {error && <div role="alert" className="field-err">{error}</div>}
       <div className="demo-note" style={{ marginTop: 12, alignItems: "flex-start" }}>
         <Info size={14} style={{ marginTop: 2 }} />
-        <span style={{ lineHeight: 1.5 }}>Preview: the agent runs from the repository for now; a Docker image comes next. Proving on Midnight is pending, so epochs show as &quot;proof pending&quot;.</span>
+        <span style={{ lineHeight: 1.5 }}>Preview: the agent runs from the repository for now; a Docker image comes next. Proofs on Midnight run with your own <code>mm</code> commands, so days the agent reports show as &quot;proof pending&quot; here.</span>
       </div>
     </section>
   );

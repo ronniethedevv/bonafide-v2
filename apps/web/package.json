@@ -21,6 +21,7 @@
     "@mmr/db": "workspace:*",
     "@mmr/engagement-file": "workspace:*",
     "@mmr/read-model": "workspace:*",
+    "@scure/base": "2.4.0",
     "@walletconnect/ethereum-provider": "2.26.0",
     "jose": "6.2.14",
     "next": "15.5.29",
