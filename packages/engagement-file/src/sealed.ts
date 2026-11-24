@@ -11,6 +11,8 @@
 import { x25519 } from "@noble/curves/ed25519";
 import { ab, bytesToHex, concatBytes, fromB64, hexToBytes, randomBytes, subtle, toB64, utf8 } from "./bytes.js";
 
+// Signed text keeps the project's earlier name word for word: a client's inbox key is derived
+// from its signature of exactly this message, so new wording would give every client a new key.
 export const INBOX_KEY_MESSAGE = [
   "MM Reputation: private inbox key (v1)",
   "",
@@ -90,7 +92,10 @@ export const contexts = {
   epoch: (registrationId: string, epoch: number) => `epoch:${registrationId}:${epoch}`,
 };
 
-/** What a client signs to accept an engagement. Server and browser build it identically. */
+/**
+ * What a client signs to accept an engagement. Server and browser build it identically.
+ * Its first line keeps the project's earlier name: stored acceptances were signed over it.
+ */
 export function acceptanceMessage(a: { registrationId: string; walletCommit: string; termsCommit: string }): string {
   return [
     "MM Reputation: accept engagement",

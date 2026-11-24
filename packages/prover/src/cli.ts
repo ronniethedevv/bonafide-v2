@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const r = await runDemoEpoch();
 
   const line = "─".repeat(52);
-  process.stdout.write(`${line}\n MM Reputation — epoch proof (demo)\n${line}\n`);
+  process.stdout.write(`${line}\n BonaFide v2 — epoch proof (demo)\n${line}\n`);
   process.stdout.write(`pools indexed      : ${r.poolCount}\n`);
   process.stdout.write(`root-of-roots      : ${r.rootOfRootsHex}\n`);
   process.stdout.write(`engagement         : ${r.engagement.id}\n`);

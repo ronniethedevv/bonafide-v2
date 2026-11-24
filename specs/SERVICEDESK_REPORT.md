@@ -17,7 +17,7 @@ specific to Preview, not to our client or contract.
 
 ## 1. Branch and commit SHA
 
-- **Reproduction code:** `github.com/ronniethedevv/mm-reputation`, branch
+- **Reproduction code:** `github.com/ronniethedevv/bonafide-v2`, branch
   `ccr-0ae4f61d-euy47e`, commit `d62b804` (current). The repro drivers are committed there
   (paths in section 2).
 - **Node under test, both sides:** `system_version` `1.0.400-87c0fbdb`,

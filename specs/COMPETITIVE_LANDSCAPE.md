@@ -1,6 +1,6 @@
 # Competitive landscape & gap analysis
 
-_Market research for the Market-Maker Reputation Record. Dated 2026-11-16._
+_Market research for BonaFide v2. Dated 2026-11-16._
 
 This studies the class of product we sit in — **privacy-preserving, verifiable
 reputation / attestation infrastructure** — through eight comparable projects,

@@ -19,6 +19,7 @@ export interface WalletClaims {
   preview?: boolean;
 }
 
+// The project's earlier name: changing the issuer would end every signed-in session.
 const ISSUER = "mm-reputation";
 const MIN_SECRET_LEN = 32;
 const DEV_SECRET = "dev-only-session-secret-do-not-use-in-production-000";

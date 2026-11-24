@@ -21,8 +21,8 @@ export { SIWE_STATEMENT, SIWE_TTL_MS };
 const CLOCK_SKEW_MS = 60_000;
 
 export interface SiweExpectation {
-  domain: string; // host the browser is on, e.g. "mm-reputation.vercel.app"
-  origin: string; // e.g. "https://mm-reputation.vercel.app"
+  domain: string; // host the browser is on, e.g. "bonafide-v2.vercel.app"
+  origin: string; // e.g. "https://bonafide-v2.vercel.app"
   nonce: string; // issued by the server, held in an httpOnly cookie
   now?: Date;
   /** Chain RPC for smart-wallet checks; return undefined to skip (EOA-only). */

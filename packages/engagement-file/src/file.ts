@@ -141,7 +141,7 @@ export async function sealFile(o: EngagementOpening, passphrase: string, iterati
 
 /** Decrypt and check a file. Throws on a wrong passphrase, tampering, or mismatched commitments. */
 export async function openFile(file: EngagementFile, passphrase: string): Promise<EngagementOpening> {
-  if (file?.format !== FILE_FORMAT || file.v !== 1) throw new Error("not an MM Reputation engagement file");
+  if (file?.format !== FILE_FORMAT || file.v !== 1) throw new Error("not a BonaFide v2 engagement file");
   const key = await deriveKey(passphrase, fromB64(file.kdf.salt), file.kdf.iterations);
   let plain: ArrayBuffer;
   try {

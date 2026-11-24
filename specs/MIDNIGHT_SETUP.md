@@ -13,17 +13,17 @@ It targets **Ubuntu** (native or WSL2 on Windows).
 ## 0. Which Ubuntu are you on?
 
 - **WSL2 (Ubuntu on Windows):** do everything *inside* the Ubuntu shell. Your
-  desktop project is probably at `/mnt/c/Users/<you>/Desktop/mm-reputation`
+  desktop project is probably at `/mnt/c/Users/<you>/Desktop/bonafide-v2`
   (the Windows Desktop, seen from Ubuntu). Install **Docker Desktop for Windows**
   and enable *Settings → Resources → WSL integration* for your Ubuntu distro —
   that gives you `docker` inside Ubuntu, which the proof server needs.
-- **Native Ubuntu:** project at `~/Desktop/mm-reputation`; install Docker Engine
+- **Native Ubuntu:** project at `~/Desktop/bonafide-v2`; install Docker Engine
   the normal Linux way.
 
 Find your project and `cd` into it:
 
 ```bash
-cd ~/Desktop/mm-reputation 2>/dev/null || cd /mnt/c/Users/$USER/Desktop/mm-reputation
+cd ~/Desktop/bonafide-v2 2>/dev/null || cd /mnt/c/Users/$USER/Desktop/bonafide-v2
 pwd   # confirm you're in the repo (should contain pnpm-workspace.yaml)
 ```
 

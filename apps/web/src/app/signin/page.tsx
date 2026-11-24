@@ -3,7 +3,7 @@ import { PERSONAS, getAuth, safeNext, type Persona } from "@/lib/session";
 import { WalletSignIn } from "@/components/wallet/wallet-signin";
 import { ArrowRight, Info } from "@/components/icons";
 
-export const metadata = { title: "Sign in · MM Reputation" };
+export const metadata = { title: "Sign in · BonaFide v2" };
 
 export default async function SignInPage({
   searchParams,

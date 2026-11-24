@@ -14,7 +14,7 @@ import { listAgentTokens, type AgentTokenInfo } from "@/lib/db/agent-store";
 import { AgentCard } from "@/components/mm/agent-card";
 import { headers } from "next/headers";
 
-export const metadata = { title: "Workspace · MM Reputation" };
+export const metadata = { title: "Workspace · BonaFide v2" };
 
 // The signed-in MM's private workspace: every engagement they're running, its state, how
 // far it is through its contract, and the single next action. Each MM sees only their own.

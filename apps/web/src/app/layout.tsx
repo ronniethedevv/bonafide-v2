@@ -7,7 +7,7 @@ import { User } from "@/components/icons";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MM Reputation",
+  title: "BonaFide v2",
   description:
     "A private reputation record for crypto market makers. Prove you met your targets without revealing your books.",
 };
@@ -29,7 +29,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <header className="topbar">
           <Link href="/" className="brand">
             <span className="brand-mark" aria-hidden="true" />
-            <span className="brand-name">MM Reputation</span>
+            <span className="brand-name">BonaFide v2</span>
           </Link>
           <nav className="topnav" aria-label="Main">
             <Link href="/explore">Explore</Link>

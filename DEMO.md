@@ -1,4 +1,4 @@
-# Running and verifying mm-reputation
+# Running and verifying BonaFide v2
 
 A market maker proves, in zero knowledge on Midnight, that its liquidity met an engagement's terms
 each day, measured against a deterministic index of Uniswap v3 activity on Base and Ethereum, and
@@ -71,7 +71,7 @@ liquidity-provider wallets that we do not control; the README explains how they 
 chosen.
 
 - **Its state, read from the contract on every visit:**
-  [the live engagement page](https://mm-reputation-web.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
+  [the live engagement page](https://bonafide-v2.vercel.app/engagement/7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046).
   It shows the status, the bond, day 1, funding, and for each day the attested root, the proven
   uptime, settlement and release.
 - **Every transaction:** [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
@@ -92,12 +92,12 @@ commands (`pnpm --filter @mmr/dapp mm`) and is never activated: from 26 November
 `voidUnfunded` returns its bond
 ([`preview-void-demo-lifecycle.json`](packages/dapp/deployments/preview-void-demo-lifecycle.json)).
 The market maker's record, read from the contract's counters:
-[/record/609d764b…](https://mm-reputation-web.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c),
+[/record/609d764b…](https://bonafide-v2.vercel.app/record/609d764be4887f7618334da0365ad5814d1e581a851bd5ef1430d9ee051e566c),
 empty until its first claim.
 
 ## E. Use the web app
 
-**Live:** [mm-reputation-web.vercel.app](https://mm-reputation-web.vercel.app). **Locally:**
+**Live:** [bonafide-v2.vercel.app](https://bonafide-v2.vercel.app). **Locally:**
 
 ```bash
 pnpm --filter web dev                    # http://localhost:3000

@@ -7,7 +7,7 @@ import { readProfileRecord } from "@/lib/chain/profile";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Track record on Midnight · mm-reputation",
+  title: "Track record on Midnight · BonaFide v2",
   description: "A market maker's claimed engagements, per tier, read from the epoch_proof contract on Midnight Preview.",
 };
 

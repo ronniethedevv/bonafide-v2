@@ -4,7 +4,7 @@ import { shortAddress } from "@/lib/auth/shared";
 import { OnboardingForm } from "@/components/wallet/onboarding-form";
 import { Info } from "@/components/icons";
 
-export const metadata = { title: "Set up your account · MM Reputation" };
+export const metadata = { title: "Set up your account · BonaFide v2" };
 
 // First wallet sign-in: link the wallet to a new market-maker or client account.
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {

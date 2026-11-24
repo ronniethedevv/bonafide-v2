@@ -164,7 +164,7 @@ export function RegisterWizard({ clients, persist }: { clients: ClientOption[]; 
               <Field label="Client's sign-in wallet" err={f.clientAddress.trim() ? errors.clientAddress : undefined}>
                 <input className="inp mono" style={{ fontSize: 13 }} placeholder="0x…" value={f.clientAddress} onChange={(e) => set("clientAddress", e.target.value)} />
                 <div className="dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
-                  The wallet your client signs in to MM Reputation with (not a trading wallet). They need to have
+                  The wallet your client signs in to BonaFide v2 with (not a trading wallet). They need to have
                   signed in once. Only this client sees your per-epoch figures; the public never learns who they are.
                 </div>
               </Field>
