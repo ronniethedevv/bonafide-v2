@@ -360,6 +360,13 @@ a.card:hover,
   height: 100%;
   border-radius: var(--radius-pill);
 }
+/* Data bars: one blue fill on a pale track of the same blue (fill 4.2:1 against the track). */
+.meter-data {
+  background: color-mix(in srgb, var(--accent-2) 18%, var(--surface));
+}
+.meter-data > span {
+  background: var(--accent-2);
+}
 
 /* --- Code / terminal panel --- */
 .terminal {

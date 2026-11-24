@@ -3,13 +3,16 @@ import { overallKpiHitRate } from "@/lib/read-model";
 import { TierBadge } from "./tier-badge";
 import { KpiBar } from "./kpi-bar";
 
-const BOND_COLOR: Record<BondStatus, string> = {
-  intact: "var(--text-muted)",
-  released: "var(--pos)",
-  slashed: "var(--neg)",
+// Colour marks exceptions only (custody breached, bond slashed). Everything that went as
+// agreed reads in the text colours, so a problem stands out on a page of good records.
+const BOND_LABEL: Record<BondStatus, string> = {
+  intact: "Intact",
+  released: "Released",
+  slashed: "Slashed",
 };
 
 export function EngagementCard({ e }: { e: EngagementRecord }) {
+  const slashed = e.bond.status === "slashed";
   return (
     <div className="card">
       <div
@@ -22,13 +25,14 @@ export function EngagementCard({ e }: { e: EngagementRecord }) {
         </span>
       </div>
 
-      <div className="row" style={{ gap: 24, marginTop: 14, marginBottom: 14 }}>
+      <div className="row" style={{ gap: 24, marginTop: 16, marginBottom: 16 }}>
         <Stat label="Epochs met" value={`${e.epochsPassed}/${e.epochsTotal}`} />
         <Stat label="KPI hit-rate" value={`${overallKpiHitRate(e)}%`} />
         <Stat
           label="Custody"
           value={e.custodyIntact ? "Intact" : "Breached"}
-          tone={e.custodyIntact ? "var(--pos)" : "var(--neg)"}
+          words
+          alert={!e.custodyIntact}
         />
       </div>
 
@@ -41,19 +45,28 @@ export function EngagementCard({ e }: { e: EngagementRecord }) {
         className="row"
         style={{
           justifyContent: "space-between",
+          alignItems: "flex-end",
           marginTop: 14,
           paddingTop: 12,
           borderTop: "1px solid var(--border)",
           fontSize: 13,
         }}
       >
-        <span className="muted">
-          Bond:{" "}
-          <span className="mono" style={{ color: BOND_COLOR[e.bond.status] }}>
-            {e.bond.posted} · {e.bond.status}
+        <div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 2 }}>
+            Bond
+          </div>
+          <span className="mono">{e.bond.posted}</span>
+          <span style={{ color: slashed ? "var(--neg)" : "var(--text-muted)" }}>
+            {" "}· {BOND_LABEL[e.bond.status]}
           </span>
-        </span>
-        <span className="muted mono">{e.completedAt}</span>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 2 }}>
+            Completed
+          </div>
+          <span className="mono">{e.completedAt}</span>
+        </div>
       </div>
     </div>
   );
@@ -62,18 +75,29 @@ export function EngagementCard({ e }: { e: EngagementRecord }) {
 function Stat({
   label,
   value,
-  tone,
+  words,
+  alert,
 }: {
   label: string;
   value: string;
-  tone?: string;
+  /** A word, not a number: set in the text face rather than tabular figures. */
+  words?: boolean;
+  /** An exception the reader must notice. */
+  alert?: boolean;
 }) {
   return (
     <div>
-      <div className="eyebrow" style={{ marginBottom: 2 }}>
+      <div className="muted" style={{ fontSize: 13, marginBottom: 2 }}>
         {label}
       </div>
-      <div className="mono" style={{ fontSize: 18, color: tone ?? "var(--text)" }}>
+      <div
+        className={words ? undefined : "mono"}
+        style={{
+          fontSize: 18,
+          fontWeight: words ? 500 : undefined,
+          color: alert ? "var(--neg)" : "var(--text)",
+        }}
+      >
         {value}
       </div>
     </div>
