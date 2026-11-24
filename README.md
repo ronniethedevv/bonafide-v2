@@ -382,13 +382,11 @@ package and runs every test against the compiled circuits; a missing build fails
 ## Scope and limits
 
 - **The live run has just started.** The engagement is registered, bonded and activated; its first
-  day is 24 November. The daily indexer completed its first real day on GitHub Actions on
-  23 November: 22 November, the day before registration, as a test (root `0xbe1c4e6b…c908`); the
-  engagement's own days start with 23 November. The scheduled lifecycle job
-  (attest, prove, settle, release) is tested end to end offline and first ran on 23 November,
-  with no day due yet. A claim
-  needs all 30 days, so it cannot run on chain before the engagement ends; every circuit, `claim`
-  included, runs in the tests.
+  day is 24 November. The daily indexer indexed 22 November as a test (root `0xbe1c4e6b…c908`),
+  then 23 November, which the scheduled job attested and proved funding against on 24 November.
+  Daily proofs, settlement and release start with day 1, once 24 November is indexed. The live
+  engagement's claim waits for all 30 days, so it cannot run on chain before the engagement ends;
+  every circuit, `claim` included, runs in the tests.
 - **RPC plan.** Logs come from a free public endpoint (publicnode) in 10,000-block requests, about
   44 for a Base day; blocks, state and receipts come from a free Alchemy key, whose log requests
   span only 10 blocks (43,200 for a day). Before switching we compared 22 November: 65,511 logs,
@@ -401,6 +399,14 @@ package and runs every test against the compiled circuits; a missing build fails
   addresses that moved VIRTUAL passed. The demo indexes only the engagement's pool.
 - **One operator holds the three attester keys** in this deployment, derived from one seed, and
   the daily job casts two of the three votes. In production each attester is a separate party.
+- **A market maker needs a terminal for its Midnight steps.** In the browser it signs in, registers
+  an engagement in the wizard, signs for each trading wallet and sends the proposal. Every Midnight
+  transaction (registration, bond, activation, the daily proofs, settlement and release, the claim
+  and the void) runs from the `mm` commands on its own machine, with a local proof server, so its
+  keys, wallets, terms and salts never reach the website. A client needs no terminal: it reviews
+  and accepts in the browser, checks the engagement on Midnight before funding and follows the live
+  page. Two client steps are not on the site yet: the per-day figures view runs on sample data, and
+  collecting a defaulted bond has no button.
 - **The market maker's own commands** (`mm`, also a manual workflow) run every market-maker step
   on the market maker's machine, with its own seed (`MM_SEED`) and a local proof server:
   registration, bond, activation, the daily funding, proof, settlement and release, the claim and
@@ -447,10 +453,12 @@ package and runs every test against the compiled circuits; a missing build fails
   attesters' recompute-then-vote job and the market maker's proofs from published data, tested
   end to end offline; a live engagement page read from the contract; the public profile, tear sheet
   and dashboards.
-- **This wave, in progress:** the daily indexer's first real day and the engagement on the VIRTUAL/USDC
-  pool on Base, carried forward by the scheduled job.
+- **This wave, in progress:** the engagement on the VIRTUAL/USDC pool on Base, carried forward by
+  the scheduled job; its first indexed day was attested and funding proven on 24 November.
 - **Next:** the engagement's 30 days, then the claim into a public profile read from the
-  contract's per-tier counters; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
+  contract's per-tier counters; the market maker's one-off Midnight steps (registration, bond,
+  activation, claim, void) from the browser through Lace's dApp connector, and a small desktop app
+  that runs the daily steps, so a market maker needs no terminal; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
   fee sponsor so a market maker needs no NIGHT of its own.
 
 ## License
