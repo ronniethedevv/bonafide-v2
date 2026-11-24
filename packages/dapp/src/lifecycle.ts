@@ -41,6 +41,7 @@ import { deriveAttesterSecrets, deriveSecret } from "./committee.js";
 import { loadConfig } from "./config.js";
 import { PRIVATE_STATE_ID, compiledEpochProofFrom, compiledTestBondToken } from "./contract.js";
 import { openEngagement, readEngagementRecord } from "./engagement.js";
+import { defaultCandidates } from "./defaults.js";
 import { indexedDays } from "./indexed-days.js";
 import { useEnvProxy } from "./net.js";
 import { buildProviders } from "./providers.js";
@@ -235,6 +236,23 @@ async function main(): Promise<void> {
       loaded.set(Number(day), check.day);
       return check.day;
     };
+
+    // --- Defaults ----------------------------------------------------------------------
+    // Anyone may declare a default once a day with an attested, undisputed root missed its
+    // deadline unsettled; the job does it for every running engagement on the contract, so
+    // a client never has to. It skips the engagement it carries itself, as its market maker.
+    // Guarded: nothing here can stop the steps below.
+    try {
+      for (const c of defaultCandidates(led, now(), [id])) {
+        setInputs({});
+        await run(`defaultEngagement (${hex(c.id).slice(0, 8)}…, day ${c.epoch}, ${dayLabel(c.day)})`, () =>
+          contract.callTx.defaultEngagement(c.id, c.epoch),
+        );
+        led = await readLedger();
+      }
+    } catch (err) {
+      console.log(`\ndefaults: skipped (${err instanceof Error ? err.message.split("\n")[0] : String(err)})`);
+    }
 
     // --- Market maker ----------------------------------------------------------------
     const regInputs = {
