@@ -5,6 +5,7 @@
 //        --wallets 0x…,0x… --terms terms.json --tier 1 --bond 10000 --out engagement.mmr.json
 //   pnpm --filter @mmr/agent agent propose engagement.mmr.json --signatures engagement.mmr.json.ownership.json
 //   pnpm --filter @mmr/agent agent import ./engagement-ab12cd34.mmr.json --engagement rec_…
+//   pnpm --filter @mmr/agent agent run --engagement rec_… --epoch 1 --source published
 //   pnpm --filter @mmr/agent agent run --engagement rec_… --epoch 1 --source replay:<dir>
 //   pnpm --filter @mmr/agent agent status
 //
@@ -18,13 +19,14 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { openFile, sealFile, type EngagementFile, type TermsJson, type TokenInfo } from "@mmr/engagement-file";
+import { openFile, sealFile, type EngagementFile, type EngagementOpening, type TermsJson, type TokenInfo } from "@mmr/engagement-file";
 import { FsWitnessStore } from "@mmr/witness";
 import { AgentApi } from "./api.js";
 import { matchesServer } from "./engagement.js";
 import { attachOwnership, createOpening, ownershipTasks, proposalFor } from "./propose.js";
 import { AgentHome } from "./home.js";
-import { runEpoch } from "./run.js";
+import { publishedSource } from "./published-source.js";
+import { loadEngagement, runEpoch } from "./run.js";
 import { replaySource, type ActivitySource } from "./sources.js";
 
 // pnpm runs scripts from the package folder; resolve user paths against where they ran it.
@@ -49,9 +51,10 @@ async function passphrase(): Promise<string> {
   return p;
 }
 
-function sourceFrom(spec: string | undefined): ActivitySource {
+async function sourceFrom(spec: string | undefined, engagement: () => Promise<EngagementOpening>): Promise<ActivitySource> {
+  if (spec === "published") return publishedSource(await engagement());
   if (spec?.startsWith("replay:")) return replaySource(resolve(CWD, spec.slice("replay:".length)));
-  throw new Error("--source replay:<dir> is the only source in this preview (published and rpc sources are planned)");
+  throw new Error("--source published (the attested day, from Midnight and IPFS) or --source replay:<dir>");
 }
 
 const home = new AgentHome();
@@ -135,15 +138,17 @@ try {
       break;
     }
     case "run": {
-      if (!opts.engagement || !opts.epoch) throw new Error("usage: run --engagement <rec_id> --epoch <n> --source replay:<dir>");
+      if (!opts.engagement || !opts.epoch) throw new Error("usage: run --engagement <rec_id> --epoch <n> --source published|replay:<dir>");
       const cfg = home.readConfig();
+      const api = new AgentApi(cfg.server, cfg.token);
+      const pass = await passphrase();
       const r = await runEpoch({
-        api: new AgentApi(cfg.server, cfg.token),
+        api,
         home,
         registrationId: opts.engagement,
         epoch: Number(opts.epoch),
-        source: sourceFrom(opts.source),
-        passphrase: await passphrase(),
+        source: await sourceFrom(opts.source, async () => (await loadEngagement(api, home, opts.engagement!, pass)).opening),
+        passphrase: pass,
       });
       console.log(
         `Epoch ${r.epoch}: ${r.reused ? "witness already captured" : "captured"} · ${r.bucketsAtTarget}/48 half-hours at target · ${r.met ? "met" : "missed"} · ` +

@@ -75,13 +75,15 @@ the settlement and the release of that day's share of the bond. Anyone can open 
 outcomes are public, never the wallets or the terms.
 
 **Open daily figures** shows each day's figures the market maker shares with you, encrypted to your
-inbox. In this preview the market maker's agent sends them from replayed data; the proven outcome
-for each day is on the live page.
+inbox: half-hours at the depth target, the round-trip share, and whether custody, net selling and
+outflow stayed within the terms. Its agent computes them from the day as the indexer published it,
+after checking the day against the root attested on Midnight. The proven outcome of each day is on
+the live page.
 
 ## If the market maker defaults
 
 If a day's root was attested and the market maker did not prove and settle that day before its
-deadline (66 hours after the day ends), anyone can declare the engagement in default on Midnight,
-and the whole bond the contract still holds is paid to your Midnight key. A day whose root was
-never attested, or was disputed, never counts against the market maker. There is no button for
-declaring a default on the site yet; see [Scope and limits](../README.md#scope-and-limits).
+deadline (66 hours after the day ends), the engagement can be declared in default on Midnight, and
+the whole bond the contract still holds is paid to your Midnight key. The scheduled job declares it
+for every running engagement, so you don't have to do anything; anyone else may declare it too. A
+day whose root was never attested, or was disputed, never counts against the market maker.

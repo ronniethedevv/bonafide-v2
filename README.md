@@ -366,7 +366,7 @@ proves.
 
 ## Tests
 
-550 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
+558 tests across 16 packages, all run in CI on every change (14 of them need Postgres, which CI
 provides).
 
 | Package | Tests | What they cover |
@@ -377,8 +377,8 @@ provides).
 | `prover`, `protocol` | 32 each | Witness assembly and a reference implementation of every invariant; the settlement state machine and the attester committee |
 | `watcher` | 30 | Rebuilding attested roots from published data, including one real Base and one real Ethereum epoch |
 | `merkle` | 29 | Leaf schema, indexed Merkle tree, root of roots |
-| `dapp` | 4 | End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused; the market maker's claim inputs, read from the ledger, are accepted by the compiled claim |
-| Eight more | 66 | Read model, engagement files and wallet ownership, witness capture, attestations, the daily job, the database, the agent (creating and proposing an engagement), the tear sheet |
+| `dapp` | 8 | Declaring defaults: which engagements qualify, checked against the compiled contract. End to end without a network: a day built by the indexer is read back, recomputed and turned into a witness the compiled contract accepts; tampered data is refused; the market maker's claim inputs, read from the ledger, are accepted by the compiled claim |
+| Eight more | 70 | Read model, engagement files and wallet ownership, witness capture, attestations, the daily job, the database, the agent (creating and proposing an engagement; the client's figures from the published, attested day), the tear sheet |
 
 CI installs the Compact compiler pinned by checksum, compiles both contracts, typechecks every
 package and runs every test against the compiled circuits; a missing build fails the run
@@ -409,10 +409,10 @@ package and runs every test against the compiled circuits; a missing build fails
   transaction (registration, bond, activation, the daily proofs, settlement and release, the claim
   and the void) runs from the `mm` commands on its own machine, with a local proof server, so its
   keys, wallets, terms and salts never reach the website. A client needs no terminal: it reviews
-  and accepts in the browser, checks the engagement on Midnight before funding and follows the live
-  page. Two client steps are not complete: the daily figures a market maker's agent shares come
-  from replayed data in this preview (the proven outcome of each day is on the live page), and
-  declaring a default has no button on the site.
+  and accepts in the browser, checks the engagement on Midnight before funding, follows the live
+  page and reads the daily figures the market maker's agent seals to it, each computed from the
+  day as published on IPFS and attested on Midnight. A missed day's default is declared by the
+  scheduled job, so the client never has to act.
 - **The market maker's own commands** (`mm`, also a manual workflow) run every market-maker step
   on the market maker's machine, with its own seed (`MM_SEED`) and a local proof server:
   registration, bond, activation, the daily funding, proof, settlement and release, the claim and

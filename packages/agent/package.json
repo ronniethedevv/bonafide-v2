@@ -16,6 +16,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@mmr/contracts": "workspace:*",
+    "@mmr/dapp": "workspace:*",
     "@mmr/engagement-file": "workspace:*",
     "@mmr/indexer": "workspace:*",
     "@mmr/merkle": "workspace:*",

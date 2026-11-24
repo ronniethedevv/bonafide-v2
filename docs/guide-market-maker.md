@@ -156,8 +156,20 @@ share of the bond. It does nothing when nothing is due, so schedule it every few
 with cron, keeping `MM_SEED` and `MMR_ENGAGEMENT_PASSPHRASE` in a file only you can read.
 
 Each day's root is attested after the daily index (from 01:10 UTC). A day must be proven and
-settled within 66 hours of its end; a missed day lets anyone declare a default, and the bond goes to
-your client. A day whose root was never attested, or was disputed, never counts against you.
+settled within 66 hours of its end; a missed day lets anyone declare a default, which the scheduled
+job does, and the bond goes to your client. A day whose root was never attested, or was disputed,
+never counts against you.
+
+Your client's daily figures come from the agent, from the same published and attested day. The
+agent already holds an engagement it proposed; import one you made in the wizard once:
+
+```bash
+pnpm --filter @mmr/agent agent import engagement.mmr.json --engagement <registration id>
+pnpm --filter @mmr/agent agent run --engagement <registration id> --epoch <n> --source published   # n: 1 to 30
+```
+
+`run` checks the day against the root on Midnight, computes the figures for your committed wallets
+and seals them to your client's inbox; only the client can read them.
 
 At any time:
 
