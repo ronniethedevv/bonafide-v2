@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./committee": "./src/committee.ts",
-    "./contract": "./src/contract.ts"
+    "./contract": "./src/contract.ts",
+    "./published": "./src/published.ts",
+    "./deployments/*": "./deployments/*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

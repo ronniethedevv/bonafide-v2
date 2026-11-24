@@ -39,8 +39,10 @@ signature and only then lets the client accept.
 
 1. **Fetch the epoch's public activity** for the engagement's pool — every address's
    balances, transfers, swaps and per-bucket depth. Sources, in order of preference:
-   - `published`: the day's published record from our indexer (IPFS / API), checked
-     against the attested root. No RPC key needed. *(Once the daily indexer service runs.)*
+   - `published`: the day as the daily indexer published it on IPFS, checked against the
+     root attested on Midnight (the engagement's start day, the root and the manifest come
+     from the contract's public state). Each committed wallet's activity is read back from
+     its leaf and its committed series, both checked. No RPC key needed. *(Done.)*
    - `rpc`: the MM's own archive RPC, running the same deterministic indexer locally.
    - `replay`: activity files from `packages/indexer/scripts/replay-run.mts` (dev/test).
 2. **Filter to the committed wallets** and **capture** the witness with `@mmr/witness`

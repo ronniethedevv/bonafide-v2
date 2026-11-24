@@ -126,6 +126,15 @@ importers:
 
   packages/agent:
     dependencies:
+      '@midnight-ntwrk/compact-runtime':
+        specifier: 0.21.0
+        version: 0.21.0
+      '@mmr/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mmr/dapp':
+        specifier: workspace:*
+        version: link:../dapp
       '@mmr/engagement-file':
         specifier: workspace:*
         version: link:../engagement-file
