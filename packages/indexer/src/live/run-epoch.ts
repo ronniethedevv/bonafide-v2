@@ -14,7 +14,7 @@
 // reproduces the committed Base epoch (BROOMY/WETH 0.3%, 2026-10-21), whose root is
 // pinned in packages/watcher/fixtures and in DEMO.md.
 
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolveChain } from "../chains.js";
 import { JsonRpcClient, routeLogs } from "../evm/rpc.js";
@@ -46,9 +46,11 @@ export async function runEpochTwice(
   config: IndexerConfig,
   range: EpochRange,
   publisher: TreePublisher = new InMemoryPublisher(),
+  beforeSecond: () => void = () => {},
 ): Promise<RunResult> {
   // The first run publishes (IPFS in production); the second recomputes in memory.
   const first = await buildEpoch({ provider, publisher }, config, range);
+  beforeSecond();
   const second = await buildEpoch({ provider, publisher: new InMemoryPublisher() }, config, range);
   const identical = first.manifest.rootOfRootsHex === second.manifest.rootOfRootsHex;
   if (!identical) {
@@ -113,7 +115,22 @@ export async function runLiveEpoch(opts: LiveEpochOptions): Promise<RunResult> {
     treasuryAddresses: opts.treasuryAddresses ?? [],
     ...opts.configOverrides,
   };
-  return runEpochTwice(provider, config, range, opts.publisher);
+  // Both runs start from the same position registry: the first run saves one scanned to the
+  // day's end, which the second would otherwise discard and rebuild from every NFT id.
+  const registryPath = opts.activity?.registryPath;
+  return runEpochTwice(provider, config, range, opts.publisher, registryPath ? snapshotFile(registryPath) : undefined);
+}
+
+/**
+ * Remember a file as it is now and return a function that puts it back: the same bytes, or
+ * no file if there was none.
+ */
+export function snapshotFile(path: string): () => void {
+  const saved = existsSync(path) ? readFileSync(path) : undefined;
+  return () => {
+    if (saved === undefined) rmSync(path, { force: true });
+    else writeFileSync(path, saved);
+  };
 }
 
 // --- CLI -----------------------------------------------------------------------------
