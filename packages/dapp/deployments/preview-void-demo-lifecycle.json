@@ -26,6 +26,13 @@
       "blockHeight": 237876,
       "seconds": 30.4,
       "at": "2026-11-23T14:19:26.132Z"
+    },
+    {
+      "step": "voidUnfunded",
+      "txId": "005fbb55a0800626e2c50e0ea7fd9222e419c83ee75588adcd4cded2fb6375bab8",
+      "blockHeight": 281418,
+      "seconds": 34.8,
+      "at": "2026-11-26T14:58:15.153Z"
     }
   ]
 }

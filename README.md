@@ -126,15 +126,15 @@ Its public state, read from the contract through Midnight's public indexer on ev
 
 Registered with the market maker's own commands (`pnpm --filter @mmr/dapp mm`) from its own sealed
 file: tier C, a 2,500 bond, the same pool and terms, and never to be activated. Once its 72-hour
-funding window has passed, `voidUnfunded` returns the bond to the market maker. That circuit has
-so far run only in the tests.
+funding window had passed, `voidUnfunded` returned the bond to the market maker on 26 November,
+its first run on chain.
 
 | Step | Circuit | Block | Transaction | Proof and inclusion |
 |---|---|---|---|---|
 | Market maker receives 2,500 test bond tokens | `test_bond_token.mint` | 237,863 | `004fe95b…a22db8ca` | 26.5 s |
 | Register: tier C, Base, 2,500 bond | `register` | 237,868 | `00920428…aa79a468` | 29.8 s |
 | Bond held by the contract | `postBond` | 237,876 | `0002b4e9…4053d767` | 30.4 s |
-| The bond goes back: never activated | `voidUnfunded` | from 26 Nov 2026, 14:18 UTC | | |
+| The bond goes back: never activated | `voidUnfunded` | 281,418 | `005fbb55…6375bab8` | 34.8 s |
 
 Engagement `c0d1c6ef…6e1a`. Every transaction id:
 [`packages/dapp/deployments/preview-void-demo-lifecycle.json`](packages/dapp/deployments/preview-void-demo-lifecycle.json).
