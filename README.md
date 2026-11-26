@@ -17,6 +17,7 @@
 **[A market maker's profile](https://bonafide-v2.vercel.app/mm/vega-mm)** ·
 **[Tear sheet](https://bonafide-v2.vercel.app/mm/vega-mm/tear-sheet)** ·
 **[Demo guide](DEMO.md)** ·
+**[Deck (PDF)](docs/deck/bonafide-v2-deck.pdf)** ·
 **How-to: [market maker](docs/guide-market-maker.md), [client](docs/guide-client.md)** ·
 **[Built on Midnight](specs/BUILT_ON_MIDNIGHT.md)** ·
 **[Specifications](specs/README.md)**
