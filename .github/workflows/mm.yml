@@ -111,7 +111,7 @@ jobs:
           exit 1
 
       - name: Run the command
-        run: pnpm --filter @mmr/dapp mm "$MM_COMMAND" "$MM_FILE"
+        run: pnpm --filter @mmr/dapp mm "$MM_COMMAND" "packages/dapp/$MM_FILE"
 
       - name: Keep the record
         if: always()
