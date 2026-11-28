@@ -57,7 +57,7 @@ Ethereum are only read, by the indexer; nothing is deployed to them.
   each attester is a separate party. The two-of-three threshold is enforced by the contract either
   way.
 - The market maker pays its own DUST; there is no fee sponsor yet.
-- `voidUnfunded` returned the second engagement's bond on chain on 26 November (block 281,418).
-  `releaseEpoch`, `defaultEngagement`, `disputeRoot` and `claim` have run in the tests but not yet
-  on chain: the first release opens 66 hours after the engagement's first day
-  ends, and a claim needs all 30 days.
+- `voidUnfunded` returned the second engagement's bond on chain on 26 November (block 281,418), and
+  `releaseEpoch` released day 1's share of the live engagement's bond on 27 November (block
+  298,875). `defaultEngagement`, `disputeRoot` and `claim` have run in the tests but not yet on
+  chain: the first two run only when something goes wrong, and a claim needs all 30 days.
