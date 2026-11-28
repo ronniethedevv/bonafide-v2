@@ -57,6 +57,97 @@
       "blockHeight": 247978,
       "seconds": 47.9,
       "at": "2026-11-24T07:10:55.635Z"
+    },
+    {
+      "step": "publishRoot 2026-11-24 (attester 1)",
+      "txId": "00b0063bdff7e035505bfbbb1f6f1d6ef963a14241e03e40a1de759e8a508d4ea5",
+      "blockHeight": 261482,
+      "seconds": 21.9,
+      "at": "2026-11-25T05:43:56.090Z"
+    },
+    {
+      "step": "publishRoot 2026-11-24 (attester 2)",
+      "txId": "00162fda10c3fe395f0a297fe5036d80e964d319540d37274ee1d45d1313be666f",
+      "blockHeight": 261486,
+      "seconds": 23.7,
+      "at": "2026-11-25T05:44:19.987Z"
+    },
+    {
+      "step": "proveEpoch day 1 (2026-11-24)",
+      "txId": "000d511f82a6309fa911cb59cb61b041ea98a95e391c3c4f55316d096bdbed34a2",
+      "blockHeight": 261500,
+      "seconds": 76.8,
+      "at": "2026-11-25T05:45:44.082Z"
+    },
+    {
+      "step": "settleEpoch day 1 (2026-11-24)",
+      "txId": "007bcdc3d34e14e495c6eef78a7ef26497fdde95aa7db93422de9607bf23e0ec26",
+      "blockHeight": 261504,
+      "seconds": 24.1,
+      "at": "2026-11-25T05:46:08.386Z"
+    },
+    {
+      "step": "publishRoot 2026-11-25 (attester 1)",
+      "txId": "0059378e1aef8b4dc60794941debfc8aa1babd2711dbbaa4a2d934ac4364ae5d52",
+      "blockHeight": 278225,
+      "seconds": 27.2,
+      "at": "2026-11-26T09:38:56.366Z"
+    },
+    {
+      "step": "publishRoot 2026-11-25 (attester 2)",
+      "txId": "002916d939d60f4c1d5305abc94bb5ed4eeba0b1a53abf102d6adf9d025cd511a8",
+      "blockHeight": 278229,
+      "seconds": 23.7,
+      "at": "2026-11-26T09:39:20.374Z"
+    },
+    {
+      "step": "proveEpoch day 2 (2026-11-25)",
+      "txId": "0095e19b0e1a1c2b9403176568a3839fa46adbc910c5f61b556f19554674aa59d1",
+      "blockHeight": 278246,
+      "seconds": 93.5,
+      "at": "2026-11-26T09:41:02.683Z"
+    },
+    {
+      "step": "settleEpoch day 2 (2026-11-25)",
+      "txId": "0094799df649e9318096442cf76ba28a075849e613412000f9cb3f6e8e916d0716",
+      "blockHeight": 278250,
+      "seconds": 22.9,
+      "at": "2026-11-26T09:41:25.861Z"
+    },
+    {
+      "step": "publishRoot 2026-11-26 (attester 1)",
+      "txId": "00859818a5c35f469577b5e05199b43d0cebae61ea243068ff71ea2d9e38bbcacc",
+      "blockHeight": 292790,
+      "seconds": 26.1,
+      "at": "2026-11-27T09:56:08.169Z"
+    },
+    {
+      "step": "publishRoot 2026-11-26 (attester 2)",
+      "txId": "00333c18bcf0e2d3a01c9846401f80e80b35d68862ef12f0d9e59828f4f5306391",
+      "blockHeight": 292794,
+      "seconds": 23.6,
+      "at": "2026-11-27T09:56:32.053Z"
+    },
+    {
+      "step": "proveEpoch day 3 (2026-11-26)",
+      "txId": "00a747283c20a1f2b871439d9c737f33d8109acc37f6ac5cdcb23a572624d375b8",
+      "blockHeight": 292811,
+      "seconds": 94.4,
+      "at": "2026-11-27T09:58:13.608Z"
+    },
+    {
+      "step": "settleEpoch day 3 (2026-11-26)",
+      "txId": "0089da3e2ac43c6f7c148de920b0e31d0f67ae3dbcdb21dab3fefe7beaf3375f9e",
+      "blockHeight": 292815,
+      "seconds": 24.0,
+      "at": "2026-11-27T09:58:37.884Z"
+    },
+    {
+      "step": "releaseEpoch day 1 (2026-11-24)",
+      "txId": "00963556c5c6afe350e31796e4166e913be7d1010a50bc7a90ad7b510c764be4cb",
+      "blockHeight": 298875,
+      "seconds": 45.2,
+      "at": "2026-11-27T20:04:38.879Z"
     }
   ],
   "engagementId": "7e3dc4334ee06ebdd7c6fdb929ebd8ef7ccadc8b1e772edfef39d44aebc2b046",

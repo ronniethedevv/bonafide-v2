@@ -36,7 +36,8 @@ record of completed engagements, and nobody sees the wallets, the terms or the b
 [How it works](#how-it-works) · [What the proofs check](#what-the-proofs-check) ·
 [What is private, what is public](#what-stays-private-what-is-public-and-why) ·
 [Try it](#try-it) · [Tests](#tests) · [Scope and limits](#scope-and-limits) ·
-[Repository layout](#repository-layout) · [Roadmap](#roadmap) · [License](#license)
+[Repository layout](#repository-layout) · [Who it is for](#who-it-is-for-and-how-it-sustains-itself) ·
+[Roadmap](#roadmap) · [License](#license)
 
 ## On Midnight's Preview testnet
 
@@ -103,6 +104,19 @@ day's uptime is recorded on chain. Every figure comes from Base, indexed daily.
 | Attester 1 recomputes 23 Nov from IPFS and votes for its root | `publishRoot` | 247,965 | `0062b39a…a711cc92` | 31.2 s |
 | Attester 2 votes; 23 Nov's root is published | `publishRoot` | 247,970 | `00d7afe8…17686dc2` | 27.3 s |
 | Funding proven against 23 Nov; these terms carry no loan, and settlement needs this step | `proveFunding` | 247,978 | `006fb049…d9d5bcc6` | 47.9 s |
+| Attester 1 votes for 24 Nov's root | `publishRoot` | 261,482 | `00b0063b…508d4ea5` | 21.9 s |
+| Attester 2 votes; day 1's root is published | `publishRoot` | 261,486 | `00162fda…13be666f` | 23.7 s |
+| Day 1 proven: uptime 48 of 48 half-hours | `proveEpoch` | 261,500 | `000d511f…dbed34a2` | 76.8 s |
+| Day 1 settled | `settleEpoch` | 261,504 | `007bcdc3…23e0ec26` | 24.1 s |
+| Attester 1 votes for 25 Nov's root | `publishRoot` | 278,225 | `0059378e…64ae5d52` | 27.2 s |
+| Attester 2 votes; day 2's root is published | `publishRoot` | 278,229 | `002916d9…5cd511a8` | 23.7 s |
+| Day 2 proven: uptime 48 of 48 half-hours | `proveEpoch` | 278,246 | `0095e19b…74aa59d1` | 93.5 s |
+| Day 2 settled | `settleEpoch` | 278,250 | `0094799d…916d0716` | 22.9 s |
+| Attester 1 votes for 26 Nov's root | `publishRoot` | 292,790 | `00859818…38bbcacc` | 26.1 s |
+| Attester 2 votes; day 3's root is published | `publishRoot` | 292,794 | `00333c18…f5306391` | 23.6 s |
+| Day 3 proven: uptime 48 of 48 half-hours | `proveEpoch` | 292,811 | `00a74728…24d375b8` | 94.4 s |
+| Day 3 settled | `settleEpoch` | 292,815 | `0089da3e…f3375f9e` | 24.0 s |
+| Day 1's share of the bond released to the market maker; the day is credited | `releaseEpoch` | 298,875 | `00963556…764be4cb` | 45.2 s |
 
 Before day 1 we checked the terms against real data, with no transaction: the engagement's own
 wallets, terms and salts, and 22 November as published by the daily indexer, run through the
@@ -112,9 +126,10 @@ accepted with uptime 48 of 48 (the terms need 36) and `proveFunding` accepted.
 On 24 November the daily indexer published 23 November (root
 `0x3ab50619cf9bbb306118321ebb062f4a18a92d5a08342b72180256445861f960`, manifest
 `bafkreiefdrxs4s6jfsve2mdgdrcooxaq5jo74sor5ofccrpt5u4k6x3wom` on IPFS); two attesters rebuilt it
-from IPFS before voting, and funding was proven against it. From here the scheduled job attests
-each indexed day, proves it, settles it and releases its share of the bond; day 1 (24 November)
-is indexed after it ends. Every transaction id:
+from IPFS before voting, and funding was proven against it. Since then the scheduled job has
+attested, proven and settled each day as it ends; each settled day's share of the bond is released
+66 hours after the day ends, and day 1's was released on 27 November. The table lists days 1 to 3;
+the live page shows every day. Every transaction id:
 [`packages/dapp/deployments/preview-lifecycle.json`](packages/dapp/deployments/preview-lifecycle.json).
 
 Its public state, read from the contract through Midnight's public indexer on every visit:
@@ -452,21 +467,42 @@ package and runs every test against the compiled circuits; a missing build fails
 | [`apps/worker/`](apps/worker) | The daily indexer job |
 | [`specs/`](specs) | Architecture, design decisions, invariants and runbooks ([index](specs/README.md)) |
 
+## Who it is for, and how it sustains itself
+
+- **Token projects** (the client) lend inventory and pay fees to a market maker and today take its
+  reports on trust. BonaFide gives them a check before the loan and a bond that pays them on a
+  missed day.
+- **Market makers** compete for mandates on reputation they cannot show without exposing their
+  wallets. BonaFide gives them a public track record that keeps their books private.
+- **Exchanges and launchpads** increasingly ask who a project's market maker is and on what
+  terms; a proven record answers part of that without a data room.
+
+**How it gets used.** The code is open source (Apache-2.0) and the contract is permissionless: a
+project can ask for a BonaFide engagement in its market-making agreement, and the market maker
+registers it from the web app and its own agent. Early engagements run on Preview at no cost.
+
+**How it could sustain itself (a plan, not yet tested).** A small fee per engagement, paid by the
+token project at registration, would fund the attesters who rebuild and vote each day's root.
+Paid read access for exchanges and launchpads (tear sheets and an API over the public record) is a
+second option. Neither is built; the next waves focus on the trust model first.
+
 ## Roadmap
 
-- **This wave (first submission), done:** the contract on ledger 9 with every invariant enforced in
-  a circuit, deployed to Preview with all 12 circuits; seven circuits proven on Preview in a sample
-  engagement on an earlier deployment; the deterministic indexer and independent watcher; the
-  attesters' recompute-then-vote job and the market maker's proofs from published data, tested
-  end to end offline; a live engagement page read from the contract; the public profile, tear sheet
-  and dashboards.
-- **This wave, in progress:** the engagement on the VIRTUAL/USDC pool on Base, carried forward by
-  the scheduled job; its first indexed day was attested and funding proven on 24 November.
-- **Next:** the engagement's 30 days, then the claim into a public profile read from the
-  contract's per-tier counters; the market maker's one-off Midnight steps (registration, bond,
-  activation, claim, void) from the browser through Lace's dApp connector, and a small desktop app
-  that runs the daily steps, so a market maker needs no terminal; three independent attester operators; Aerodrome on Base; weekly claim batching; a DUST
-  fee sponsor so a market maker needs no NIGHT of its own.
+- **Wave 3 (this submission), done:** the contract on ledger 9 with every invariant enforced in a
+  circuit, deployed to Preview with 12 circuits; the deterministic indexer and independent
+  watcher; the attesters' recompute-then-vote job; the live engagement on the VIRTUAL/USDC pool on
+  Base, with funding proven and each new day attested, proven and settled by the scheduled job,
+  and day 1's share of the bond released; the void path on a second engagement; the web app
+  (registration wizard, client portal, live engagement page, profiles and tear sheets) and the
+  market maker's own commands and agent.
+- **Wave 4, next:** wallet ownership verified inside the proof (Ledger 9's secp256k1 and Keccak);
+  the live engagement's 30 days completed and claimed into the public record; a fresh bond address
+  per engagement and weekly batched claims; the scope shown on every profile; the nightly index
+  on Trigger.dev; as a stretch, the market maker's steps from the browser through Lace.
+- **Wave 5:** five attesters, three of which must agree, each run by a different person with its
+  own key, with slashing for a false root; re-attestation instead of neutral disputed days; bonds
+  sized to the loan; depth checked in two bands; round trips capped across all committed wallets;
+  Aerodrome pools on Base; a written design for extending proofs to centralized exchanges.
 
 ## License
 
